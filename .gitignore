@@ -50,10 +50,12 @@ build/
 node_modules/
 .rpt2_cache/
 libraries/tools/kotlin-test-js-runner/lib/
-local.properties
+# manually removed for now
+# local.properties
 buildSrcTmp/
 distTmp/
 outTmp/
 /test.output
-/kotlin-native/dist
+# manually removed for now
+# /kotlin-native/dist
 kotlin-ide/
