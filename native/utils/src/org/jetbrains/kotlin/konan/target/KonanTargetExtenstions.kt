@@ -30,6 +30,7 @@ fun KonanTarget.pointerBits() = when (architecture) {
     Architecture.MIPS32 -> 32
     Architecture.MIPSEL32 -> 32
     Architecture.WASM32 -> 32
+    Architecture.RISCV64 -> 64
 }
 
 
@@ -141,12 +142,12 @@ fun KonanTarget.supportsIosCrashLog(): Boolean = when (this) {
  */
 fun KonanTarget.supports64BitAtomics(): Boolean = when (architecture) {
     Architecture.ARM32, Architecture.WASM32, Architecture.MIPS32, Architecture.MIPSEL32 -> false
-    Architecture.X86, Architecture.ARM64, Architecture.X64 -> true
+    Architecture.X86, Architecture.ARM64, Architecture.X64, Architecture.RISCV64 -> true  // todo: Toni, what is 64BitAtomics
 } && this != KonanTarget.WATCHOS_ARM64 && this != KonanTarget.WATCHOS_X86
 
 fun KonanTarget.supportsUnalignedAccess(): Boolean = when (architecture) {
     Architecture.ARM32, Architecture.WASM32, Architecture.MIPS32, Architecture.MIPSEL32 -> false
-    Architecture.X86, Architecture.ARM64, Architecture.X64 -> true
+    Architecture.X86, Architecture.ARM64, Architecture.X64, Architecture.RISCV64 -> true // todo: Toni, what is unalignedAccess
 } && this != KonanTarget.WATCHOS_ARM64
 
 fun KonanTarget.needSmallBinary() = when {
@@ -168,7 +169,7 @@ fun KonanTarget.supportedSanitizers(): List<SanitizerKind> =
 
 fun KonanTarget.hasAddressDependencyInMemoryModel(): Boolean =
      when (this.architecture) {
-         Architecture.X86, Architecture.X64, Architecture.ARM32, Architecture.ARM64 -> true
+         Architecture.X86, Architecture.X64, Architecture.ARM32, Architecture.ARM64, Architecture.RISCV64 -> true // todo: Toni, what is addressDependencyInMemoryModel
          Architecture.MIPS32, Architecture.MIPSEL32, Architecture.WASM32 -> false
      }
 
