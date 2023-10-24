@@ -14,6 +14,13 @@ import org.jetbrains.kotlin.ir.util.IdSignatureComposer
 import org.jetbrains.kotlin.ir.util.SymbolTable
 import java.util.concurrent.ConcurrentHashMap
 
+/**
+ * This storage contains the shared state of FIR2IR.
+ *
+ * State is shared between the conversions of different modules in the same platform compilation.
+ *
+ * See `/docs/fir/k2_kmp.md`
+ */
 class Fir2IrCommonMemberStorage(
     signatureComposer: IdSignatureComposer,
     firMangler: FirMangler
@@ -41,7 +48,7 @@ class Fir2IrCommonMemberStorage(
     val propertyForBackingFieldCache: ConcurrentHashMap<IrFieldSymbol, IrPropertySymbol> = ConcurrentHashMap()
     val delegateVariableForPropertyCache: ConcurrentHashMap<IrLocalDelegatedPropertySymbol, IrVariableSymbol> = ConcurrentHashMap()
 
-    val fakeOverridesInClass: MutableMap<IrClass, MutableMap<Fir2IrDeclarationStorage.FakeOverrideKey, FirCallableDeclaration>> = mutableMapOf()
+    val fakeOverridesInClass: MutableMap<IrClass, MutableMap<Fir2IrDeclarationStorage.FirOverrideKey, FirCallableDeclaration>> = mutableMapOf()
 
-    val irFakeOverridesForFirFakeOverrideMap: MutableMap<Fir2IrDeclarationStorage.FakeOverrideIdentifier, IrDeclaration> = mutableMapOf()
+    val irForFirSessionDependantDeclarationMap: MutableMap<Fir2IrDeclarationStorage.FakeOverrideIdentifier, IrDeclaration> = mutableMapOf()
 }

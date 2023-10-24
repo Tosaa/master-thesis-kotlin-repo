@@ -419,7 +419,7 @@ internal class IntrinsicGenerator(private val environment: IntrinsicGeneratorEnv
     private fun FunctionGenerationContext.emitAtomicGetArrayElement(callSite: IrCall, args: List<LLVMValueRef>, resultSlot: LLVMValueRef?): LLVMValueRef {
         require(args.size == 2) { "The call to ${callSite.symbol.owner.name.asString()} expects 2 value arguments." }
         val address = arrayGetElementAddress(callSite, args[0], args[1])
-        return loadSlot(address, isVar = true, resultSlot, memoryOrder = LLVMAtomicOrdering.LLVMAtomicOrderingSequentiallyConsistent)
+        return loadSlot(callSite.llvmReturnType, address, isVar = true, resultSlot, memoryOrder = LLVMAtomicOrdering.LLVMAtomicOrderingSequentiallyConsistent)
     }
 
     private fun FunctionGenerationContext.transformArgsForAtomicArray(callSite: IrCall, args: List<LLVMValueRef>): List<LLVMValueRef> {
@@ -480,7 +480,7 @@ internal class IntrinsicGenerator(private val environment: IntrinsicGeneratorEnv
         val pointerType = pointerType(callSite.llvmReturnType)
         val rawPointer = args.last()
         val pointer = bitcast(pointerType, rawPointer)
-        return load(pointer)
+        return load(callSite.llvmReturnType, pointer)
     }
 
     private fun FunctionGenerationContext.emitWritePrimitive(callSite: IrCall, args: List<LLVMValueRef>): LLVMValueRef {
@@ -509,7 +509,7 @@ internal class IntrinsicGenerator(private val environment: IntrinsicGeneratorEnv
         val bitsWithPaddingType = LLVMIntTypeInContext(llvm.llvmContext, bitsWithPaddingNum)!!
 
         val bitsWithPaddingPtr = bitcast(pointerType(bitsWithPaddingType), gep(ptr, llvm.int64(offset / 8)))
-        val bitsWithPadding = load(bitsWithPaddingPtr).setUnaligned()
+        val bitsWithPadding = load(bitsWithPaddingType, bitsWithPaddingPtr).setUnaligned()
 
         val bits = shr(
                 shl(bitsWithPadding, suffixBitsNum),
@@ -558,7 +558,7 @@ internal class IntrinsicGenerator(private val environment: IntrinsicGeneratorEnv
         val bitsToStore = if (prefixBitsNum == 0 && suffixBitsNum == 0) {
             bits
         } else {
-            val previousValue = load(bitsWithPaddingPtr).setUnaligned()
+            val previousValue = load(bitsWithPaddingType, bitsWithPaddingPtr).setUnaligned()
             val preservedBits = and(previousValue, preservedBitsMask)
             val bitsWithPadding = shl(zext(bits, bitsWithPaddingType), prefixBitsNum)
 

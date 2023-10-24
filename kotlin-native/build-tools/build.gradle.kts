@@ -92,7 +92,6 @@ kotlin {
     sourceSets {
         main {
             kotlin.srcDir("src/main/kotlin")
-            kotlin.srcDir("../../kotlin-native/tools/kotlin-native-gradle-plugin/src/main/kotlin")
         }
     }
 }
@@ -122,6 +121,14 @@ gradlePlugin {
         create("native") {
             id = "native"
             implementationClass = "org.jetbrains.kotlin.tools.NativePlugin"
+        }
+        create("nativeDependenciesDownloader") {
+            id = "native-dependencies-downloader"
+            implementationClass = "org.jetbrains.kotlin.dependencies.NativeDependenciesDownloaderPlugin"
+        }
+        create("nativeDependencies") {
+            id = "native-dependencies"
+            implementationClass = "org.jetbrains.kotlin.dependencies.NativeDependenciesPlugin"
         }
     }
 }

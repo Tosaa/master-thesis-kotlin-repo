@@ -59,3 +59,4 @@ outTmp/
 # manually removed for now
 # /kotlin-native/dist
 kotlin-ide/
+/.kotlin/

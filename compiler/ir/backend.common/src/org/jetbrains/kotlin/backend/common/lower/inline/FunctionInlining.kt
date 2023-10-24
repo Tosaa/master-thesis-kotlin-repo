@@ -27,7 +27,6 @@ import org.jetbrains.kotlin.ir.declarations.*
 import org.jetbrains.kotlin.ir.expressions.*
 import org.jetbrains.kotlin.ir.expressions.impl.*
 import org.jetbrains.kotlin.ir.symbols.IrFunctionSymbol
-import org.jetbrains.kotlin.ir.symbols.IrSymbol
 import org.jetbrains.kotlin.ir.symbols.IrValueSymbol
 import org.jetbrains.kotlin.ir.symbols.impl.IrReturnableBlockSymbolImpl
 import org.jetbrains.kotlin.ir.types.*
@@ -285,7 +284,7 @@ class FunctionInlining(
 
                 return when {
                     functionArgument is IrFunctionReference ->
-                        inlineFunctionReference(expression, functionArgument, functionArgument.symbol.owner)
+                        inlineFunctionReference(expression, functionArgument, functionArgument.symbol)
 
                     functionArgument is IrPropertyReference && functionArgument.field != null -> inlineField(expression, functionArgument)
 
@@ -380,6 +379,20 @@ class FunctionInlining(
                     irCall.startOffset, irCall.endOffset,
                     inlinedFunctionReference.type, origin = null,
                     statements = listOf(irFunction, inlinedFunctionReference)
+                )
+            }
+
+            fun inlineFunctionReference(
+                irCall: IrCall,
+                irFunctionReference: IrFunctionReference,
+                inlinedFunctionSymbol: IrFunctionSymbol,
+            ): IrExpression {
+                val inlinedFunction = inlinedFunctionSymbol.owner
+                return inlineFunctionReference(
+                    irCall, irFunctionReference,
+                    if (inlinedFunction.needsInlining)
+                        inlineFunctionResolver.getFunctionDeclaration(inlinedFunction.symbol)
+                    else inlinedFunction
                 )
             }
 
@@ -863,7 +876,6 @@ class FunctionInlining(
                     if (isDefaultArg) variableInitializer.startOffset else UNDEFINED_OFFSET,
                     if (isDefaultArg) variableInitializer.endOffset else UNDEFINED_OFFSET,
                     if (inlineArgumentsWithTheirOriginalTypeAndOffset) parameter.getOriginalType() else variableInitializer.type,
-                    InlinerExpressionLocationHint((currentScope.irElement as IrSymbolOwner).symbol)
                 ).apply {
                     statements.add(variableInitializer)
                 },
@@ -908,14 +920,3 @@ class FunctionInlining(
 object INLINED_FUNCTION_REFERENCE : IrStatementOriginImpl("INLINED_FUNCTION_REFERENCE")
 object INLINED_FUNCTION_ARGUMENTS : IrStatementOriginImpl("INLINED_FUNCTION_ARGUMENTS")
 object INLINED_FUNCTION_DEFAULT_ARGUMENTS : IrStatementOriginImpl("INLINED_FUNCTION_DEFAULT_ARGUMENTS")
-
-class InlinerExpressionLocationHint(val inlineAtSymbol: IrSymbol) : IrStatementOrigin {
-    override fun toString(): String =
-        "(${this.javaClass.simpleName} : $functionNameOrDefaultToString @${functionFileOrNull?.fileEntry?.name})"
-
-    private val functionFileOrNull: IrFile?
-        get() = (inlineAtSymbol as? IrFunction)?.file
-
-    private val functionNameOrDefaultToString: String
-        get() = (inlineAtSymbol as? IrFunction)?.name?.asString() ?: inlineAtSymbol.toString()
-}

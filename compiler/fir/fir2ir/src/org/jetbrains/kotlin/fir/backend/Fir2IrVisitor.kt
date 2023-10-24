@@ -8,7 +8,6 @@ package org.jetbrains.kotlin.fir.backend
 import com.intellij.psi.tree.IElementType
 import org.jetbrains.kotlin.*
 import org.jetbrains.kotlin.contracts.description.LogicOperationKind
-import org.jetbrains.kotlin.descriptors.Modality
 import org.jetbrains.kotlin.descriptors.Visibilities
 import org.jetbrains.kotlin.descriptors.isObject
 import org.jetbrains.kotlin.diagnostics.findChildByType
@@ -16,8 +15,6 @@ import org.jetbrains.kotlin.fir.*
 import org.jetbrains.kotlin.fir.backend.generators.ClassMemberGenerator
 import org.jetbrains.kotlin.fir.backend.generators.OperatorExpressionGenerator
 import org.jetbrains.kotlin.fir.declarations.*
-import org.jetbrains.kotlin.fir.declarations.builder.buildProperty
-import org.jetbrains.kotlin.fir.declarations.impl.FirDeclarationStatusImpl
 import org.jetbrains.kotlin.fir.declarations.utils.*
 import org.jetbrains.kotlin.fir.deserialization.toQualifiedPropertyAccessExpression
 import org.jetbrains.kotlin.fir.expressions.*
@@ -48,6 +45,7 @@ import org.jetbrains.kotlin.ir.symbols.impl.IrValueParameterSymbolImpl
 import org.jetbrains.kotlin.ir.types.*
 import org.jetbrains.kotlin.ir.types.impl.IrErrorClassImpl
 import org.jetbrains.kotlin.ir.types.impl.IrErrorTypeImpl
+import org.jetbrains.kotlin.ir.util.coerceToUnit
 import org.jetbrains.kotlin.ir.util.constructors
 import org.jetbrains.kotlin.ir.util.defaultConstructor
 import org.jetbrains.kotlin.lexer.KtTokens
@@ -489,7 +487,7 @@ class Fir2IrVisitor(
 
     override fun visitProperty(property: FirProperty, data: Any?): IrElement = whileAnalysing(session, property) {
         if (property.isLocal) return visitLocalVariable(property)
-        val irProperty = declarationStorage.getCachedIrProperty(property)
+        val irProperty = declarationStorage.getCachedIrProperty(property, fakeOverrideOwnerLookupTag = null)
             ?: return IrErrorExpressionImpl(
                 UNDEFINED_OFFSET, UNDEFINED_OFFSET,
                 IrErrorTypeImpl(null, emptyList(), Variance.INVARIANT),
@@ -1150,24 +1148,18 @@ class Fir2IrVisitor(
     }
 
     override fun visitElvisExpression(elvisExpression: FirElvisExpression, data: Any?): IrElement {
-        val firLhsVariable = buildProperty {
-            source = elvisExpression.source
-            moduleData = session.moduleData
-            origin = FirDeclarationOrigin.Source
-            returnTypeRef = elvisExpression.lhs.resolvedType.toFirResolvedTypeRef()
-            name = Name.special("<elvis>")
-            initializer = elvisExpression.lhs
-            symbol = FirPropertySymbol(name)
-            isVar = false
-            isLocal = true
-            status = FirDeclarationStatusImpl(Visibilities.Local, Modality.FINAL)
-        }
-        val irLhsVariable = firLhsVariable.accept(this, null) as IrVariable
         return elvisExpression.convertWithOffsets { startOffset, endOffset ->
+            val irLhsVariable = conversionScope.scope().createTemporaryVariable(
+                irExpression = elvisExpression.lhs.accept(this, null) as IrExpression,
+                nameHint = "elvis_lhs",
+                startOffset = startOffset,
+                endOffset = endOffset
+            )
+
             fun irGetLhsValue(): IrGetValue =
                 IrGetValueImpl(startOffset, endOffset, irLhsVariable.type, irLhsVariable.symbol)
 
-            val originalType = firLhsVariable.returnTypeRef.coneType
+            val originalType = elvisExpression.lhs.resolvedType
             val notNullType = originalType.withNullability(ConeNullability.NOT_NULL, session.typeContext)
             val irBranches = listOf(
                 IrBranchImpl(
@@ -1188,7 +1180,7 @@ class Fir2IrVisitor(
                     } else {
                         Fir2IrImplicitCastInserter.implicitCastOrExpression(
                             irGetLhsValue(),
-                            firLhsVariable.returnTypeRef.resolvedTypeFromPrototype(notNullType).toIrType()
+                            originalType.toFirResolvedTypeRef().resolvedTypeFromPrototype(notNullType).toIrType()
                         )
                     }
                 )
@@ -1304,7 +1296,10 @@ class Fir2IrVisitor(
                 loopMap[doWhileLoop] = this
                 label = doWhileLoop.label?.name
                 body = runUnless(doWhileLoop.block is FirEmptyExpressionBlock) {
-                    doWhileLoop.block.convertToIrExpressionOrBlock(origin)
+                    Fir2IrImplicitCastInserter.coerceToUnitIfNeeded(
+                        doWhileLoop.block.convertToIrExpressionOrBlock(origin),
+                        irBuiltIns
+                    )
                 }
                 condition = convertToIrExpression(doWhileLoop.condition)
                 loopMap.remove(doWhileLoop)
@@ -1369,7 +1364,10 @@ class Fir2IrVisitor(
                             )
                         }
                     } else {
-                        firLoopBody.convertToIrExpressionOrBlock(origin)
+                        Fir2IrImplicitCastInserter.coerceToUnitIfNeeded(
+                            firLoopBody.convertToIrExpressionOrBlock(origin),
+                            irBuiltIns
+                        )
                     }
                 }
                 loopMap.remove(whileLoop)

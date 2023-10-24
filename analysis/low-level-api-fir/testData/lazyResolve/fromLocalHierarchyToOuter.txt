@@ -174,28 +174,6 @@ FILE: [ResolvedTo(IMPORTS)] fromLocalHierarchyToOuter.kt
     }
     public final [ResolvedTo(EXPECT_ACTUAL_MATCHING)] fun resolveMe(): R|kotlin/Unit| { LAZY_BLOCK }
 
-ARGUMENTS_OF_ANNOTATIONS:
-FILE: [ResolvedTo(IMPORTS)] fromLocalHierarchyToOuter.kt
-    public? open [ResolvedTo(RAW_FIR)] class TopLevelClass : R|kotlin/Any| {
-        public? [ResolvedTo(RAW_FIR)] [ContainingClassKey=TopLevelClass] constructor(): R|TopLevelClass| {
-            LAZY_super<R|kotlin/Any|>
-        }
-
-        public? open [ResolvedTo(RAW_FIR)] fun foo([ResolvedTo(RAW_FIR)] i: Int): R|kotlin/Unit| { LAZY_BLOCK }
-
-        public? open [ResolvedTo(RAW_FIR)] fun boo([ResolvedTo(RAW_FIR)] b: String): R|kotlin/Unit| { LAZY_BLOCK }
-
-    }
-    public? open [ResolvedTo(RAW_FIR)] class AnotherTopLevelClass : TopLevelClass {
-        public? [ResolvedTo(RAW_FIR)] [ContainingClassKey=AnotherTopLevelClass] constructor(): R|AnotherTopLevelClass| {
-            LAZY_super<TopLevelClass>
-        }
-
-        public? open? override [ResolvedTo(RAW_FIR)] fun foo([ResolvedTo(RAW_FIR)] i: Int): R|kotlin/Unit| { LAZY_BLOCK }
-
-    }
-    public final [ResolvedTo(ARGUMENTS_OF_ANNOTATIONS)] fun resolveMe(): R|kotlin/Unit| { LAZY_BLOCK }
-
 CONTRACTS:
 FILE: [ResolvedTo(IMPORTS)] fromLocalHierarchyToOuter.kt
     public? open [ResolvedTo(RAW_FIR)] class TopLevelClass : R|kotlin/Any| {
@@ -282,7 +260,7 @@ FILE: [ResolvedTo(IMPORTS)] fromLocalHierarchyToOuter.kt
 
     }
 
-ANNOTATIONS_ARGUMENTS_MAPPING:
+ANNOTATION_ARGUMENTS:
 FILE: [ResolvedTo(IMPORTS)] fromLocalHierarchyToOuter.kt
     public? open [ResolvedTo(RAW_FIR)] class TopLevelClass : R|kotlin/Any| {
         public? [ResolvedTo(RAW_FIR)] [ContainingClassKey=TopLevelClass] constructor(): R|TopLevelClass| {
@@ -302,7 +280,7 @@ FILE: [ResolvedTo(IMPORTS)] fromLocalHierarchyToOuter.kt
         public? open? override [ResolvedTo(RAW_FIR)] fun foo([ResolvedTo(RAW_FIR)] i: Int): R|kotlin/Unit| { LAZY_BLOCK }
 
     }
-    public final [ResolvedTo(ANNOTATIONS_ARGUMENTS_MAPPING)] fun resolveMe(): R|kotlin/Unit| {
+    public final [ResolvedTo(ANNOTATION_ARGUMENTS)] fun resolveMe(): R|kotlin/Unit| {
         local open [ResolvedTo(RAW_FIR)] class LocalClass : AnotherTopLevelClass {
             public? [ResolvedTo(RAW_FIR)] [ContainingClassKey=LocalClass] constructor(): R|<local>/LocalClass| {
                 super<AnotherTopLevelClass>()

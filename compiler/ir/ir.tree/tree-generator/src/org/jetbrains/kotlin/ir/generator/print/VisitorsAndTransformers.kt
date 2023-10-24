@@ -7,11 +7,11 @@ package org.jetbrains.kotlin.ir.generator.print
 
 import com.squareup.kotlinpoet.*
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
+import org.jetbrains.kotlin.generators.tree.printer.GeneratedFile
 import org.jetbrains.kotlin.ir.generator.IrTree
 import org.jetbrains.kotlin.ir.generator.VISITOR_PACKAGE
 import org.jetbrains.kotlin.ir.generator.irTypeType
 import org.jetbrains.kotlin.ir.generator.model.*
-import org.jetbrains.kotlin.ir.generator.util.GeneratedFile
 import org.jetbrains.kotlin.util.capitalizeDecapitalize.capitalizeAsciiOnly
 import java.io.File
 
@@ -124,7 +124,7 @@ fun printTypeVisitor(generationPath: File, model: Model): GeneratedFile {
         when (field) {
             is SingleField -> addStatement("$access = $transformTypeFunName($visitorParam, $access, data)")
             is ListField -> {
-                if (field.mutable) {
+                if (field.isMutable) {
                     addStatement("$access = $access.map { $transformTypeFunName($visitorParam, it, data) }")
                 } else {
                     beginControlFlow("for (i in 0 until $access.size)")
@@ -144,7 +144,7 @@ fun printTypeVisitor(generationPath: File, model: Model): GeneratedFile {
         val irTypeFields = this.fields
             .filter {
                 val type = when (it) {
-                    is SingleField -> it.type
+                    is SingleField -> it.typeRef
                     is ListField -> it.elementType
                 }
                 type.toString() == irTypeType.toString()

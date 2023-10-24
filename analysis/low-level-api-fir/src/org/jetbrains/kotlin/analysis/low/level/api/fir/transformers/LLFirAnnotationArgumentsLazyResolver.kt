@@ -9,19 +9,24 @@ import org.jetbrains.kotlin.analysis.low.level.api.fir.api.targets.LLFirResolveT
 import org.jetbrains.kotlin.analysis.low.level.api.fir.api.throwUnexpectedFirElementError
 import org.jetbrains.kotlin.analysis.low.level.api.fir.file.builder.LLFirLockProvider
 import org.jetbrains.kotlin.analysis.low.level.api.fir.lazy.resolve.FirLazyBodiesCalculator
-import org.jetbrains.kotlin.fir.FirElementWithResolveState
-import org.jetbrains.kotlin.fir.FirFileAnnotationsContainer
-import org.jetbrains.kotlin.fir.FirSession
-import org.jetbrains.kotlin.util.PrivateForInline
+import org.jetbrains.kotlin.analysis.low.level.api.fir.sessions.llFirSession
+import org.jetbrains.kotlin.analysis.low.level.api.fir.util.checkAnnotationArgumentsMappingIsResolved
+import org.jetbrains.kotlin.fir.*
 import org.jetbrains.kotlin.fir.declarations.*
+import org.jetbrains.kotlin.fir.expressions.*
+import org.jetbrains.kotlin.fir.expressions.builder.buildArgumentList
+import org.jetbrains.kotlin.fir.expressions.impl.FirResolvedArgumentList
+import org.jetbrains.kotlin.fir.references.FirResolvedNamedReference
+import org.jetbrains.kotlin.fir.references.isError
 import org.jetbrains.kotlin.fir.resolve.ResolutionMode
 import org.jetbrains.kotlin.fir.resolve.ScopeSession
-import org.jetbrains.kotlin.fir.resolve.transformers.body.resolve.BodyResolveContext
 import org.jetbrains.kotlin.fir.resolve.transformers.body.resolve.FirResolveContextCollector
-import org.jetbrains.kotlin.fir.resolve.transformers.plugin.FirAnnotationArgumentsResolveTransformer
+import org.jetbrains.kotlin.fir.resolve.transformers.plugin.FirAnnotationArgumentsTransformer
+import org.jetbrains.kotlin.fir.types.FirTypeProjection
+import org.jetbrains.kotlin.fir.visitors.FirVisitorVoid
 import org.jetbrains.kotlin.fir.visitors.transformSingle
 
-internal object LLFirAnnotationArgumentsLazyResolver : LLFirLazyResolver(FirResolvePhase.ARGUMENTS_OF_ANNOTATIONS) {
+internal object LLFirAnnotationArgumentsLazyResolver : LLFirLazyResolver(FirResolvePhase.ANNOTATION_ARGUMENTS) {
     override fun resolve(
         target: LLFirResolveTarget,
         lockProvider: LLFirLockProvider,
@@ -32,21 +37,26 @@ internal object LLFirAnnotationArgumentsLazyResolver : LLFirLazyResolver(FirReso
         val resolver = LLFirAnnotationArgumentsTargetResolver(target, lockProvider, session, scopeSession, towerDataContextCollector)
         resolver.resolveDesignation()
     }
+
+    override fun phaseSpecificCheckIsResolved(target: FirElementWithResolveState) {
+        if (target !is FirAnnotationContainer) return
+        checkAnnotationArgumentsMappingIsResolved(target)
+    }
 }
 
 private class LLFirAnnotationArgumentsTargetResolver(
-    target: LLFirResolveTarget,
+    resolveTarget: LLFirResolveTarget,
     lockProvider: LLFirLockProvider,
     session: FirSession,
     scopeSession: ScopeSession,
     firResolveContextCollector: FirResolveContextCollector?,
 ) : LLFirAbstractBodyTargetResolver(
-    target,
+    resolveTarget,
     lockProvider,
     scopeSession,
-    FirResolvePhase.ARGUMENTS_OF_ANNOTATIONS,
+    FirResolvePhase.ANNOTATION_ARGUMENTS,
 ) {
-    override val transformer = FirAnnotationArgumentsResolveTransformer(
+    override val transformer = FirAnnotationArgumentsTransformer(
         session,
         scopeSession,
         resolverPhase,
@@ -54,117 +64,41 @@ private class LLFirAnnotationArgumentsTargetResolver(
         firResolveContextCollector = firResolveContextCollector,
     )
 
-    private inline fun actionWithContextCollector(
-        noinline action: () -> Unit,
-        crossinline collect: (FirResolveContextCollector, BodyResolveContext) -> Unit,
-    ): () -> Unit {
-        val collector = transformer.firResolveContextCollector ?: return action
-        return {
-            collect(collector, transformer.context)
-            action()
+    override fun doLazyResolveUnderLock(target: FirElementWithResolveState) {
+        resolveWithKeeper(
+            target,
+            target.llFirSession,
+            AnnotationArgumentsStateKeepers.DECLARATION,
+            prepareTarget = FirLazyBodiesCalculator::calculateAnnotations,
+        ) {
+            transformAnnotations(target)
         }
-    }
-
-    override fun withScript(firScript: FirScript, action: () -> Unit) {
-        val actionWithCollector = actionWithContextCollector(action) { collector, context ->
-            collector.addDeclarationContext(firScript, context)
-        }
-
-        super.withScript(firScript, actionWithCollector)
-    }
-
-    override fun withFile(firFile: FirFile, action: () -> Unit) {
-        val actionWithCollector = actionWithContextCollector(action) { collector, context ->
-            collector.addFileContext(firFile, context.towerDataContext)
-        }
-
-        super.withFile(firFile, actionWithCollector)
     }
 
     @Deprecated("Should never be called directly, only for override purposes, please use withRegularClass", level = DeprecationLevel.ERROR)
     override fun withRegularClassImpl(firClass: FirRegularClass, action: () -> Unit) {
-        val actionWithCollector = actionWithContextCollector(action) { collector, context ->
-            collector.addDeclarationContext(firClass, context)
-        }
-
-        @Suppress("DEPRECATION_ERROR")
-        super.withRegularClassImpl(firClass, actionWithCollector)
-    }
-
-    override fun doLazyResolveUnderLock(target: FirElementWithResolveState) {
-        collectTowerDataContext(target)
-
-        FirLazyBodiesCalculator.calculateAnnotations(target)
-        transformAnnotations(target)
-    }
-
-    private fun collectTowerDataContext(target: FirElementWithResolveState) {
-        val contextCollector = transformer.firResolveContextCollector
-        if (contextCollector == null || target !is FirDeclaration) return
-
-        val bodyResolveContext = transformer.context
-        withTypeParametersIfMemberDeclaration(bodyResolveContext, target) {
-            when (target) {
-                is FirRegularClass -> {
-                    contextCollector.addClassHeaderContext(target, bodyResolveContext.towerDataContext)
-                }
-
-                is FirFunction -> bodyResolveContext.forFunctionBody(target, transformer.components) {
-                    contextCollector.addDeclarationContext(target, bodyResolveContext)
-                }
-
-                is FirScript -> {}
-
-                else -> contextCollector.addDeclarationContext(target, bodyResolveContext)
-            }
-        }
-
-        /**
-         * [withRegularClass] and [withScript] already have [FirResolveContextCollector.addDeclarationContext] call,
-         * so we shouldn't do anything inside
-         */
-        when (target) {
-            is FirRegularClass -> withRegularClass(target) { }
-            is FirScript -> withScript(target) { }
-            else -> {}
-        }
-    }
-
-    private inline fun withTypeParametersIfMemberDeclaration(
-        context: BodyResolveContext,
-        target: FirElementWithResolveState,
-        action: () -> Unit,
-    ) {
-        if (target is FirMemberDeclaration) {
-            @OptIn(PrivateForInline::class)
-            context.withTypeParametersOf(target, action)
-        } else {
+        transformer.declarationsTransformer.withRegularClass(firClass) {
             action()
+            firClass
         }
     }
-}
 
-internal fun LLFirAbstractBodyTargetResolver.transformAnnotations(target: FirElementWithResolveState) {
-    when {
-        target is FirRegularClass -> transformer.declarationsTransformer?.let { declarationsTransformer ->
-            target.transformAnnotations(declarationsTransformer, ResolutionMode.ContextIndependent)
-            target.transformTypeParameters(declarationsTransformer, ResolutionMode.ContextIndependent)
-            target.transformSuperTypeRefs(declarationsTransformer, ResolutionMode.ContextIndependent)
-        }
-
-        target is FirScript -> {
-            transformer.declarationsTransformer?.let {
-                target.transformAnnotations(it, ResolutionMode.ContextIndependent)
+    private fun transformAnnotations(target: FirElementWithResolveState) {
+        when {
+            target is FirRegularClass -> {
+                val declarationTransformer = transformer.declarationsTransformer
+                declarationTransformer.context.insideClassHeader {
+                    target.transformAnnotations(declarationTransformer, ResolutionMode.ContextIndependent)
+                    target.transformTypeParameters(declarationTransformer, ResolutionMode.ContextIndependent)
+                    target.transformSuperTypeRefs(declarationTransformer, ResolutionMode.ContextIndependent)
+                }
             }
+
+            target is FirScript -> target.transformAnnotations(transformer.declarationsTransformer, ResolutionMode.ContextIndependent)
+            target.isRegularDeclarationWithAnnotation -> target.transformSingle(transformer, ResolutionMode.ContextIndependent)
+            target is FirCodeFragment || target is FirFile -> {}
+            else -> throwUnexpectedFirElementError(target)
         }
-
-        target.isRegularDeclarationWithAnnotation -> {
-            target.transformSingle(transformer, ResolutionMode.ContextIndependent)
-        }
-
-        target is FirCodeFragment || target is FirFile -> {}
-
-        else -> throwUnexpectedFirElementError(target)
     }
 }
 
@@ -178,3 +112,58 @@ internal val FirElementWithResolveState.isRegularDeclarationWithAnnotation: Bool
         -> true
         else -> false
     }
+
+internal object AnnotationArgumentsStateKeepers {
+    private val ANNOTATION: StateKeeper<FirAnnotation, FirSession> = stateKeeper { _, session ->
+        add(ANNOTATION_BASE, session)
+        add(FirAnnotation::argumentMapping, FirAnnotation::replaceArgumentMapping)
+        add(FirAnnotation::typeArgumentsCopied, FirAnnotation::replaceTypeArguments)
+    }
+
+    private val ANNOTATION_BASE: StateKeeper<FirAnnotation, FirSession> = stateKeeper { annotation, session ->
+        if (annotation is FirAnnotationCall) {
+            entity(annotation, ANNOTATION_CALL, session)
+        }
+    }
+
+    private val ANNOTATION_CALL: StateKeeper<FirAnnotationCall, FirSession> = stateKeeper { annotationCall, session ->
+        add(FirAnnotationCall::calleeReference, FirAnnotationCall::replaceCalleeReference)
+
+        val argumentList = annotationCall.argumentList
+        if (argumentList !is FirResolvedArgumentList && argumentList !is FirEmptyArgumentList) {
+            add(FirAnnotationCall::argumentList, FirAnnotationCall::replaceArgumentList) { oldList ->
+                val newArguments = FirLazyBodiesCalculator.createArgumentsForAnnotation(annotationCall, session).arguments
+                buildArgumentList {
+                    source = oldList.source
+                    for ((index, argument) in oldList.arguments.withIndex()) {
+                        val replacement = when {
+                            argument is FirPropertyAccessExpression && argument.calleeReference.let { it.isError() || it is FirResolvedNamedReference } -> argument
+                            else -> newArguments[index]
+                        }
+
+                        arguments.add(replacement)
+                    }
+                }
+            }
+        }
+    }
+
+    val DECLARATION: StateKeeper<FirElementWithResolveState, FirSession> = stateKeeper { target, session ->
+        val visitor = object : FirVisitorVoid() {
+            override fun visitElement(element: FirElement) {
+                when (element) {
+                    is FirDeclaration -> if (element !== target) return // Avoid nested declarations
+                    is FirAnnotation -> entity(element, ANNOTATION, session)
+                    is FirStatement -> return
+                }
+
+                element.acceptChildren(this)
+            }
+        }
+
+        target.accept(visitor)
+    }
+}
+
+private val FirAnnotation.typeArgumentsCopied: List<FirTypeProjection>
+    get() = if (typeArguments.isEmpty()) emptyList() else ArrayList(typeArguments)

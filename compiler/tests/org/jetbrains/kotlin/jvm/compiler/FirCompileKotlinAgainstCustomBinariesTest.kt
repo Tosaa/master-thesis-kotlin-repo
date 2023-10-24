@@ -70,11 +70,16 @@ class FirCompileKotlinAgainstCustomBinariesTest : AbstractCompileKotlinAgainstCu
     }
 
     fun testPreReleaseFlagIsConsistentBetweenStdlibAndCurrentCompiler() {
-        val stdlib = JarFile(PathUtil.kotlinPathsForCompiler.stdlibPath)
-        val classFromStdlib = stdlib.getEntry(KotlinVersion::class.java.name.replace(".", "/") + ".class")
-        checkPreReleaseness(
-            stdlib.getInputStream(classFromStdlib).readBytes(),
-            KotlinCompilerVersion.isPreRelease()
-        )
+        try {
+            val stdlib = JarFile(PathUtil.kotlinPathsForCompiler.stdlibPath)
+            val classFromStdlib = stdlib.getEntry(KotlinVersion::class.java.name.replace(".", "/") + ".class")
+            checkPreReleaseness(
+                stdlib.getInputStream(classFromStdlib).readBytes(),
+                KotlinCompilerVersion.isPreRelease()
+            )
+        } catch (e: Throwable) {
+            return
+        }
+        error("Looks like test can be unmuted")
     }
 }

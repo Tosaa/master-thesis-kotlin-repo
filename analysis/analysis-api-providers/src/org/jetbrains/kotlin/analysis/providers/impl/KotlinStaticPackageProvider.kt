@@ -9,13 +9,16 @@ import com.intellij.openapi.project.Project
 import com.intellij.psi.search.GlobalSearchScope
 import org.jetbrains.kotlin.analysis.providers.KotlinPackageProvider
 import org.jetbrains.kotlin.analysis.providers.KotlinPackageProviderFactory
+import org.jetbrains.kotlin.analysis.providers.KotlinPackageProviderMerger
+import org.jetbrains.kotlin.analysis.providers.createPackageProvider
+import org.jetbrains.kotlin.analysis.providers.impl.packageProviders.CompositeKotlinPackageProvider
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.psi.KtFile
 
 public class KotlinStaticPackageProvider(
     project: Project,
-    scope: GlobalSearchScope,
+    internal val scope: GlobalSearchScope,
     files: Collection<KtFile>
 ) : KotlinPackageProviderBase(project, scope) {
     private val kotlinPackageToSubPackages: Map<FqName, Set<Name>> = run {
@@ -48,4 +51,16 @@ public class KotlinStaticPackageProviderFactory(
     override fun createPackageProvider(searchScope: GlobalSearchScope): KotlinPackageProvider {
         return KotlinStaticPackageProvider(project, searchScope, files)
     }
+}
+
+public class KotlinStaticPackageProviderMerger(private val project: Project) : KotlinPackageProviderMerger() {
+    override fun merge(providers: List<KotlinPackageProvider>): KotlinPackageProvider =
+        providers.mergeSpecificProviders<_, KotlinStaticPackageProvider>(CompositeKotlinPackageProvider.factory) { targetProviders ->
+            val combinedScope = GlobalSearchScope.union(targetProviders.map { it.scope })
+            project.createPackageProvider(combinedScope).apply {
+                check(this is KotlinStaticPackageProvider) {
+                    "`${KotlinStaticPackageProvider::class.simpleName}` can only be merged into a combined package provider of the same type."
+                }
+            }
+        }
 }

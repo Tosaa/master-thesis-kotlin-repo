@@ -13,6 +13,7 @@ import org.gradle.api.publish.maven.MavenPublication
 import org.jetbrains.kotlin.gradle.DeprecatedTargetPresetApi
 import org.jetbrains.kotlin.gradle.InternalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.PRESETS_API_IS_DEPRECATED_MESSAGE
+import org.jetbrains.kotlin.gradle.dsl.KotlinCommonCompilerOptions
 import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
 import org.jetbrains.kotlin.gradle.dsl.kotlinExtension
 import org.jetbrains.kotlin.gradle.plugin.*
@@ -35,6 +36,8 @@ abstract class AbstractKotlinTarget(
     private val attributeContainer = HierarchyAttributeContainer(parent = null)
 
     override fun getAttributes(): AttributeContainer = attributeContainer
+
+    internal abstract val compilerOptions: KotlinCommonCompilerOptions
 
     @Deprecated("Scheduled for removal with Kotlin 2.2")
     override var useDisambiguationClassifierAsSourceSetNamePrefix: Boolean = true
@@ -106,11 +109,11 @@ abstract class AbstractKotlinTarget(
         val kotlinExtension = project.kotlinExtension
 
         val result =
-            if (kotlinExtension !is KotlinMultiplatformExtension || targetName == KotlinMultiplatformPlugin.METADATA_TARGET_NAME)
+            if (kotlinExtension !is KotlinMultiplatformExtension || targetName == KotlinMetadataTarget.METADATA_TARGET_NAME)
                 KotlinVariantWithCoordinates(compilation, usageContexts)
             else {
                 val metadataTarget =
-                    kotlinExtension.targets.getByName(KotlinMultiplatformPlugin.METADATA_TARGET_NAME) as AbstractKotlinTarget
+                    kotlinExtension.targets.getByName(KotlinMetadataTarget.METADATA_TARGET_NAME) as AbstractKotlinTarget
 
                 KotlinVariantWithMetadataVariant(compilation, usageContexts, metadataTarget)
             }

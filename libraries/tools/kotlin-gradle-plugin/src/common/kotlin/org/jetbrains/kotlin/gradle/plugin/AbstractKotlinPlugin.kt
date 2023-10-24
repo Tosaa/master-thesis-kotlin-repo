@@ -21,7 +21,6 @@ import org.gradle.jvm.tasks.Jar
 import org.gradle.tooling.provider.model.ToolingModelBuilderRegistry
 import org.jetbrains.kotlin.gradle.dsl.KotlinSingleJavaTargetExtension
 import org.jetbrains.kotlin.gradle.dsl.kotlinExtension
-import org.jetbrains.kotlin.gradle.internal.customizeKotlinDependencies
 import org.jetbrains.kotlin.gradle.model.builder.KotlinModelBuilder
 import org.jetbrains.kotlin.gradle.plugin.internal.JavaSourceSetsAccessor
 import org.jetbrains.kotlin.gradle.plugin.internal.MavenPluginConfigurator
@@ -31,6 +30,7 @@ import org.jetbrains.kotlin.gradle.tasks.InspectClassesForMultiModuleIC
 import org.jetbrains.kotlin.gradle.tasks.KotlinTasksProvider
 import org.jetbrains.kotlin.gradle.tasks.locateTask
 import org.jetbrains.kotlin.gradle.tasks.registerTask
+import org.jetbrains.kotlin.gradle.utils.whenEvaluated
 import org.jetbrains.kotlin.gradle.utils.archivePathCompatible
 
 const val PLUGIN_CLASSPATH_CONFIGURATION_NAME = "kotlinCompilerPluginClasspath"
@@ -61,11 +61,8 @@ internal abstract class AbstractKotlinPlugin(
             { compilation -> buildSourceSetProcessor(project, compilation) }
         )
 
-        applyUserDefinedAttributes(target)
-
         rewriteMppDependenciesInPom(target)
 
-        configureProjectGlobalSettings(project)
         configureClassInspectionForIC(project)
         registry.register(KotlinModelBuilder(kotlinPluginVersion, null))
 
@@ -151,11 +148,6 @@ internal abstract class AbstractKotlinPlugin(
 
     companion object {
         private const val INSPECT_IC_CLASSES_TASK_NAME = "inspectClassesForKotlinIC"
-
-        fun configureProjectGlobalSettings(project: Project) {
-            customizeKotlinDependencies(project)
-            project.setupGeneralKotlinExtensionParameters()
-        }
 
         fun configureTarget(
             target: KotlinWithJavaTarget<*, *>,

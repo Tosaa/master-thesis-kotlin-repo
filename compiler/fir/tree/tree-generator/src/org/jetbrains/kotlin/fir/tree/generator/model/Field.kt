@@ -6,10 +6,8 @@
 package org.jetbrains.kotlin.fir.tree.generator.model
 
 import org.jetbrains.kotlin.fir.tree.generator.printer.generics
-import org.jetbrains.kotlin.generators.tree.typeWithArguments
-import org.jetbrains.kotlin.generators.tree.ArbitraryImportable
-import org.jetbrains.kotlin.generators.tree.Importable
-import org.jetbrains.kotlin.generators.tree.AbstractField
+import org.jetbrains.kotlin.generators.tree.*
+import org.jetbrains.kotlin.generators.tree.ElementOrRef as GenericElementOrRef
 
 sealed class Field : AbstractField() {
     open var withReplace: Boolean = false
@@ -18,6 +16,12 @@ sealed class Field : AbstractField() {
     open var needsSeparateTransform: Boolean = false
     var parentHasSeparateTransform: Boolean = true
     open var needTransformInOtherChildren: Boolean = false
+
+    /**
+     * @see org.jetbrains.kotlin.fir.tree.generator.util.detectBaseTransformerTypes
+     */
+    var useInBaseTransformerDetection = true
+
     open var customInitializationCall: String? = null
 
     open val defaultValueInImplementation: String? get() = null
@@ -25,13 +29,21 @@ sealed class Field : AbstractField() {
     open var isMutableInInterface: Boolean = false
     open val fromDelegate: Boolean get() = false
 
-    open val overridenTypes: MutableSet<Importable> = mutableSetOf()
+    open val overridenTypes: MutableSet<TypeRefWithNullability> = mutableSetOf()
     open var useNullableForReplace: Boolean = false
     open var notNull: Boolean = false
 
     var withBindThis = true
 
-    override fun getTypeWithArguments(notNull: Boolean): String = type + generics + if (nullable && !notNull) "?" else ""
+    abstract override var isVolatile: Boolean
+
+    abstract override var isFinal: Boolean
+
+    abstract override var isLateinit: Boolean
+
+    abstract override var isParameter: Boolean
+
+    abstract override var isMutable: Boolean
 
     fun copy(): Field = internalCopy().also {
         updateFieldsInCopy(it)
@@ -39,10 +51,9 @@ sealed class Field : AbstractField() {
 
     protected fun updateFieldsInCopy(copy: Field) {
         if (copy !is FieldWithDefault) {
-            copy.arguments.clear()
-            copy.arguments.addAll(arguments)
             copy.needsSeparateTransform = needsSeparateTransform
             copy.needTransformInOtherChildren = needTransformInOtherChildren
+            copy.useInBaseTransformerDetection = useInBaseTransformerDetection
             copy.isMutable = isMutable
             copy.overridenTypes += overridenTypes
             copy.arbitraryImportables += arbitraryImportables
@@ -62,13 +73,11 @@ sealed class Field : AbstractField() {
 
 class FieldWithDefault(val origin: Field) : Field() {
     override val name: String get() = origin.name
-    override val type: String get() = origin.type
+    override val typeRef: TypeRefWithNullability get() = origin.typeRef
     override var isVolatile: Boolean = origin.isVolatile
-    override val nullable: Boolean get() = origin.nullable
     override var withReplace: Boolean
         get() = origin.withReplace
         set(_) {}
-    override val packageName: String? get() = origin.packageName
     override val isFirType: Boolean get() = origin.isFirType
     override var needsSeparateTransform: Boolean
         get() = origin.needsSeparateTransform
@@ -77,12 +86,6 @@ class FieldWithDefault(val origin: Field) : Field() {
     override var needTransformInOtherChildren: Boolean
         get() = origin.needTransformInOtherChildren
         set(_) {}
-
-    override val arguments: MutableList<Importable>
-        get() = origin.arguments
-
-    override val fullQualifiedName: String?
-        get() = origin.fullQualifiedName
 
     override var isFinal: Boolean
         get() = origin.isFinal
@@ -113,7 +116,7 @@ class FieldWithDefault(val origin: Field) : Field() {
     override var customSetter: String? = null
     override var fromDelegate: Boolean = false
     var needAcceptAndTransform: Boolean = true
-    override val overridenTypes: MutableSet<Importable>
+    override val overridenTypes: MutableSet<TypeRefWithNullability>
         get() = origin.overridenTypes
 
     override val arbitraryImportables: MutableList<Importable>
@@ -136,10 +139,7 @@ class FieldWithDefault(val origin: Field) : Field() {
 
 class SimpleField(
     override val name: String,
-    override val type: String,
-    override val packageName: String?,
-    val customType: Importable? = null,
-    override val nullable: Boolean,
+    override val typeRef: TypeRefWithNullability,
     override var withReplace: Boolean,
     override var isVolatile: Boolean = false,
     override var isFinal: Boolean = false,
@@ -147,19 +147,13 @@ class SimpleField(
     override var isParameter: Boolean = false,
 ) : Field() {
     override val isFirType: Boolean = false
-    override val fullQualifiedName: String?
-        get() = customType?.fullQualifiedName ?: super.fullQualifiedName
-
     override var isMutable: Boolean = withReplace
     override var isMutableOrEmpty: Boolean = false
 
     override fun internalCopy(): Field {
         return SimpleField(
             name = name,
-            type = type,
-            packageName = packageName,
-            customType = customType,
-            nullable = nullable,
+            typeRef = typeRef,
             withReplace = withReplace,
             isVolatile = isVolatile,
             isFinal = isFinal,
@@ -170,12 +164,9 @@ class SimpleField(
         }
     }
 
-    fun replaceType(newType: Type) = SimpleField(
+    fun replaceType(newType: TypeRefWithNullability) = SimpleField(
         name = name,
-        type = newType.type,
-        packageName = newType.packageName,
-        customType = customType,
-        nullable = nullable,
+        typeRef = newType,
         withReplace = withReplace,
         isVolatile = isVolatile,
         isFinal = isFinal,
@@ -189,20 +180,14 @@ class SimpleField(
 
 class FirField(
     override val name: String,
-    val element: AbstractElement,
-    override val nullable: Boolean,
+    val element: ElementRef,
     override var withReplace: Boolean,
 ) : Field() {
-    init {
-        if (element is ElementWithArguments) {
-            arguments += element.typeArguments.map { Type(null, it.name) }
-        }
-    }
 
-    override val type: String get() = element.type
+    override val typeRef: TypeRefWithNullability
+        get() = element
     override var isVolatile: Boolean = false
     override var isFinal: Boolean = false
-    override val packageName: String? get() = element.packageName
     override val isFirType: Boolean = true
 
     override var isMutable: Boolean = true
@@ -210,14 +195,10 @@ class FirField(
     override var isLateinit: Boolean = false
     override var isParameter: Boolean = false
 
-    override fun getTypeWithArguments(notNull: Boolean): String =
-        element.getTypeWithArguments(notNull) + if (nullable && !notNull) "?" else ""
-
     override fun internalCopy(): Field {
         return FirField(
             name,
             element,
-            nullable,
             withReplace
         ).apply {
             withBindThis = this@FirField.withBindThis
@@ -229,17 +210,13 @@ class FirField(
 
 class FieldList(
     override val name: String,
-    val baseType: Importable,
+    val baseType: TypeRef,
     override var withReplace: Boolean,
     useMutableOrEmpty: Boolean = false
 ) : Field() {
     override var defaultValueInImplementation: String? = null
-    override val packageName: String? get() = baseType.packageName
-    override val fullQualifiedName: String? get() = baseType.fullQualifiedName
-    override val type: String = "List<${baseType.typeWithArguments}>"
-
-    override val nullable: Boolean
-        get() = false
+    override val typeRef: ClassRef<PositionTypeParameterRef>
+        get() = StandardTypes.list.withArgs(baseType)
 
     override var isVolatile: Boolean = false
     override var isFinal: Boolean = false
@@ -257,5 +234,5 @@ class FieldList(
         )
     }
 
-    override val isFirType: Boolean = baseType is AbstractElement
+    override val isFirType: Boolean = baseType is GenericElementOrRef<*, *> && baseType.element is Element
 }

@@ -140,7 +140,7 @@ class MemoizedMultiFieldValueClassReplacements(
         newFlattenedParameters.addAll(contextReceivers)
         sourceFunction.extensionReceiverParameter?.let {
             val newParameters = it.grouped(
-                sourceFunction.extensionReceiverName(context.state),
+                sourceFunction.extensionReceiverName(context.config),
                 substitutionMap,
                 targetFunction,
                 IrDeclarationOrigin.MOVED_EXTENSION_RECEIVER,
@@ -466,7 +466,6 @@ class MemoizedMultiFieldValueClassReplacements(
         }
     }
 
-    @OptIn(ExperimentalStdlibApi::class)
     private fun verifyStructureCompatibility(
         targetStructure: List<RemappedParameter>,
         sourceStructure: List<RemappedParameter>

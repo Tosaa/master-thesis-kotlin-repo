@@ -30,10 +30,6 @@ EXPECT_ACTUAL_MATCHING:
 FILE: [ResolvedTo(IMPORTS)] compilerRequiredAnnotationOnLocalClass.kt
     public final [ResolvedTo(EXPECT_ACTUAL_MATCHING)] fun resolveMe(): R|kotlin/Unit| { LAZY_BLOCK }
 
-ARGUMENTS_OF_ANNOTATIONS:
-FILE: [ResolvedTo(IMPORTS)] compilerRequiredAnnotationOnLocalClass.kt
-    public final [ResolvedTo(ARGUMENTS_OF_ANNOTATIONS)] fun resolveMe(): R|kotlin/Unit| { LAZY_BLOCK }
-
 CONTRACTS:
 FILE: [ResolvedTo(IMPORTS)] compilerRequiredAnnotationOnLocalClass.kt
     public final [ResolvedTo(CONTRACTS)] fun resolveMe(): R|kotlin/Unit| {
@@ -72,9 +68,9 @@ FILE: [ResolvedTo(IMPORTS)] compilerRequiredAnnotationOnLocalClass.kt
 
     }
 
-ANNOTATIONS_ARGUMENTS_MAPPING:
+ANNOTATION_ARGUMENTS:
 FILE: [ResolvedTo(IMPORTS)] compilerRequiredAnnotationOnLocalClass.kt
-    public final [ResolvedTo(ANNOTATIONS_ARGUMENTS_MAPPING)] fun resolveMe(): R|kotlin/Unit| {
+    public final [ResolvedTo(ANNOTATION_ARGUMENTS)] fun resolveMe(): R|kotlin/Unit| {
         @Deprecated[Unresolved](message = String(), replaceWith = ReplaceWith#(expression = String(abc)), level = DeprecationLevel#.ERROR#) local final? [ResolvedTo(RAW_FIR)] class LocalClass : R|kotlin/Any| {
             public? [ResolvedTo(RAW_FIR)] [ContainingClassKey=LocalClass] constructor(): R|<local>/LocalClass| {
                 super<R|kotlin/Any|>()

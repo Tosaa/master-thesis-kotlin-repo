@@ -294,43 +294,6 @@ FILE: [ResolvedTo(IMPORTS)] lazyPropertyScript.kts
         }
 
 
-ARGUMENTS_OF_ANNOTATIONS:
-FILE: [ResolvedTo(IMPORTS)] lazyPropertyScript.kts
-    context(<script>@R|kotlin/script/templates/standard/ScriptTemplateWithArgs|)
-    SCRIPT: [ResolvedTo(TYPES)] <script-lazyPropertyScript.kts>
-        [ResolvedTo(RAW_FIR)] lval args: R|kotlin/Array<kotlin/String>|
-
-        public? final? [ResolvedTo(RAW_FIR)] class LazyDelegate<[ResolvedTo(RAW_FIR)] T> : R|kotlin/Any| {
-            public? [ResolvedTo(RAW_FIR)] [ContainingClassKey=LazyDelegate] constructor<[ResolvedTo(RAW_FIR)] T>([ResolvedTo(RAW_FIR)] [CorrespondingProperty=/LazyDelegate.value] value: T): R|LazyDelegate<T>| {
-                LAZY_super<R|kotlin/Any|>
-            }
-
-            public? final? [ResolvedTo(RAW_FIR)] [IsFromPrimaryConstructor=true] val value: T = R|<local>/value|
-                public? [ResolvedTo(RAW_FIR)] [ContainingClassKey=LazyDelegate] get(): T
-
-            public? final? operator [ResolvedTo(RAW_FIR)] fun getValue([ResolvedTo(RAW_FIR)] thisRef: Any?, [ResolvedTo(RAW_FIR)] property: KProperty<*>): T { LAZY_BLOCK }
-
-        }
-
-        public? final? [ResolvedTo(RAW_FIR)] fun <[ResolvedTo(RAW_FIR)] T> lazy([ResolvedTo(RAW_FIR)] block: ( () -> T )): LazyDelegate<T> { LAZY_BLOCK }
-
-        public? final? [ResolvedTo(RAW_FIR)] fun getAny(): Any? { LAZY_BLOCK }
-
-        public? final? [ResolvedTo(RAW_FIR)] fun <[ResolvedTo(RAW_FIR)] Q> materialize(): Q { LAZY_BLOCK }
-
-        public final [ResolvedTo(STATUS)] class Test : R|kotlin/Any| {
-            public [ResolvedTo(STATUS)] [ContainingClassKey=Test] constructor(): R|Test| {
-                LAZY_super<R|kotlin/Any|>
-            }
-
-            public final [ResolvedTo(ARGUMENTS_OF_ANNOTATIONS)] val resolveMe: R|kotlin/String|by LAZY_EXPRESSION
-                public [ResolvedTo(ARGUMENTS_OF_ANNOTATIONS)] [ContainingClassKey=Test] get(): R|kotlin/String| {
-                    ^ this@R|/Test|.D|/Test.resolveMe|.getValue#(this@R|/Test|, ::R|/Test.resolveMe|)
-                }
-
-        }
-
-
 CONTRACTS:
 FILE: [ResolvedTo(IMPORTS)] lazyPropertyScript.kts
     context(<script>@R|kotlin/script/templates/standard/ScriptTemplateWithArgs|)
@@ -405,7 +368,7 @@ FILE: [ResolvedTo(IMPORTS)] lazyPropertyScript.kts
         }
 
 
-ANNOTATIONS_ARGUMENTS_MAPPING:
+ANNOTATION_ARGUMENTS:
 FILE: [ResolvedTo(IMPORTS)] lazyPropertyScript.kts
     context(<script>@R|kotlin/script/templates/standard/ScriptTemplateWithArgs|)
     SCRIPT: [ResolvedTo(TYPES)] <script-lazyPropertyScript.kts>
@@ -434,8 +397,8 @@ FILE: [ResolvedTo(IMPORTS)] lazyPropertyScript.kts
                 LAZY_super<R|kotlin/Any|>
             }
 
-            public final [ResolvedTo(ANNOTATIONS_ARGUMENTS_MAPPING)] val resolveMe: R|kotlin/String|by LAZY_EXPRESSION
-                public [ResolvedTo(ANNOTATIONS_ARGUMENTS_MAPPING)] [ContainingClassKey=Test] get(): R|kotlin/String| {
+            public final [ResolvedTo(ANNOTATION_ARGUMENTS)] val resolveMe: R|kotlin/String|by LAZY_EXPRESSION
+                public [ResolvedTo(ANNOTATION_ARGUMENTS)] [ContainingClassKey=Test] get(): R|kotlin/String| {
                     ^ this@R|/Test|.D|/Test.resolveMe|.getValue#(this@R|/Test|, ::R|/Test.resolveMe|)
                 }
 
@@ -456,7 +419,9 @@ FILE: [ResolvedTo(IMPORTS)] lazyPropertyScript.kts
             public final [ResolvedTo(STATUS)] [IsFromPrimaryConstructor=true] val value: R|T| = R|<local>/value|
                 public [ResolvedTo(STATUS)] [ContainingClassKey=LazyDelegate] get(): R|T|
 
-            public final operator [ResolvedTo(STATUS)] fun getValue([ResolvedTo(STATUS)] thisRef: R|kotlin/Any?|, [ResolvedTo(STATUS)] property: R|kotlin/reflect/KProperty<*>|): R|T| { LAZY_BLOCK }
+            public final operator [ResolvedTo(CONTRACTS)] fun getValue([ResolvedTo(CONTRACTS)] thisRef: R|kotlin/Any?|, [ResolvedTo(CONTRACTS)] property: R|kotlin/reflect/KProperty<*>|): R|T| {
+                ^getValue value#
+            }
 
         }
 
@@ -532,4 +497,3 @@ FILE: [ResolvedTo(BODY_RESOLVE)] lazyPropertyScript.kts
                 }
 
         }
-

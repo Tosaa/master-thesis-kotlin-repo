@@ -11,16 +11,23 @@ import org.jetbrains.kotlin.ir.generator.elementBaseType
 import org.jetbrains.kotlin.utils.addToStdlib.UnsafeCastFunction
 import org.jetbrains.kotlin.utils.addToStdlib.castAll
 import org.jetbrains.kotlin.utils.addToStdlib.partitionIsInstance
+import org.jetbrains.kotlin.generators.tree.ElementRef as GenericElementRef
 
-private object InferredOverriddenType : TypeRef {
+private object InferredOverriddenType : TypeRefWithNullability {
     override val type: String
         get() = error("not supported")
     override val packageName: String?
         get() = null
 
-    override fun getTypeWithArguments(notNull: Boolean): String {
-        error("not supported")
-    }
+    override val typeWithArguments: String
+        get() = error("not supported")
+
+    override fun substitute(map: TypeParameterSubstitutionMap) = this
+
+    override val nullable: Boolean
+        get() = false
+
+    override fun copy(nullable: Boolean) = this
 }
 
 data class Model(val elements: List<Element>, val rootElement: Element)
@@ -34,7 +41,7 @@ fun config2model(config: Config): Model {
             name = ec.name,
             packageName = ec.category.packageName,
             params = ec.params,
-            fields = ec.fields.mapTo(mutableListOf(), ::transformFieldConfig),
+            fields = ec.fields.mapTo(mutableSetOf(), ::transformFieldConfig),
             additionalFactoryMethodParameters = ec.additionalIrFactoryMethodParameters.mapTo(mutableListOf(), ::transformFieldConfig)
         ).also {
             ec2el[ec.element] = it
@@ -43,7 +50,7 @@ fun config2model(config: Config): Model {
 
     val rootElement = replaceElementRefs(config, ec2el)
     configureInterfacesAndAbstractClasses(elements)
-    addAbstractElement(elements)
+    addPureAbstractElement(elements, elementBaseType)
     markLeaves(elements)
     configureDescriptorApiAnnotation(elements)
     processFieldOverrides(elements)
@@ -56,8 +63,7 @@ private fun transformFieldConfig(fc: FieldConfig): Field = when (fc) {
     is SimpleFieldConfig -> SingleField(
         fc,
         fc.name,
-        fc.type ?: InferredOverriddenType,
-        fc.nullable,
+        fc.type?.copy(fc.nullable) ?: InferredOverriddenType,
         fc.mutable,
         fc.isChild,
         fc.baseDefaultValue,
@@ -65,22 +71,15 @@ private fun transformFieldConfig(fc: FieldConfig): Field = when (fc) {
     )
     is ListFieldConfig -> {
         val listType = when (fc.mutability) {
-            ListFieldConfig.Mutability.List -> type(
-                "kotlin.collections",
-                "MutableList",
-            )
-            ListFieldConfig.Mutability.Array -> type(
-                "kotlin.",
-                "Array",
-            )
-            else -> type("kotlin.collections", "List")
+            ListFieldConfig.Mutability.List -> StandardTypes.mutableList
+            ListFieldConfig.Mutability.Array -> StandardTypes.array
+            else -> StandardTypes.list
         }
         ListField(
             fc,
             fc.name,
             fc.elementType ?: InferredOverriddenType,
-            listType,
-            fc.nullable,
+            listType.copy(fc.nullable),
             fc.mutability == ListFieldConfig.Mutability.Var,
             fc.isChild,
             fc.mutability != ListFieldConfig.Mutability.Immutable,
@@ -91,6 +90,7 @@ private fun transformFieldConfig(fc: FieldConfig): Field = when (fc) {
 }
 
 @OptIn(UnsafeCastFunction::class)
+@Suppress("UNCHECKED_CAST")
 private fun replaceElementRefs(config: Config, mapping: Map<ElementConfig, Element>): Element {
     val visited = mutableMapOf<TypeRef, TypeRef>()
 
@@ -116,7 +116,7 @@ private fun replaceElementRefs(config: Config, mapping: Map<ElementConfig, Eleme
         }.also { visited[type] = it }
     }
 
-    val rootEl = transform(config.rootElement) as ElementRef
+    val rootEl = transform(config.rootElement) as GenericElementRef<Element, Field>
 
     for (ec in config.elements) {
         val el = mapping[ec.element]!!
@@ -124,14 +124,14 @@ private fun replaceElementRefs(config: Config, mapping: Map<ElementConfig, Eleme
             .map { transform(it) }
             .partitionIsInstance<TypeRef, ElementRef>()
         el.elementParents = elParents.takeIf { it.isNotEmpty() || el == rootEl.element } ?: listOf(rootEl)
-        el.otherParents = otherParents.castAll<ClassRef<*>>().toList()
-        el.visitorParent = ec.visitorParent?.let(::transform) as ElementRef?
-        el.transformerReturnType = (ec.transformerReturnType?.let(::transform) as ElementRef?)?.element
+        el.otherParents = otherParents.castAll<ClassRef<*>>().toMutableList()
+        el.visitorParent = ec.visitorParent?.let(::transform) as GenericElementRef<Element, Field>?
+        el.transformerReturnType = (ec.transformerReturnType?.let(::transform) as GenericElementRef<Element, Field>?)?.element
 
         for (field in el.fields) {
             when (field) {
                 is SingleField -> {
-                    field.type = transform(field.type)
+                    field.typeRef = transform(field.typeRef) as TypeRefWithNullability
                 }
                 is ListField -> {
                     field.elementType = transform(field.elementType)
@@ -157,15 +157,7 @@ private fun markLeaves(elements: List<Element>) {
     for (el in leaves) {
         el.isLeaf = true
         if (el.visitorParent != null) {
-            el.accept = true
-        }
-    }
-}
-
-private fun addAbstractElement(elements: List<Element>) {
-    for (el in elements) {
-        if (el.kind!!.typeKind == TypeKind.Class && el.elementParents.none { it.element.kind!!.typeKind == TypeKind.Class }) {
-            el.otherParents += elementBaseType
+            el.hasAcceptMethod = true
         }
     }
 }
@@ -173,7 +165,7 @@ private fun addAbstractElement(elements: List<Element>) {
 private fun configureDescriptorApiAnnotation(elements: List<Element>) {
     for (el in elements) {
         for (field in el.fields) {
-            val type = field.type
+            val type = field.typeRef
             if (type is ClassRef<*> && type.packageName.startsWith("org.jetbrains.kotlin.descriptors") &&
                 type.simpleName.endsWith("Descriptor") && type.simpleName != "ModuleDescriptor"
             ) {
@@ -198,7 +190,8 @@ private fun processFieldOverrides(elements: List<Element>) {
                             type.takeUnless { it is InferredOverriddenType } ?: overriddenType
                         when (field) {
                             is SingleField -> {
-                                field.type = transformInferredType(field.type, (overriddenField as SingleField).type)
+                                field.typeRef =
+                                    transformInferredType(field.typeRef, (overriddenField as SingleField).typeRef) as TypeRefWithNullability
                             }
                             is ListField -> {
                                 field.elementType = transformInferredType(field.elementType, (overriddenField as ListField).elementType)

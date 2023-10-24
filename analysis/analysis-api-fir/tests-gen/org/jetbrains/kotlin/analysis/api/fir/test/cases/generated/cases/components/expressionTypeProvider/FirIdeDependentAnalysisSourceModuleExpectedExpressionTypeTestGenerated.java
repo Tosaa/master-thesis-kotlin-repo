@@ -185,6 +185,12 @@ public class FirIdeDependentAnalysisSourceModuleExpectedExpressionTypeTestGenera
     }
 
     @Test
+    @TestMetadata("functionalTypeSubstitution.kt")
+    public void testFunctionalTypeSubstitution() throws Exception {
+        runTest("analysis/analysis-api/testData/components/expressionTypeProvider/expectedExpressionType/functionalTypeSubstitution.kt");
+    }
+
+    @Test
     @TestMetadata("ifCondition.kt")
     public void testIfCondition() throws Exception {
         runTest("analysis/analysis-api/testData/components/expressionTypeProvider/expectedExpressionType/ifCondition.kt");
@@ -272,6 +278,12 @@ public class FirIdeDependentAnalysisSourceModuleExpectedExpressionTypeTestGenera
     @TestMetadata("propertyDeclaration.kt")
     public void testPropertyDeclaration() throws Exception {
         runTest("analysis/analysis-api/testData/components/expressionTypeProvider/expectedExpressionType/propertyDeclaration.kt");
+    }
+
+    @Test
+    @TestMetadata("propertyDeclarationNoExplicitType.kt")
+    public void testPropertyDeclarationNoExplicitType() throws Exception {
+        runTest("analysis/analysis-api/testData/components/expressionTypeProvider/expectedExpressionType/propertyDeclarationNoExplicitType.kt");
     }
 
     @Test

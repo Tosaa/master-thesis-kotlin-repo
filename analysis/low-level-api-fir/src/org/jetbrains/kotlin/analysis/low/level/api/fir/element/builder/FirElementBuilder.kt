@@ -20,12 +20,14 @@ import org.jetbrains.kotlin.fir.FirAnnotationContainer
 import org.jetbrains.kotlin.fir.FirElement
 import org.jetbrains.kotlin.fir.correspondingProperty
 import org.jetbrains.kotlin.fir.declarations.FirCallableDeclaration
+import org.jetbrains.kotlin.fir.declarations.FirClass
 import org.jetbrains.kotlin.fir.declarations.FirDeclaration
 import org.jetbrains.kotlin.fir.declarations.FirFile
 import org.jetbrains.kotlin.fir.declarations.FirProperty
 import org.jetbrains.kotlin.fir.declarations.FirReceiverParameter
 import org.jetbrains.kotlin.fir.declarations.FirResolvePhase
 import org.jetbrains.kotlin.fir.declarations.FirTypeParameter
+import org.jetbrains.kotlin.fir.declarations.FirTypeParameterRef
 import org.jetbrains.kotlin.fir.declarations.FirValueParameter
 import org.jetbrains.kotlin.fir.declarations.utils.correspondingValueParameterFromPrimaryConstructor
 import org.jetbrains.kotlin.fir.expressions.FirAnnotation
@@ -160,7 +162,13 @@ internal class FirElementBuilder(
         element = element,
         firResolveSession = firResolveSession,
         anchorElementProvider = { it.parentsOfType<KtTypeReference>(withSelf = true).lastOrNull() },
-        declarationProvider = { it.parent as? KtDeclaration },
+        declarationProvider = {
+            when (val parent = it.parent) {
+                is KtDeclaration -> parent
+                is KtSuperTypeListEntry, is KtConstructorCalleeExpression, is KtTypeConstraint -> parent.parentOfType<KtDeclaration>()
+                else -> null
+            }
+        },
         resolveAndFindFirForAnchor = { declaration, anchor -> declaration.resolveAndFindTypeRefAnchor(anchor) },
     )?.let { firElement ->
         if (firElement is FirReceiverParameter) {
@@ -187,15 +195,23 @@ internal class FirElementBuilder(
     }
 
     private fun FirDeclaration.resolveAndFindTypeRefAnchor(typeReference: KtTypeReference): FirElement? {
-        lazyResolveToPhase(FirResolvePhase.ANNOTATIONS_ARGUMENTS_MAPPING)
+        lazyResolveToPhase(FirResolvePhase.ANNOTATION_ARGUMENTS)
 
         if (this is FirCallableDeclaration) {
             returnTypeRef.takeIf { it.psi == typeReference }?.let { return it }
             receiverParameter?.takeIf { it.typeRef.psi == typeReference }?.let { return it }
+
+            for (typeParameterRef in typeParameters) {
+                typeParameterRef.findTypeRefAnchor(typeReference)?.let { return it }
+            }
         }
 
         if (this is FirTypeParameter) {
-            for (typeRef in bounds) {
+            findTypeRefAnchor(typeReference)?.let { return it }
+        }
+
+        if (this is FirClass) {
+            for (typeRef in superTypeRefs) {
                 if (typeRef.psi == typeReference) {
                     return typeRef
                 }
@@ -205,8 +221,20 @@ internal class FirElementBuilder(
         return null
     }
 
+    private fun FirTypeParameterRef.findTypeRefAnchor(typeReference: KtTypeReference): FirElement? {
+        if (this !is FirTypeParameter) return null
+
+        for (typeRef in bounds) {
+            if (typeRef.psi == typeReference) {
+                return typeRef
+            }
+        }
+
+        return null
+    }
+
     private fun FirDeclaration.resolveAndFindAnnotation(annotationEntry: KtAnnotationEntry, goDeep: Boolean = false): FirAnnotation? {
-        lazyResolveToPhase(FirResolvePhase.ANNOTATIONS_ARGUMENTS_MAPPING)
+        lazyResolveToPhase(FirResolvePhase.ANNOTATION_ARGUMENTS)
         findAnnotation(annotationEntry)?.let { return it }
 
         if (this is FirProperty) {

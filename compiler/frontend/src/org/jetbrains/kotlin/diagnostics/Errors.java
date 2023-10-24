@@ -34,10 +34,9 @@ import org.jetbrains.kotlin.resolve.calls.tower.CandidateApplicability;
 import org.jetbrains.kotlin.resolve.calls.tower.WrongResolutionToClassifier;
 import org.jetbrains.kotlin.resolve.calls.util.BuilderLambdaLabelingInfo;
 import org.jetbrains.kotlin.resolve.deprecation.DescriptorBasedDeprecationInfo;
-import org.jetbrains.kotlin.resolve.multiplatform.ClassicSourceElement;
 import org.jetbrains.kotlin.resolve.multiplatform.ExpectActualAnnotationsIncompatibilityType;
-import org.jetbrains.kotlin.resolve.multiplatform.ExpectActualCompatibility.Incompatible;
-import org.jetbrains.kotlin.resolve.multiplatform.ExpectActualMemberDiff;
+import org.jetbrains.kotlin.resolve.multiplatform.K1ExpectActualCompatibility.Incompatible;
+import org.jetbrains.kotlin.resolve.multiplatform.K1ExpectActualMemberDiff;
 import org.jetbrains.kotlin.serialization.deserialization.IncompatibleVersionErrorData;
 import org.jetbrains.kotlin.types.KotlinType;
 
@@ -838,31 +837,29 @@ public interface Errors {
 
     DiagnosticFactory1<KtNamedDeclaration, MemberDescriptor> EXPECT_AND_ACTUAL_IN_THE_SAME_MODULE = DiagnosticFactory1.create(WARNING, DECLARATION_NAME);
 
-    DiagnosticFactory3<KtClassLikeDeclaration, ClassifierDescriptorWithTypeParameters, Set<ExpectActualMemberDiff<CallableMemberDescriptor, ClassDescriptor>>, ClassDescriptor>
-            ACTUAL_CLASSIFIER_MUST_HAVE_THE_SAME_MEMBERS_AS_NON_FINAL_EXPECT_CLASSIFIER =
-            DiagnosticFactory3.create(ERROR, DECLARATION_NAME);
-    DiagnosticFactory1<KtCallableDeclaration, ExpectActualMemberDiff<CallableMemberDescriptor, ClassDescriptor>>
-            NON_ACTUAL_MEMBER_DECLARED_IN_EXPECT_NON_FINAL_CLASSIFIER_ACTUALIZATION = DiagnosticFactory1.create(ERROR, DECLARATION_NAME);
-    DiagnosticFactory1<KtCallableDeclaration, ExpectActualMemberDiff<CallableMemberDescriptor, ClassDescriptor>>
-            RETURN_TYPE_CHANGED_IN_NON_FINAL_EXPECT_CLASSIFIER_ACTUALIZATION = DiagnosticFactory1.create(ERROR, DECLARATION_RETURN_TYPE);
-    DiagnosticFactory1<KtCallableDeclaration, ExpectActualMemberDiff<CallableMemberDescriptor, ClassDescriptor>>
-            MODALITY_CHANGED_IN_NON_FINAL_EXPECT_CLASSIFIER_ACTUALIZATION = DiagnosticFactory1.create(ERROR, MODALITY_MODIFIER);
-    DiagnosticFactory1<KtCallableDeclaration, ExpectActualMemberDiff<CallableMemberDescriptor, ClassDescriptor>>
-            VISIBILITY_CHANGED_IN_NON_FINAL_EXPECT_CLASSIFIER_ACTUALIZATION = DiagnosticFactory1.create(ERROR, VISIBILITY_MODIFIER);
-    DiagnosticFactory1<KtPropertyAccessor, ExpectActualMemberDiff<CallableMemberDescriptor, ClassDescriptor>>
-            SETTER_VISIBILITY_CHANGED_IN_NON_FINAL_EXPECT_CLASSIFIER_ACTUALIZATION = DiagnosticFactory1.create(ERROR, VISIBILITY_MODIFIER);
-    DiagnosticFactory1<KtCallableDeclaration, ExpectActualMemberDiff<CallableMemberDescriptor, ClassDescriptor>>
-            PARAMETER_NAME_CHANGED_IN_NON_FINAL_EXPECT_CLASSIFIER_ACTUALIZATION = DiagnosticFactory1.create(ERROR, DECLARATION_NAME);
-    DiagnosticFactory1<KtCallableDeclaration, ExpectActualMemberDiff<CallableMemberDescriptor, ClassDescriptor>>
-            PROPERTY_KIND_CHANGED_IN_NON_FINAL_EXPECT_CLASSIFIER_ACTUALIZATION = DiagnosticFactory1.create(ERROR, VAL_OR_VAR_NODE);
-    DiagnosticFactory1<KtCallableDeclaration, ExpectActualMemberDiff<CallableMemberDescriptor, ClassDescriptor>>
-            LATEINIT_CHANGED_IN_NON_FINAL_EXPECT_CLASSIFIER_ACTUALIZATION = DiagnosticFactory1.create(ERROR, LATEINIT_MODIFIER);
-    DiagnosticFactory1<KtCallableDeclaration, ExpectActualMemberDiff<CallableMemberDescriptor, ClassDescriptor>>
-            TYPE_PARAMETER_NAMES_CHANGED_IN_NON_FINAL_EXPECT_CLASSIFIER_ACTUALIZATION = DiagnosticFactory1.create(ERROR, TYPE_PARAMETERS_OR_DECLARATION_SIGNATURE);
-
-    DiagnosticFactory3<KtClassLikeDeclaration, ClassifierDescriptorWithTypeParameters, List<Name>, ClassDescriptor>
-            ACTUAL_CLASSIFIER_MUST_HAVE_THE_SAME_SUPERTYPES_AS_NON_FINAL_EXPECT_CLASSIFIER =
-            DiagnosticFactory3.create(ERROR, DECLARATION_NAME);
+    DiagnosticFactory3<KtClassLikeDeclaration, ClassifierDescriptorWithTypeParameters, Set<K1ExpectActualMemberDiff<CallableMemberDescriptor, ClassDescriptor>>, ClassDescriptor>
+            ACTUAL_CLASSIFIER_MUST_HAVE_THE_SAME_MEMBERS_AS_NON_FINAL_EXPECT_CLASSIFIER_WARNING =
+            DiagnosticFactory3.create(WARNING, DECLARATION_NAME);
+    DiagnosticFactory1<KtCallableDeclaration, K1ExpectActualMemberDiff<CallableMemberDescriptor, ClassDescriptor>>
+            UNKNOWN_PROBLEM_DURING_NON_FINAL_CLASSIFIER_ACTUALIZATION_WARNING = DiagnosticFactory1.create(WARNING, DECLARATION_NAME);
+    DiagnosticFactory1<KtCallableDeclaration, K1ExpectActualMemberDiff<CallableMemberDescriptor, ClassDescriptor>>
+            RETURN_TYPE_CHANGED_IN_NON_FINAL_EXPECT_CLASSIFIER_ACTUALIZATION_WARNING = DiagnosticFactory1.create(WARNING, DECLARATION_RETURN_TYPE);
+    DiagnosticFactory1<KtCallableDeclaration, K1ExpectActualMemberDiff<CallableMemberDescriptor, ClassDescriptor>>
+            MODALITY_CHANGED_IN_NON_FINAL_EXPECT_CLASSIFIER_ACTUALIZATION_WARNING = DiagnosticFactory1.create(WARNING, MODALITY_MODIFIER);
+    DiagnosticFactory1<KtCallableDeclaration, K1ExpectActualMemberDiff<CallableMemberDescriptor, ClassDescriptor>>
+            VISIBILITY_CHANGED_IN_NON_FINAL_EXPECT_CLASSIFIER_ACTUALIZATION_WARNING = DiagnosticFactory1.create(WARNING, VISIBILITY_MODIFIER);
+    DiagnosticFactory1<KtPropertyAccessor, K1ExpectActualMemberDiff<CallableMemberDescriptor, ClassDescriptor>>
+            SETTER_VISIBILITY_CHANGED_IN_NON_FINAL_EXPECT_CLASSIFIER_ACTUALIZATION_WARNING = DiagnosticFactory1.create(WARNING, VISIBILITY_MODIFIER);
+    DiagnosticFactory1<KtCallableDeclaration, K1ExpectActualMemberDiff<CallableMemberDescriptor, ClassDescriptor>>
+            PARAMETER_NAME_CHANGED_IN_NON_FINAL_EXPECT_CLASSIFIER_ACTUALIZATION_WARNING = DiagnosticFactory1.create(WARNING, DECLARATION_NAME);
+    DiagnosticFactory1<KtCallableDeclaration, K1ExpectActualMemberDiff<CallableMemberDescriptor, ClassDescriptor>>
+            PROPERTY_KIND_CHANGED_IN_NON_FINAL_EXPECT_CLASSIFIER_ACTUALIZATION_WARNING = DiagnosticFactory1.create(WARNING, VAL_OR_VAR_NODE);
+    DiagnosticFactory1<KtCallableDeclaration, K1ExpectActualMemberDiff<CallableMemberDescriptor, ClassDescriptor>>
+            LATEINIT_CHANGED_IN_NON_FINAL_EXPECT_CLASSIFIER_ACTUALIZATION_WARNING = DiagnosticFactory1.create(WARNING, LATEINIT_MODIFIER);
+    DiagnosticFactory1<KtCallableDeclaration, K1ExpectActualMemberDiff<CallableMemberDescriptor, ClassDescriptor>>
+            VARARG_CHANGED_IN_NON_FINAL_EXPECT_CLASSIFIER_ACTUALIZATION_WARNING = DiagnosticFactory1.create(WARNING, LATEINIT_MODIFIER);
+    DiagnosticFactory1<KtCallableDeclaration, K1ExpectActualMemberDiff<CallableMemberDescriptor, ClassDescriptor>>
+            TYPE_PARAMETER_NAMES_CHANGED_IN_NON_FINAL_EXPECT_CLASSIFIER_ACTUALIZATION_WARNING = DiagnosticFactory1.create(WARNING, TYPE_PARAMETERS_OR_DECLARATION_SIGNATURE);
 
     DiagnosticFactory0<KtClassLikeDeclaration> EXPECT_ACTUAL_CLASSIFIERS_ARE_IN_BETA_WARNING = DiagnosticFactory0.create(WARNING, EXPECT_ACTUAL_MODIFIER);
 

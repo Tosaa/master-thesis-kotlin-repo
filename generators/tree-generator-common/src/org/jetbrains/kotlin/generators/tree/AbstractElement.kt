@@ -5,33 +5,58 @@
 
 package org.jetbrains.kotlin.generators.tree
 
+import org.jetbrains.kotlin.generators.tree.printer.generics
+
 /**
- * A common interface representing a FIR or IR tree element.
+ * A class representing a FIR or IR tree element.
  */
-interface AbstractElement<Element : AbstractElement<Element, Field>, Field : AbstractField> : FieldContainer, ImplementationKindOwner {
+abstract class AbstractElement<Element, Field> : ElementOrRef<Element, Field>, FieldContainer, ImplementationKindOwner
+        where Element : AbstractElement<Element, Field>,
+              Field : AbstractField {
 
-    val name: String
+    abstract val name: String
 
-    val fields: Set<Field>
+    abstract val fields: Set<Field>
 
-    val parents: List<Element>
+    abstract val params: List<TypeVariable>
 
-    val typeArguments: List<TypeArgument>
+    abstract val elementParents: List<ElementRef<Element, Field>>
 
-    val parentsArguments: Map<Element, Map<Importable, Importable>>
+    abstract val otherParents: MutableList<ClassRef<*>>
 
-    val overridenFields: Map<Field, Map<Importable, Boolean>>
+    val parentRefs: List<ClassOrElementRef>
+        get() = elementParents + otherParents
 
-    val isSealed: Boolean
+    val isRootElement: Boolean
+        get() = elementParents.isEmpty()
+
+    open val isSealed: Boolean
         get() = false
 
-    override val allParents: List<ImplementationKindOwner>
-        get() = parents
+    override val allParents: List<Element>
+        get() = elementParents.map { it.element }
 
-    override fun getTypeWithArguments(notNull: Boolean): String = type + generics
+    final override val typeWithArguments: String
+        get() = type + generics
+
+    abstract override val allFields: List<Field>
+
+    abstract override val walkableChildren: List<Field>
+
+    abstract override val transformableChildren: List<Field>
+
+    final override fun get(fieldName: String): Field? {
+        return allFields.firstOrNull { it.name == fieldName }
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    final override fun copy(nullable: Boolean) =
+        ElementRef(this as Element, args, nullable)
+
+    @Suppress("UNCHECKED_CAST")
+    final override fun copy(args: Map<NamedTypeParameterRef, TypeRef>) =
+        ElementRef(this as Element, args, nullable)
+
+    @Suppress("UNCHECKED_CAST")
+    override fun substitute(map: TypeParameterSubstitutionMap): Element = this as Element
 }
-
-val AbstractElement<*, *>.generics: String
-    get() = typeArguments.takeIf { it.isNotEmpty() }
-        ?.let { it.joinToString(", ", "<", ">") { it.name } }
-        ?: ""

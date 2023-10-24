@@ -306,12 +306,6 @@ fun IrClass.isSubclassOf(ancestor: IrClass): Boolean {
     return this.hasAncestorInSuperTypes()
 }
 
-fun IrSimpleFunction.findInterfaceImplementation(): IrSimpleFunction? {
-    if (isReal) return null
-
-    return resolveFakeOverride()?.run { if (parentAsClass.isInterface) this else null }
-}
-
 val IrClass.isAnnotationClass get() = kind == ClassKind.ANNOTATION_CLASS
 val IrClass.isEnumClass get() = kind == ClassKind.ENUM_CLASS
 val IrClass.isEnumEntry get() = kind == ClassKind.ENUM_ENTRY
@@ -350,6 +344,7 @@ val IrDeclaration.parentAsClass: IrClass
 fun IrElement.getPackageFragment(): IrPackageFragment? =
     this as? IrPackageFragment ?: (this as? IrDeclaration)?.getPackageFragment()
 
+@Suppress("NO_TAIL_CALLS_FOUND", "NON_TAIL_RECURSIVE_CALL") // K2 warning suppression, TODO: KT-62472
 tailrec fun IrDeclaration.getPackageFragment(): IrPackageFragment {
     val parent = this.parent
     return parent as? IrPackageFragment

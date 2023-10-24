@@ -11,9 +11,6 @@ import org.jetbrains.kotlin.fir.tree.generator.model.*
 import org.jetbrains.kotlin.fir.tree.generator.pureAbstractElementType
 import org.jetbrains.kotlin.generators.tree.*
 import org.jetbrains.kotlin.utils.addToStdlib.ifNotEmpty
-import java.io.File
-
-class GeneratedFile(val file: File, val newText: String)
 
 enum class ImportKind(val postfix: String) {
     Element(""), Implementation(".impl"), Builder(".builder")
@@ -33,8 +30,9 @@ fun Builder.collectImports(): List<String> {
                 usedTypes.mapNotNullTo(this) { it.fullQualifiedName }
                 for (field in allFields) {
                     if (field.invisibleField) continue
-                    field.fullQualifiedName?.let(this::add)
-                    field.arguments.mapNotNullTo(this) { it.fullQualifiedName }
+                    // TODO: Use recursive import collection for TypeRefs
+                    field.typeRef.fullQualifiedName?.let(this::add)
+                    (field.typeRef as? ParametrizedTypeRef<*, *>)?.args?.values?.mapNotNullTo(this) { it.fullQualifiedName }
                 }
 
                 add(materializedElement?.fullQualifiedName ?: throw IllegalStateException(type))
@@ -53,20 +51,21 @@ fun Implementation.collectImports(base: List<String> = emptyList(), kind: Import
                 + arbitraryImportables.mapNotNull { it.fullQualifiedName }
                 + parents.mapNotNull { it.fullQualifiedName }
                 + listOfNotNull(
-            pureAbstractElementType.fullQualifiedName?.takeIf { needPureAbstractElement },
-            firImplementationDetailType.fullQualifiedName?.takeIf { isPublic || requiresOptIn },
+            pureAbstractElementType.fullQualifiedName.takeIf { needPureAbstractElement },
+            firImplementationDetailType.fullQualifiedName.takeIf { isPublic || requiresOptIn },
         ),
         kind,
     )
 }
 
 fun Element.collectImports(): List<String> {
-    val baseTypes = parents.mapTo(mutableListOf()) { it.fullQualifiedName }
+    val baseTypes = elementParents.mapTo(mutableListOf()) { it.fullQualifiedName!! }
     baseTypes += AbstractFirTreeBuilder.baseFirElement.fullQualifiedName
-    baseTypes += parentsArguments.values.flatMap { it.values }.mapNotNull { it.fullQualifiedName }
+    baseTypes += elementParents.flatMap { it.args.values }.mapNotNull { it.fullQualifiedName } // TODO: Use recursive import collection for TypeRefs
     if (needPureAbstractElement) {
-        baseTypes += pureAbstractElementType.fullQualifiedName!!
+        baseTypes += pureAbstractElementType.fullQualifiedName
     }
+    baseTypes.addAll(otherParents.map { it.fullQualifiedName })
     return collectImportsInternal(
         baseTypes,
         ImportKind.Element,
@@ -74,10 +73,10 @@ fun Element.collectImports(): List<String> {
 }
 
 private fun Element.collectImportsInternal(base: List<String>, kind: ImportKind): List<String> {
-    val fqns = base + allFields.mapNotNull { it.fullQualifiedName } +
+    val fqns = base + allFields.mapNotNull { it.typeRef.fullQualifiedName } +
             allFields.flatMap { it.overridenTypes.mapNotNull { it.fullQualifiedName } + it.arbitraryImportables.mapNotNull { it.fullQualifiedName } } +
-            allFields.flatMap { it.arguments.mapNotNull { it.fullQualifiedName } } +
-            typeArguments.flatMap { it.upperBounds.mapNotNull { it.fullQualifiedName } }
+            allFields.flatMap { (it.typeRef as? ParametrizedTypeRef<*, *>)?.args?.values?.mapNotNull { it.fullQualifiedName } ?: emptyList() } + // TODO: Use recursive import collection for TypeRefs
+            params.flatMap { it.bounds.mapNotNull { it.fullQualifiedName } }
     val result = fqns.filterRedundantImports(packageName, kind).toMutableList()
 
     if (allFields.any { it is FieldList && it.isMutableOrEmpty }) {
@@ -107,13 +106,9 @@ private fun List<String>.filterRedundantImports(
 ): List<String> {
     val realPackageName = "$packageName.${kind.postfix}"
     return filter { fqn ->
-        fqn.dropLastWhile { it != '.' } != realPackageName
+        !fqn.startsWith("kotlin.") && fqn.dropLastWhile { it != '.' } != realPackageName
     }.distinct().sorted() + "$VISITOR_PACKAGE.*"
 }
-
-
-val ImplementationKindOwner.needPureAbstractElement: Boolean
-    get() = (kind != ImplementationKind.Interface && kind != ImplementationKind.SealedInterface) && !allParents.any { it.kind == ImplementationKind.AbstractClass || it.kind == ImplementationKind.SealedClass }
 
 
 val Field.isVal: Boolean
@@ -128,53 +123,26 @@ fun transformFunctionDeclaration(transformName: String, returnType: String): Str
     return "fun <D> transform$transformName(transformer: FirTransformer<D>, data: D): $returnType"
 }
 
-fun Field.replaceFunctionDeclaration(overridenType: Importable? = null, forceNullable: Boolean = false): String {
+fun Field.replaceFunctionDeclaration(overridenType: TypeRefWithNullability? = null, forceNullable: Boolean = false): String {
     val capName = name.replaceFirstChar(Char::uppercaseChar)
-    val type = overridenType?.typeWithArguments ?: typeWithArguments
-
-    val typeWithNullable = if (forceNullable && !type.endsWith("?")) "$type?" else type
-
-    return "fun replace$capName(new$capName: $typeWithNullable)"
+    val type = overridenType ?: typeRef
+    val typeWithNullable = if (forceNullable) type.copy(nullable = true) else type
+    return "fun replace$capName(new$capName: ${typeWithNullable.typeWithArguments})"
 }
 
-fun Field.getMutableType(forBuilder: Boolean = false, notNull: Boolean = false): String = when (this) {
+fun Field.getMutableType(forBuilder: Boolean = false): TypeRef = when (this) {
     is FieldList -> when {
-        isMutableOrEmpty && !forBuilder -> "MutableOrEmpty$typeWithArguments"
-        isMutable -> "Mutable$typeWithArguments"
-        else -> typeWithArguments
-    }
-    is FieldWithDefault -> if (isMutable) origin.getMutableType(notNull) else getTypeWithArguments(notNull)
-    else -> getTypeWithArguments(notNull)
+        isMutableOrEmpty && !forBuilder -> type(BASE_PACKAGE, "MutableOrEmptyList", kind = TypeKind.Class)
+        isMutable -> StandardTypes.mutableList
+        else -> StandardTypes.list
+    }.withArgs(baseType).copy(nullable)
+    is FieldWithDefault -> if (isMutable) origin.getMutableType() else typeRef
+    else -> typeRef
 }
 
 fun Field.call(): String = if (nullable) "?." else "."
-
-fun Element.multipleUpperBoundsList(): String {
-    return typeArguments.filterIsInstance<TypeArgumentWithMultipleUpperBounds>().takeIf { it.isNotEmpty() }?.let { arguments ->
-        val upperBoundsList = arguments.joinToString(", ") { argument ->
-            argument.upperBounds.joinToString(", ") { upperBound -> "${argument.name} : ${upperBound.typeWithArguments}" }
-        }
-        " where $upperBoundsList"
-    } ?: ""
-}
-
-fun ImplementationKind?.braces(): String = when (this) {
-    ImplementationKind.Interface, ImplementationKind.SealedInterface -> ""
-    ImplementationKind.OpenClass, ImplementationKind.AbstractClass, ImplementationKind.SealedClass -> "()"
-    else -> throw IllegalStateException(this.toString())
-}
 
 val Element.safeDecapitalizedName: String get() = if (name == "Class") "klass" else name.replaceFirstChar(Char::lowercaseChar)
 
 val ImplementationWithArg.generics: String
     get() = argument?.let { "<${it.type}>" } ?: ""
-
-val Field.generics: String
-    get() = arguments.takeIf { it.isNotEmpty() }
-        ?.let { it.joinToString(", ", "<", ">") { it.typeWithArguments } }
-        ?: ""
-
-val Element.typeParameters: String
-    get() = typeArguments.takeIf { it.isNotEmpty() }
-        ?.joinToString(", ", "<", "> ")
-        ?: ""

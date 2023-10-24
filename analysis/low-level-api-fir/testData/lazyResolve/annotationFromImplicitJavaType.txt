@@ -30,10 +30,6 @@ EXPECT_ACTUAL_MATCHING:
 FILE: [ResolvedTo(IMPORTS)] main.kt
     public final [ResolvedTo(EXPECT_ACTUAL_MATCHING)] fun resolveMe([ResolvedTo(EXPECT_ACTUAL_MATCHING)] i: R|JavaInterface|): <implicit> { LAZY_BLOCK }
 
-ARGUMENTS_OF_ANNOTATIONS:
-FILE: [ResolvedTo(IMPORTS)] main.kt
-    public final [ResolvedTo(ARGUMENTS_OF_ANNOTATIONS)] fun resolveMe([ResolvedTo(ARGUMENTS_OF_ANNOTATIONS)] i: R|JavaInterface|): <implicit> { LAZY_BLOCK }
-
 CONTRACTS:
 FILE: [ResolvedTo(IMPORTS)] main.kt
     public final [ResolvedTo(CONTRACTS)] fun resolveMe([ResolvedTo(CONTRACTS)] i: R|JavaInterface|): <implicit> { LAZY_BLOCK }
@@ -44,9 +40,9 @@ FILE: [ResolvedTo(IMPORTS)] main.kt
         ^resolveMe R|<local>/i|.R|/JavaInterface.id|
     }
 
-ANNOTATIONS_ARGUMENTS_MAPPING:
+ANNOTATION_ARGUMENTS:
 FILE: [ResolvedTo(IMPORTS)] main.kt
-    public final [ResolvedTo(ANNOTATIONS_ARGUMENTS_MAPPING)] fun resolveMe([ResolvedTo(ANNOTATIONS_ARGUMENTS_MAPPING)] i: R|JavaInterface|): R|@R|KotlinAnnotation|()  kotlin/Int| {
+    public final [ResolvedTo(ANNOTATION_ARGUMENTS)] fun resolveMe([ResolvedTo(ANNOTATION_ARGUMENTS)] i: R|JavaInterface|): R|@R|KotlinAnnotation|()  kotlin/Int| {
         ^resolveMe R|<local>/i|.R|/JavaInterface.id|
     }
 

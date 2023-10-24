@@ -23,8 +23,8 @@ import org.jetbrains.kotlin.ir.expressions.impl.*
 import org.jetbrains.kotlin.ir.symbols.*
 import org.jetbrains.kotlin.ir.types.*
 import org.jetbrains.kotlin.ir.types.impl.*
-import org.jetbrains.kotlin.utils.memoryOptimizedMap
 import org.jetbrains.kotlin.ir.util.parentAsClass
+import org.jetbrains.kotlin.utils.memoryOptimizedMap
 import org.jetbrains.kotlin.backend.common.serialization.proto.IrBlock as ProtoBlock
 import org.jetbrains.kotlin.backend.common.serialization.proto.IrBlockBody as ProtoBlockBody
 import org.jetbrains.kotlin.backend.common.serialization.proto.IrBranch as ProtoBranch
@@ -193,8 +193,7 @@ class IrBodyDeserializer(
 
     // TODO: probably a bit more abstraction possible here up to `IrMemberAccessExpression`
     // but at this point further complexization looks overengineered
-    private class IrAnnotationType(private val builtIns: IrBuiltIns) : IrDelegatedSimpleType() {
-
+    private class IrAnnotationType : IrDelegatedSimpleType() {
         var irConstructorCall: IrConstructorCall? = null
 
         override val delegate: IrSimpleType by lazy { resolveType() }
@@ -209,8 +208,6 @@ class IrBodyDeserializer(
                 return IrSimpleTypeBuilder().apply { classifier = klass.symbol }.buildSimpleType()
             }
 
-            val typeArguments = ArrayList<IrTypeArgument>(typeParameters.size)
-            val typeParameterSymbols = ArrayList<IrTypeParameterSymbol>(typeParameters.size)
             val rawType = with(IrSimpleTypeBuilder()) {
                 arguments = typeParameters.memoryOptimizedMap {
                     classifier = it.symbol
@@ -220,21 +217,21 @@ class IrBodyDeserializer(
                 buildSimpleType()
             }
 
+            val typeParametersToArguments = HashMap<IrTypeParameterSymbol, IrTypeArgument>(typeParameters.size)
             for (i in typeParameters.indices) {
                 val typeParameter = typeParameters[i]
                 val callTypeArgument = constructorCall.getTypeArgument(i) ?: error("No type argument for id $i")
                 val typeArgument = makeTypeProjection(callTypeArgument, typeParameter.variance)
-                typeArguments.add(typeArgument)
-                typeParameterSymbols.add(typeParameter.symbol)
+                typeParametersToArguments[typeParameter.symbol] = typeArgument
             }
 
-            val substitutor = IrTypeSubstitutor(typeParameterSymbols, typeArguments, builtIns)
+            val substitutor = IrTypeSubstitutor(typeParametersToArguments)
             return substitutor.substitute(rawType) as IrSimpleType
         }
     }
 
     fun deserializeAnnotation(proto: ProtoConstructorCall): IrConstructorCall {
-        val irType = IrAnnotationType(builtIns)
+        val irType = IrAnnotationType()
         // TODO: use real coordinates
         return deserializeConstructorCall(proto, 0, 0, irType).also { irType.irConstructorCall = it }
     }

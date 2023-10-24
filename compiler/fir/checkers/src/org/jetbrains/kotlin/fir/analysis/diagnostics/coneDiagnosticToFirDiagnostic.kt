@@ -123,6 +123,12 @@ private fun ConeDiagnostic.toKtDiagnostic(
     is ConeIllegalAnnotationError -> FirErrors.NOT_AN_ANNOTATION_CLASS.createOn(source, this.name.asString())
     is ConeWrongNumberOfTypeArgumentsError ->
         FirErrors.WRONG_NUMBER_OF_TYPE_ARGUMENTS.createOn(this.source, this.desiredCount, this.symbol)
+    is ConeTypeArgumentsNotAllowedError ->
+        FirErrors.TYPE_ARGUMENTS_NOT_ALLOWED.createOn(this.source)
+    is ConeTypeArgumentsForOuterClassWhenNestedReferencedError ->
+        FirErrors.TYPE_ARGUMENTS_FOR_OUTER_CLASS_WHEN_NESTED_REFERENCED.createOn(this.source)
+    is ConeNestedClassAccessedViaInstanceReference ->
+        FirErrors.NESTED_CLASS_ACCESSED_VIA_INSTANCE_REFERENCE.createOn(this.source, this.symbol)
 
     is ConeOuterClassArgumentsRequired ->
         FirErrors.OUTER_CLASS_ARGUMENTS_REQUIRED.createOn(callOrAssignmentSource ?: source, this.symbol)
@@ -253,7 +259,7 @@ private fun mapInapplicableCandidateError(
 ): List<KtDiagnostic> {
     val typeContext = session.typeContext
     val genericDiagnostic = FirErrors.INAPPLICABLE_CANDIDATE.createOn(source, diagnostic.candidate.symbol)
-    val diagnostics = diagnostic.candidate.diagnostics.filter { it.applicability == diagnostic.applicability }.mapNotNull { rootCause ->
+    val diagnostics = diagnostic.candidate.diagnostics.filter { !it.applicability.isSuccess }.mapNotNull { rootCause ->
         when (rootCause) {
             is VarargArgumentOutsideParentheses -> FirErrors.VARARG_OUTSIDE_PARENTHESES.createOn(
                 rootCause.argument.source ?: qualifiedAccessSource

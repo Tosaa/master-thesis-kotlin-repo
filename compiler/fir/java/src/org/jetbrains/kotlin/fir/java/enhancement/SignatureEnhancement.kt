@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2022 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Copyright 2010-2023 JetBrains s.r.o. and Kotlin Programming Language contributors.
  * Use of this source code is governed by the Apache 2.0 license that can be found in the license/LICENSE.txt file.
  */
 
@@ -117,14 +117,7 @@ class FirSignatureEnhancement(
                 val newReturnTypeRef = enhanceReturnType(
                     firElement, emptyList(), firElement.computeDefaultQualifiers(),
                     predefinedEnhancementInfo = null
-                ).let {
-                    val lowerBound = it.type.lowerBoundIfFlexible()
-                    if ((lowerBound.isString || lowerBound.isInt) && firElement.isStatic && firElement.initializer != null) {
-                        it.withReplacedConeType(it.type.withNullability(ConeNullability.NOT_NULL, session.typeContext))
-                    } else {
-                        it
-                    }
-                }
+                )
 
                 val symbol = FirFieldSymbol(original.callableId)
                 buildJavaField {
@@ -139,7 +132,6 @@ class FirSignatureEnhancement(
                     visibility = firElement.visibility
                     modality = firElement.modality
                     isVar = firElement.isVar
-                    isStatic = firElement.isStatic
                     annotationBuilder = { firElement.annotations }
                     status = firElement.status
                     if (firElement is FirJavaField) {
@@ -722,8 +714,7 @@ private class EnhancementSignatureParts(
     override val typeSystem: TypeSystemContext
         get() = session.typeContext
 
-    override fun FirAnnotation.forceWarning(unenhancedType: KotlinTypeMarker?): Boolean =
-        false // TODO: force warnings on IDEA external annotations
+    override fun FirAnnotation.forceWarning(unenhancedType: KotlinTypeMarker?): Boolean = this is FirJavaExternalAnnotation
 
     override val KotlinTypeMarker.annotations: Iterable<FirAnnotation>
         get() = (this as ConeKotlinType).attributes.customAnnotations

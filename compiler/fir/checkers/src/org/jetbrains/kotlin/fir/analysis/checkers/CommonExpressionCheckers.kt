@@ -42,6 +42,7 @@ object CommonExpressionCheckers : ExpressionCheckers() {
             FirAbstractSuperCallChecker,
             FirQualifiedSupertypeExtendedByOtherSupertypeChecker,
             FirProjectionsOnNonClassTypeArgumentChecker,
+            FirIncompatibleProjectionsOnTypeArgumentChecker,
             FirUpperBoundViolatedExpressionChecker,
             FirTypeArgumentsNotAllowedExpressionChecker,
             FirTypeParameterInQualifiedAccessChecker,
@@ -54,6 +55,8 @@ object CommonExpressionCheckers : ExpressionCheckers() {
             FirAbstractClassInstantiationChecker,
             FirInlineBodyQualifiedAccessExpressionChecker,
             FirIncompatibleClassExpressionChecker,
+            FirMissingDependencyClassChecker,
+            FirMissingDependencySupertypeChecker.ForQualifiedAccessExpressions,
         )
 
     override val callCheckers: Set<FirCallChecker>
@@ -69,7 +72,6 @@ object CommonExpressionCheckers : ExpressionCheckers() {
             FirSpreadOfNullableChecker,
             FirAssignmentOperatorCallChecker,
             FirNamedVarargChecker,
-            FirMissingDependencyClassChecker,
             FirUnderscoredTypeArgumentSyntaxChecker,
             FirContractNotFirstStatementChecker,
             FirProtectedConstructorNotInSuperCallChecker,

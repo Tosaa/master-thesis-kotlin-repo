@@ -9,23 +9,23 @@ import org.jetbrains.kotlin.descriptors.ClassKind
 import org.jetbrains.kotlin.descriptors.Modality
 import org.jetbrains.kotlin.descriptors.Visibility
 import org.jetbrains.kotlin.fir.*
-import org.jetbrains.kotlin.fir.declarations.getRetention
 import org.jetbrains.kotlin.fir.declarations.*
 import org.jetbrains.kotlin.fir.declarations.utils.isActual
-import org.jetbrains.kotlin.fir.expressions.FirAnnotation
-import org.jetbrains.kotlin.fir.expressions.FirConstExpression
-import org.jetbrains.kotlin.fir.expressions.FirExpression
+import org.jetbrains.kotlin.fir.expressions.*
 import org.jetbrains.kotlin.fir.resolve.*
 import org.jetbrains.kotlin.fir.resolve.substitution.ConeSubstitutor
 import org.jetbrains.kotlin.fir.scopes.*
 import org.jetbrains.kotlin.fir.symbols.FirBasedSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.*
+import org.jetbrains.kotlin.fir.symbols.resolvedAnnotationsWithArguments
 import org.jetbrains.kotlin.fir.types.*
+import org.jetbrains.kotlin.fir.types.impl.ConeClassLikeTypeImpl
 import org.jetbrains.kotlin.mpp.*
 import org.jetbrains.kotlin.name.CallableId
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.resolve.calls.mpp.ExpectActualCollectionArgumentsCompatibilityCheckStrategy
+import org.jetbrains.kotlin.resolve.calls.mpp.ExpectActualMatchingContext
 import org.jetbrains.kotlin.resolve.calls.mpp.ExpectActualMatchingContext.AnnotationCallInfo
 import org.jetbrains.kotlin.resolve.checkers.OptInNames
 import org.jetbrains.kotlin.resolve.multiplatform.ExpectActualCompatibility
@@ -36,8 +36,7 @@ import org.jetbrains.kotlin.types.model.KotlinTypeMarker
 import org.jetbrains.kotlin.types.model.SimpleTypeMarker
 import org.jetbrains.kotlin.types.model.TypeSubstitutorMarker
 import org.jetbrains.kotlin.types.model.TypeSystemContext
-import org.jetbrains.kotlin.utils.addToStdlib.UnsafeCastFunction
-import org.jetbrains.kotlin.utils.addToStdlib.castAll
+import org.jetbrains.kotlin.utils.zipIfSizesAreEqual
 
 class FirExpectActualMatchingContextImpl private constructor(
     private val actualSession: FirSession,
@@ -147,15 +146,13 @@ class FirExpectActualMatchingContextImpl private constructor(
     override val PropertySymbolMarker.setter: FunctionSymbolMarker?
         get() = asSymbol().setterSymbol
 
-    @OptIn(UnsafeCastFunction::class)
     override fun createExpectActualTypeParameterSubstitutor(
-        expectTypeParameters: List<TypeParameterSymbolMarker>,
-        actualTypeParameters: List<TypeParameterSymbolMarker>,
+        expectActualTypeParameters: List<Pair<TypeParameterSymbolMarker, TypeParameterSymbolMarker>>,
         parentSubstitutor: TypeSubstitutorMarker?,
     ): TypeSubstitutorMarker {
+        @Suppress("UNCHECKED_CAST")
         return createExpectActualTypeParameterSubstitutor(
-            expectTypeParameters.castAll<FirTypeParameterSymbol>(),
-            actualTypeParameters.castAll<FirTypeParameterSymbol>(),
+            expectActualTypeParameters as List<Pair<FirTypeParameterSymbol, FirTypeParameterSymbol>>,
             actualSession,
             parentSubstitutor as ConeSubstitutor?
         )
@@ -163,6 +160,9 @@ class FirExpectActualMatchingContextImpl private constructor(
 
     override val RegularClassSymbolMarker.superTypes: List<KotlinTypeMarker>
         get() = asSymbol().resolvedSuperTypes
+
+    override val RegularClassSymbolMarker.superTypesRefs: List<TypeRefMarker>
+        get() = asSymbol().resolvedSuperTypeRefs
 
     override val RegularClassSymbolMarker.defaultType: KotlinTypeMarker
         get() = asSymbol().defaultType()
@@ -249,8 +249,12 @@ class FirExpectActualMatchingContextImpl private constructor(
         get() = asSymbol().dispatchReceiverType
     override val CallableSymbolMarker.extensionReceiverType: KotlinTypeMarker?
         get() = asSymbol().resolvedReceiverTypeRef?.coneType
+    override val CallableSymbolMarker.extensionReceiverTypeRef: TypeRefMarker?
+        get() = asSymbol().resolvedReceiverTypeRef
     override val CallableSymbolMarker.returnType: KotlinTypeMarker
         get() = asSymbol().resolvedReturnType.type
+    override val CallableSymbolMarker.returnTypeRef: TypeRefMarker
+        get() = asSymbol().resolvedReturnTypeRef
     override val CallableSymbolMarker.typeParameters: List<TypeParameterSymbolMarker>
         get() = asSymbol().typeParameterSymbols
 
@@ -290,6 +294,9 @@ class FirExpectActualMatchingContextImpl private constructor(
     override val TypeParameterSymbolMarker.bounds: List<KotlinTypeMarker>
         get() = asSymbol().resolvedBounds.map { it.coneType }
 
+    override val TypeParameterSymbolMarker.boundsTypeRefs: List<TypeRefMarker>
+        get() = asSymbol().resolvedBounds
+
     override val TypeParameterSymbolMarker.variance: Variance
         get() = asSymbol().variance
 
@@ -299,15 +306,35 @@ class FirExpectActualMatchingContextImpl private constructor(
     override fun areCompatibleExpectActualTypes(
         expectType: KotlinTypeMarker?,
         actualType: KotlinTypeMarker?,
+        parameterOfAnnotationComparisonMode: Boolean,
     ): Boolean {
         if (expectType == null) return actualType == null
         if (actualType == null) return false
+
+        if (parameterOfAnnotationComparisonMode && expectType is ConeClassLikeType && expectType.isArrayType &&
+            actualType is ConeClassLikeType && actualType.isArrayType
+        ) {
+            return AbstractTypeChecker.equalTypes(
+                createTypeCheckerState(),
+                expectType.convertToArrayWithOutProjections(),
+                actualType.convertToArrayWithOutProjections()
+            )
+        }
 
         return AbstractTypeChecker.equalTypes(
             createTypeCheckerState(),
             expectType,
             actualType
         )
+    }
+
+    private fun ConeClassLikeType.convertToArrayWithOutProjections(): ConeClassLikeType {
+        val argumentsWithOutProjection = Array(typeArguments.size) { i ->
+            val typeArgument = typeArguments[i]
+            if (typeArgument !is ConeKotlinType) typeArgument
+            else ConeKotlinTypeProjectionOut(typeArgument)
+        }
+        return ConeClassLikeTypeImpl(lookupTag, argumentsWithOutProjection, isNullable)
     }
 
     override fun actualTypeIsSubtypeOfExpectType(expectType: KotlinTypeMarker, actualType: KotlinTypeMarker): Boolean {
@@ -357,7 +384,17 @@ class FirExpectActualMatchingContextImpl private constructor(
     }
 
     private fun areFirAnnotationsEqual(annotation1: FirAnnotation, annotation2: FirAnnotation): Boolean {
-        if (!areCompatibleExpectActualTypes(annotation1.resolvedType, annotation2.resolvedType)) {
+        fun FirAnnotation.hasResolvedArguments(): Boolean {
+            return resolved || (this is FirAnnotationCall && arguments.isEmpty())
+        }
+
+        check(annotation1.hasResolvedArguments() && annotation2.hasResolvedArguments()) {
+            "By this time compared annotations are expected to have resolved arguments"
+        }
+        if (!areCompatibleExpectActualTypes(
+                annotation1.resolvedType, annotation2.resolvedType, parameterOfAnnotationComparisonMode = false
+            )
+        ) {
             return false
         }
         val args1 = annotation1.argumentMapping.mapping
@@ -492,6 +529,85 @@ class FirExpectActualMatchingContextImpl private constructor(
     }
 
     override fun DeclarationSymbolMarker.getSourceElement(): SourceElementMarker = FirSourceElement(asSymbol().source)
+
+    override fun TypeRefMarker.getClassId(): ClassId? = (this as FirResolvedTypeRef).type.fullyExpandedType(actualSession).classId
+
+    override fun checkAnnotationsOnTypeRefAndArguments(
+        expectContainingSymbol: DeclarationSymbolMarker,
+        actualContainingSymbol: DeclarationSymbolMarker,
+        expectTypeRef: TypeRefMarker,
+        actualTypeRef: TypeRefMarker,
+        checker: ExpectActualMatchingContext.AnnotationsCheckerCallback,
+    ) {
+        check(expectTypeRef is FirResolvedTypeRef && actualTypeRef is FirResolvedTypeRef)
+        checkAnnotationsOnTypeRefAndArgumentsImpl(
+            expectContainingSymbol.asSymbol(), actualContainingSymbol.asSymbol(),
+            expectTypeRef, actualTypeRef, checker
+        )
+    }
+
+    private fun checkAnnotationsOnTypeRefAndArgumentsImpl(
+        expectContainingSymbol: FirBasedSymbol<*>,
+        actualContainingSymbol: FirBasedSymbol<*>,
+        expectTypeRef: FirTypeRef?,
+        actualTypeRef: FirTypeRef?,
+        checker: ExpectActualMatchingContext.AnnotationsCheckerCallback,
+    ) {
+        fun FirAnnotationContainer.getAnnotations(anchor: FirBasedSymbol<*>): List<AnnotationCallInfoImpl> {
+            return resolvedAnnotationsWithArguments(anchor).map(::AnnotationCallInfoImpl)
+        }
+
+        if (expectTypeRef == null || actualTypeRef == null) return
+        if (expectTypeRef is FirErrorTypeRef || actualTypeRef is FirErrorTypeRef) return
+
+        checker.check(
+            expectTypeRef.getAnnotations(expectContainingSymbol), actualTypeRef.getAnnotations(actualContainingSymbol),
+            FirSourceElement(actualTypeRef.source)
+        )
+
+        val expectDelegatedTypeRef = (expectTypeRef as? FirResolvedTypeRef)?.delegatedTypeRef ?: return
+        val actualDelegatedTypeRef = (actualTypeRef as? FirResolvedTypeRef?)?.delegatedTypeRef ?: return
+
+        when {
+            expectDelegatedTypeRef is FirUserTypeRef && actualDelegatedTypeRef is FirUserTypeRef -> {
+                val expectQualifier = expectDelegatedTypeRef.qualifier
+                val actualQualifier = actualDelegatedTypeRef.qualifier
+                for ((expectPart, actualPart) in expectQualifier.zipIfSizesAreEqual(actualQualifier).orEmpty()) {
+                    val expectPartTypeArguments = expectPart.typeArgumentList.typeArguments
+                    val actualPartTypeArguments = actualPart.typeArgumentList.typeArguments
+                    val zippedArgs = expectPartTypeArguments.zipIfSizesAreEqual(actualPartTypeArguments).orEmpty()
+                    for ((expectTypeArgument, actualTypeArgument) in zippedArgs) {
+                        if (expectTypeArgument !is FirTypeProjectionWithVariance || actualTypeArgument !is FirTypeProjectionWithVariance) {
+                            continue
+                        }
+                        checkAnnotationsOnTypeRefAndArgumentsImpl(
+                            expectContainingSymbol, actualContainingSymbol,
+                            expectTypeArgument.typeRef, actualTypeArgument.typeRef, checker
+                        )
+                    }
+                }
+            }
+            expectDelegatedTypeRef is FirFunctionTypeRef && actualDelegatedTypeRef is FirFunctionTypeRef -> {
+                checkAnnotationsOnTypeRefAndArgumentsImpl(
+                    expectContainingSymbol, actualContainingSymbol,
+                    expectDelegatedTypeRef.receiverTypeRef, actualDelegatedTypeRef.receiverTypeRef, checker,
+                )
+                checkAnnotationsOnTypeRefAndArgumentsImpl(
+                    expectContainingSymbol, actualContainingSymbol,
+                    expectDelegatedTypeRef.returnTypeRef, actualDelegatedTypeRef.returnTypeRef, checker,
+                )
+
+                val expectParams = expectDelegatedTypeRef.parameters
+                val actualParams = actualDelegatedTypeRef.parameters
+                for ((expectParam, actualParam) in expectParams.zipIfSizesAreEqual(actualParams).orEmpty()) {
+                    checkAnnotationsOnTypeRefAndArgumentsImpl(
+                        expectContainingSymbol, actualContainingSymbol,
+                        expectParam.returnTypeRef, actualParam.returnTypeRef, checker
+                    )
+                }
+            }
+        }
+    }
 
     object Factory : FirExpectActualMatchingContextFactory {
         override fun create(

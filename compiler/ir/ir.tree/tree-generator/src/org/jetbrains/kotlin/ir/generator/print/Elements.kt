@@ -13,8 +13,10 @@ import org.jetbrains.kotlin.ir.generator.elementTransformerType
 import org.jetbrains.kotlin.ir.generator.elementVisitorType
 import org.jetbrains.kotlin.ir.generator.model.*
 import org.jetbrains.kotlin.generators.tree.TypeRefWithNullability
+import org.jetbrains.kotlin.generators.tree.typeKind
 import org.jetbrains.kotlin.ir.generator.util.tryParameterizedBy
 import java.io.File
+import org.jetbrains.kotlin.generators.tree.ElementRef as GenericElementRef
 
 fun printElements(generationPath: File, model: Model) = sequence {
     for (element in model.elements) {
@@ -39,7 +41,7 @@ fun printElements(generationPath: File, model: Model) = sequence {
             )
             addTypeVariables(element.params.map { it.toPoet() })
 
-            val (classes, interfaces) = element.allParents.partition { it.typeKind == TypeKind.Class }
+            val (classes, interfaces) = element.parentRefs.partition { it.typeKind == TypeKind.Class }
             classes.singleOrNull()?.let {
                 superclass(it.toPoet())
             }
@@ -47,9 +49,9 @@ fun printElements(generationPath: File, model: Model) = sequence {
 
             for (field in element.fields) {
                 if (!field.printProperty) continue
-                val poetType = field.type.toPoet().copy(nullable = field.nullable)
+                val poetType = field.typeRef.toPoet().copy(nullable = field.nullable)
                 addProperty(PropertySpec.builder(field.name, poetType).apply {
-                    mutable(field.mutable)
+                    mutable(field.isMutable)
                     if (field.isOverride) {
                         addModifiers(KModifier.OVERRIDE)
                     }
@@ -76,10 +78,10 @@ fun printElements(generationPath: File, model: Model) = sequence {
                 }.build())
             }
 
-            val isRootElement = element.elementParents.isEmpty()
+            val isRootElement = element.isRootElement
             val acceptMethodName = "accept"
             val transformMethodName = "transform"
-            if (element.accept) {
+            if (element.hasAcceptMethod) {
                 addFunction(FunSpec.builder(acceptMethodName).apply {
                     addModifiers(if (isRootElement) KModifier.ABSTRACT else KModifier.OVERRIDE)
                     val r = TypeVariableName("R")
@@ -112,7 +114,7 @@ fun printElements(generationPath: File, model: Model) = sequence {
                 }.build())
             }
 
-            if (element.transform) {
+            if (element.hasTransformMethod) {
                 addFunction(FunSpec.builder(transformMethodName).apply {
                     addModifiers(if (isRootElement) KModifier.ABSTRACT else KModifier.OVERRIDE)
                     val d = TypeVariableName("D")
@@ -143,7 +145,7 @@ fun printElements(generationPath: File, model: Model) = sequence {
                 }.build())
             }
 
-            if (element.ownsChildren && (isRootElement || element.walkableChildren.isNotEmpty())) {
+            if (element.hasAcceptChildrenMethod) {
                 addFunction(FunSpec.builder("acceptChildren").apply {
                     addModifiers(if (isRootElement) KModifier.ABSTRACT else KModifier.OVERRIDE)
                     val d = TypeVariableName("D")
@@ -191,7 +193,7 @@ fun printElements(generationPath: File, model: Model) = sequence {
                 }.build())
             }
 
-            if (element.ownsChildren && (isRootElement || element.transformableChildren.isNotEmpty())) {
+            if (element.hasTransformChildrenMethod) {
                 addFunction(FunSpec.builder("transformChildren").apply {
                     addModifiers(if (isRootElement) KModifier.ABSTRACT else KModifier.OVERRIDE)
                     val d = TypeVariableName("D")
@@ -215,13 +217,13 @@ fun printElements(generationPath: File, model: Model) = sequence {
                                     args.add(transformMethodName)
                                 }
                                 is ListField -> {
-                                    if (child.mutable) {
+                                    if (child.isMutable) {
                                         append(" = ")
                                         append(child.name)
                                         if (child.nullable) append("?")
                                     }
                                     append(".%M(%N, %N)")
-                                    args.add(if (child.mutable) transformIfNeeded else transformInPlace)
+                                    args.add(if (child.isMutable) transformIfNeeded else transformInPlace)
                                 }
                             }
 
@@ -229,10 +231,10 @@ fun printElements(generationPath: File, model: Model) = sequence {
                             args.add(dataParam)
 
                             if (child is SingleField) {
-                                val elRef = child.type as ElementRef
-                                if (!elRef.element.transform) {
+                                @Suppress("UNCHECKED_CAST")
+                                val elRef = child.typeRef as GenericElementRef<Element, Field>
+                                if (!elRef.element.hasTransformMethod) {
                                     append(" as %T")
-                                    if (child.nullable) append("?")
                                     args.add(elRef.toPoet())
                                 }
                             }

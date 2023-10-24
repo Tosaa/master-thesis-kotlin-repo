@@ -28,7 +28,6 @@ fun CompilerConfiguration.setupCommonArguments(
 
     put(CommonConfigurationKeys.DISABLE_INLINE, arguments.noInline)
     put(CommonConfigurationKeys.USE_FIR_EXTENDED_CHECKERS, arguments.useFirExtendedCheckers)
-    put(CommonConfigurationKeys.EXPECT_ACTUAL_LINKER, arguments.expectActualLinker)
     put(CommonConfigurationKeys.METADATA_KLIB, arguments.metadataKlib)
     putIfNotNull(CLIConfigurationKeys.INTELLIJ_PLUGIN_ROOT, arguments.intellijPluginRoot)
     put(CommonConfigurationKeys.REPORT_OUTPUT_FILES, arguments.reportOutputFiles)
@@ -80,7 +79,7 @@ private fun switchToFallbackModeIfNecessary(arguments: CommonCompilerArguments, 
             arguments.allowUnstableDependencies = true
         }
         arguments.useKapt4 -> warn(
-            if (isK2) "Kapt 4 is an experimental feature. Use with caution."
+            if (isK2) "K2 kapt is an experimental feature. Use with caution."
             else "-Xuse-kapt4 flag can be only used with language version 2.0+."
         )
     }

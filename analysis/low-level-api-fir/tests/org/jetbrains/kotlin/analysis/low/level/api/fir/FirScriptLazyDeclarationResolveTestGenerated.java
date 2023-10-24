@@ -241,6 +241,18 @@ public class FirScriptLazyDeclarationResolveTestGenerated extends AbstractFirScr
     }
 
     @Test
+    @TestMetadata("functionWithImplicitTypeAndAnnotationsScript.kts")
+    public void testFunctionWithImplicitTypeAndAnnotationsScript() throws Exception {
+        runTest("analysis/low-level-api-fir/testData/lazyResolve/functionWithImplicitTypeAndAnnotationsScript.kts");
+    }
+
+    @Test
+    @TestMetadata("functionWithImplicitTypeAndStringTemplateAsDefaultValueScript.kts")
+    public void testFunctionWithImplicitTypeAndStringTemplateAsDefaultValueScript() throws Exception {
+        runTest("analysis/low-level-api-fir/testData/lazyResolve/functionWithImplicitTypeAndStringTemplateAsDefaultValueScript.kts");
+    }
+
+    @Test
     @TestMetadata("functionWithParameterScript.kts")
     public void testFunctionWithParameterScript() throws Exception {
         runTest("analysis/low-level-api-fir/testData/lazyResolve/functionWithParameterScript.kts");
@@ -382,6 +394,18 @@ public class FirScriptLazyDeclarationResolveTestGenerated extends AbstractFirScr
     @TestMetadata("propertyWithGetterScript.kts")
     public void testPropertyWithGetterScript() throws Exception {
         runTest("analysis/low-level-api-fir/testData/lazyResolve/propertyWithGetterScript.kts");
+    }
+
+    @Test
+    @TestMetadata("propertyWithImplicitTypeAndAnnotationsScript.kts")
+    public void testPropertyWithImplicitTypeAndAnnotationsScript() throws Exception {
+        runTest("analysis/low-level-api-fir/testData/lazyResolve/propertyWithImplicitTypeAndAnnotationsScript.kts");
+    }
+
+    @Test
+    @TestMetadata("propertyWithImplicitTypeAndFieldAnnotationsScript.kts")
+    public void testPropertyWithImplicitTypeAndFieldAnnotationsScript() throws Exception {
+        runTest("analysis/low-level-api-fir/testData/lazyResolve/propertyWithImplicitTypeAndFieldAnnotationsScript.kts");
     }
 
     @Test
@@ -839,6 +863,16 @@ public class FirScriptLazyDeclarationResolveTestGenerated extends AbstractFirScr
         @TestMetadata("simpleLoopInOverrideScript.kts")
         public void testSimpleLoopInOverrideScript() throws Exception {
             runTest("analysis/low-level-api-fir/testData/lazyResolve/properties/simpleLoopInOverrideScript.kts");
+        }
+    }
+
+    @Nested
+    @TestMetadata("analysis/low-level-api-fir/testData/lazyResolve/syntheticProperties")
+    @TestDataPath("$PROJECT_ROOT")
+    public class SyntheticProperties {
+        @Test
+        public void testAllFilesPresentInSyntheticProperties() throws Exception {
+            KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("analysis/low-level-api-fir/testData/lazyResolve/syntheticProperties"), Pattern.compile("^(.+)\\.(kts)$"), null, true);
         }
     }
 

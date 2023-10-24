@@ -3,6 +3,9 @@
  * Use of this source code is governed by the Apache 2.0 license that can be found in the license/LICENSE.txt file.
  */
 
+// This file was generated automatically. See compiler/fir/tree/tree-generator/Readme.md.
+// DO NOT MODIFY IT MANUALLY.
+
 package org.jetbrains.kotlin.fir.expressions
 
 import org.jetbrains.kotlin.KtSourceElement
@@ -11,11 +14,6 @@ import org.jetbrains.kotlin.fir.FirExpressionRef
 import org.jetbrains.kotlin.fir.types.ConeKotlinType
 import org.jetbrains.kotlin.fir.visitors.*
 import org.jetbrains.kotlin.fir.expressions.UnresolvedExpressionTypeAccess
-
-/*
- * This file was generated automatically
- * DO NOT MODIFY IT MANUALLY
- */
 
 abstract class FirSafeCallExpression : FirExpression() {
     abstract override val source: KtSourceElement?
@@ -26,7 +24,8 @@ abstract class FirSafeCallExpression : FirExpression() {
     abstract val checkedSubjectRef: FirExpressionRef<FirCheckedSafeCallSubject>
     abstract val selector: FirStatement
 
-    override fun <R, D> accept(visitor: FirVisitor<R, D>, data: D): R = visitor.visitSafeCallExpression(this, data)
+    override fun <R, D> accept(visitor: FirVisitor<R, D>, data: D): R =
+        visitor.visitSafeCallExpression(this, data)
 
     @Suppress("UNCHECKED_CAST")
     override fun <E : FirElement, D> transform(transformer: FirTransformer<D>, data: D): E =

@@ -31,6 +31,14 @@ class FirExpectActualMatcherProcessor(
     }
 }
 
+/**
+ * This transformer populates [expectForActual] mapping for actual declarations.
+ * Also, populates it [memberExpectForActual] mapping
+ *
+ * Should run before any kind of body resolution, since [expectForActual] is used there.
+ *
+ * See `/docs/fir/k2_kmp.md`
+ */
 open class FirExpectActualMatcherTransformer(
     final override val session: FirSession,
     private val scopeSession: ScopeSession,
@@ -96,7 +104,7 @@ open class FirExpectActualMatcherTransformer(
             session,
             scopeSession,
             expectActualMatchingContext,
-        ) ?: mapOf()
+        )
         memberDeclaration.expectForActual = expectForActualData
     }
 }

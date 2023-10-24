@@ -46,6 +46,7 @@ fun FirClassSymbol<*>.collectEnumEntries(): Collection<FirEnumEntrySymbol> {
  * sequence of FirTypeAlias'es points to starting
  * with `this`. Or null if something goes wrong or we have anonymous object symbol.
  */
+@Suppress("NO_TAIL_CALLS_FOUND", "NON_TAIL_RECURSIVE_CALL") // K2 warning suppression, TODO: KT-62472
 tailrec fun FirClassLikeSymbol<*>.fullyExpandedClass(useSiteSession: FirSession): FirRegularClassSymbol? {
     return when (this) {
         is FirRegularClassSymbol -> this
@@ -93,6 +94,27 @@ inline val FirBasedSymbol<*>.isJavaOrEnhancement: Boolean
 
 private fun FirFunction.containsDefaultValue(index: Int): Boolean = valueParameters[index].defaultValue != null
 
+/**
+ * Checks, if the value parameter has a default value w.r.t expect/actuals.
+ *
+ * Requires [FirResolvePhase.EXPECT_ACTUAL_MATCHING]
+ *
+ * In expect/actual declarations, the presence of default values can be determined by the expect declaration.
+ *
+ * ```kotlin
+ * // MODULE: common
+ * expect fun foo(bar: Int = 42)
+ *
+ * // MODULE: platform()(common)
+ * actual fun foo(bar: Int) { ... }
+ * ```
+ *
+ * See `/docs/fir/k2_kmp.md`
+ *
+ * @param index Index of the value parameter to check
+ * @return `true` if a parameter has defined default value, or if there is a default value defined on the expect declaration
+ *  for this actual.
+ */
 fun FirFunction.itOrExpectHasDefaultParameterValue(index: Int): Boolean =
     containsDefaultValue(index) || symbol.getSingleExpectForActualOrNull()?.fir?.containsDefaultValue(index) == true
 

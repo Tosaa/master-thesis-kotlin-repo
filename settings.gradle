@@ -113,6 +113,7 @@ include ":benchmarks",
         ":core:compiler.common.jvm",
         ":core:compiler.common.js",
         ":core:compiler.common.native",
+        ":core:compiler.common.wasm",
         ":compiler:backend.common.jvm",
         ":core:descriptors",
         ":core:descriptors.jvm",
@@ -216,6 +217,7 @@ include ":kotlin-imports-dumper-compiler-plugin",
         ":gradle:kotlin-compiler-args-properties",
         ":gradle:regression-benchmark-templates",
         ":gradle:regression-benchmarks",
+        ":libraries:tools:gradle:fus-statistics-gradle-plugin",
         ":kotlin-tooling-metadata",
         ":kotlin-tooling-core",
         ":kotlin-allopen",
@@ -299,6 +301,8 @@ include ":compiler:fir",
         ":compiler:fir:checkers:checkers.jvm",
         ":compiler:fir:checkers:checkers.js",
         ":compiler:fir:checkers:checkers.native",
+        ":compiler:fir:checkers:checkers.wasm",
+        ":compiler:fir:checkers:checkers.web.common",
         ":compiler:fir:checkers:checkers-component-generator",
         ":compiler:fir:entrypoint",
         ":compiler:fir:analysis-tests",
@@ -348,7 +352,6 @@ if (!buildProperties.inJpsBuildIdeaSync) {
             ":prepare:ide-plugin-dependencies:incremental-compilation-impl-tests-for-ide",
             ":prepare:ide-plugin-dependencies:js-ir-runtime-for-ide",
             ":prepare:ide-plugin-dependencies:kotlin-build-common-tests-for-ide",
-            ":prepare:ide-plugin-dependencies:kotlin-compiler-for-ide",
             ":prepare:ide-plugin-dependencies:kotlin-compiler-cli-for-ide",
             ":prepare:ide-plugin-dependencies:kotlin-dist-for-ide",
             ":prepare:ide-plugin-dependencies:kotlin-gradle-statistics-for-ide",
@@ -365,7 +368,6 @@ if (!buildProperties.inJpsBuildIdeaSync) {
             ":prepare:ide-plugin-dependencies:kotlin-backend-native-for-ide",
             ":prepare:ide-plugin-dependencies:tests-common-tests-for-ide",
             ":prepare:ide-plugin-dependencies:kotlin-compiler-testdata-for-ide",
-            ":prepare:ide-plugin-dependencies:kotlin-stdlib-minimal-for-test-for-ide",
             ":prepare:ide-plugin-dependencies:kotlin-compiler-tests-for-ide",
             ":prepare:ide-plugin-dependencies:low-level-api-fir-for-ide",
             ":prepare:ide-plugin-dependencies:high-level-api-for-ide",
@@ -586,9 +588,6 @@ if (buildProperties.inJpsBuildIdeaSync) {
             ":kotlin-stdlib",
             ":kotlin-dom-api-compat",
             ":kotlin-stdlib-js-ir-minimal-for-test",
-            ":kotlin-stdlib-wasm",
-            ":kotlin-stdlib-wasm-js",
-            ":kotlin-stdlib-wasm-wasi",
             ":kotlin-stdlib-jdk7",
             ":kotlin-stdlib-jdk8",
             ":kotlin-stdlib:samples",
@@ -598,9 +597,7 @@ if (buildProperties.inJpsBuildIdeaSync) {
             ":tools:kotlin-stdlib-gen",
 
             ":kotlin-test",
-            ":kotlin-test:kotlin-test-js",
             ":kotlin-test:kotlin-test-js-ir",
-            ":kotlin-test:kotlin-test-js:kotlin-test-js-it",
             ":kotlin-test:kotlin-test-js-ir:kotlin-test-js-ir-it",
             ":kotlin-test:kotlin-test-wasm-js",
             ":kotlin-test:kotlin-test-wasm-wasi",
@@ -609,9 +606,6 @@ if (buildProperties.inJpsBuildIdeaSync) {
     project(':kotlin-stdlib-common').projectDir = "$rootDir/libraries/stdlib/common" as File
     project(':kotlin-stdlib').projectDir = "$rootDir/libraries/stdlib" as File
     project(':kotlin-dom-api-compat').projectDir = "$rootDir/libraries/kotlin-dom-api-compat" as File
-    project(':kotlin-stdlib-wasm').projectDir = "$rootDir/libraries/stdlib/wasm" as File
-    project(':kotlin-stdlib-wasm-js').projectDir = "$rootDir/libraries/stdlib/wasm/js" as File
-    project(':kotlin-stdlib-wasm-wasi').projectDir = "$rootDir/libraries/stdlib/wasm/wasi" as File
     project(':kotlin-stdlib-js-ir-minimal-for-test').projectDir = "$rootDir/libraries/stdlib/js-ir-minimal-for-test" as File
     project(':kotlin-stdlib-jdk7').projectDir = "$rootDir/libraries/stdlib/jdk7" as File
     project(':kotlin-stdlib-jdk8').projectDir = "$rootDir/libraries/stdlib/jdk8" as File
@@ -623,9 +617,7 @@ if (buildProperties.inJpsBuildIdeaSync) {
     project(':tools:kotlin-stdlib-gen').projectDir = "$rootDir/libraries/tools/kotlin-stdlib-gen" as File
 
     project(':kotlin-test').projectDir = "$rootDir/libraries/kotlin.test" as File
-    project(':kotlin-test:kotlin-test-js').projectDir = "$rootDir/libraries/kotlin.test/js" as File
     project(':kotlin-test:kotlin-test-js-ir').projectDir = "$rootDir/libraries/kotlin.test/js-ir" as File
-    project(':kotlin-test:kotlin-test-js:kotlin-test-js-it').projectDir = "$rootDir/libraries/kotlin.test/js/it" as File
     project(':kotlin-test:kotlin-test-js-ir:kotlin-test-js-ir-it').projectDir = "$rootDir/libraries/kotlin.test/js-ir/it" as File
     project(':kotlin-test:kotlin-test-wasm-js').projectDir = "$rootDir/libraries/kotlin.test/wasm/js" as File
     project(':kotlin-test:kotlin-test-wasm-wasi').projectDir = "$rootDir/libraries/kotlin.test/wasm/wasi" as File

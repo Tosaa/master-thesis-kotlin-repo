@@ -3,6 +3,9 @@
  * Use of this source code is governed by the Apache 2.0 license that can be found in the license/LICENSE.txt file.
  */
 
+// This file was generated automatically. See compiler/fir/tree/tree-generator/Readme.md.
+// DO NOT MODIFY IT MANUALLY.
+
 @file:Suppress("DuplicatedCode", "unused")
 
 package org.jetbrains.kotlin.fir.declarations.impl
@@ -36,11 +39,6 @@ import org.jetbrains.kotlin.fir.MutableOrEmptyList
 import org.jetbrains.kotlin.fir.builder.toMutableOrEmpty
 import org.jetbrains.kotlin.fir.declarations.ResolveStateAccess
 
-/*
- * This file was generated automatically
- * DO NOT MODIFY IT MANUALLY
- */
-
 @OptIn(ResolveStateAccess::class)
 internal class FirErrorFunctionImpl(
     override val source: KtSourceElement?,
@@ -57,12 +55,15 @@ internal class FirErrorFunctionImpl(
     override val diagnostic: ConeDiagnostic,
     override val symbol: FirErrorFunctionSymbol,
 ) : FirErrorFunction() {
-    override val typeParameters: List<FirTypeParameterRef> get() = emptyList()
+    override val typeParameters: List<FirTypeParameterRef>
+        get() = emptyList()
     override var status: FirDeclarationStatus = FirResolvedDeclarationStatusImpl.DEFAULT_STATUS_FOR_STATUSLESS_DECLARATIONS
     override var returnTypeRef: FirTypeRef = FirErrorTypeRefImpl(null, null, diagnostic)
-    override val receiverParameter: FirReceiverParameter? get() = null
+    override val receiverParameter: FirReceiverParameter?
+        get() = null
     override var controlFlowGraphReference: FirControlFlowGraphReference? = null
-    override val body: FirBlock? get() = null
+    override val body: FirBlock?
+        get() = null
 
     init {
         symbol.bind(this)

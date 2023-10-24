@@ -5,16 +5,13 @@
 
 package org.jetbrains.kotlin.fir.analysis.diagnostics.jvm
 
-import com.intellij.openapi.util.io.FileUtil
 import org.jetbrains.kotlin.diagnostics.KtDiagnosticFactoryToRendererMap
 import org.jetbrains.kotlin.diagnostics.KtDiagnosticRenderers.TO_STRING
 import org.jetbrains.kotlin.diagnostics.rendering.BaseDiagnosticRendererFactory
 import org.jetbrains.kotlin.diagnostics.rendering.CommonRenderers.STRING
-import org.jetbrains.kotlin.diagnostics.rendering.Renderer
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirDiagnosticRenderers.DECLARATION_NAME
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirDiagnosticRenderers.RENDER_TYPE
 import org.jetbrains.kotlin.fir.analysis.diagnostics.jvm.FirJvmErrors.CONCURRENT_HASH_MAP_CONTAINS_OPERATOR
-import org.jetbrains.kotlin.fir.analysis.diagnostics.jvm.FirJvmErrors.CONFLICTING_JVM_DECLARATIONS
 import org.jetbrains.kotlin.fir.analysis.diagnostics.jvm.FirJvmErrors.DELEGATION_BY_IN_JVM_RECORD
 import org.jetbrains.kotlin.fir.analysis.diagnostics.jvm.FirJvmErrors.DEPRECATED_JAVA_ANNOTATION
 import org.jetbrains.kotlin.fir.analysis.diagnostics.jvm.FirJvmErrors.ENUM_JVM_RECORD
@@ -73,7 +70,6 @@ import org.jetbrains.kotlin.fir.analysis.diagnostics.jvm.FirJvmErrors.REPEATED_A
 import org.jetbrains.kotlin.fir.analysis.diagnostics.jvm.FirJvmErrors.SPREAD_ON_SIGNATURE_POLYMORPHIC_CALL
 import org.jetbrains.kotlin.fir.analysis.diagnostics.jvm.FirJvmErrors.STRICTFP_ON_CLASS
 import org.jetbrains.kotlin.fir.analysis.diagnostics.jvm.FirJvmErrors.SUBCLASS_CANT_CALL_COMPANION_PROTECTED_NON_STATIC
-import org.jetbrains.kotlin.fir.analysis.diagnostics.jvm.FirJvmErrors.SUPER_CALL_WITH_DEFAULT_PARAMETERS
 import org.jetbrains.kotlin.fir.analysis.diagnostics.jvm.FirJvmErrors.SUSPENSION_POINT_INSIDE_CRITICAL_SECTION
 import org.jetbrains.kotlin.fir.analysis.diagnostics.jvm.FirJvmErrors.SYNCHRONIZED_IN_INTERFACE
 import org.jetbrains.kotlin.fir.analysis.diagnostics.jvm.FirJvmErrors.SYNCHRONIZED_ON_ABSTRACT
@@ -85,7 +81,6 @@ import org.jetbrains.kotlin.fir.analysis.diagnostics.jvm.FirJvmErrors.VALUE_CLAS
 object FirJvmErrorsDefaultMessages : BaseDiagnosticRendererFactory() {
 
     override val MAP = KtDiagnosticFactoryToRendererMap("FIR").also { map ->
-        map.put(CONFLICTING_JVM_DECLARATIONS, "Platform declaration clash.")
         map.put(JAVA_TYPE_MISMATCH, "Java type mismatch: expected ''{0}'' but found ''{1}''. Use explicit cast.", RENDER_TYPE, RENDER_TYPE)
         map.put(UPPER_BOUND_CANNOT_BE_ARRAY, "Upper bound of type parameter cannot be an array.")
         map.put(STRICTFP_ON_CLASS, "'@Strictfp' annotation on classes is not yet supported.")
@@ -112,11 +107,6 @@ object FirJvmErrorsDefaultMessages : BaseDiagnosticRendererFactory() {
         map.put(
             JVM_PACKAGE_NAME_NOT_SUPPORTED_IN_FILES_WITH_CLASSES,
             "'@JvmPackageName' annotation is not supported for files with class declarations."
-        )
-        map.put(
-            SUPER_CALL_WITH_DEFAULT_PARAMETERS,
-            "Super-calls with default arguments are prohibited. Please specify all arguments of ''super.{0}'' explicitly.",
-            TO_STRING
         )
 
         map.put(LOCAL_JVM_RECORD, "Local '@JvmRecord' classes are prohibited.")

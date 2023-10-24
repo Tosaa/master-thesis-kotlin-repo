@@ -16,16 +16,14 @@ expect open class Foo : Transitive {
 // MODULE: m2-jvm()()(m1-common)
 // FILE: jvm.kt
 
-@OptIn(ExperimentalMultiplatform::class)
-@AllowDifferentMembersInActual
 actual open class Base<T> {
     actual fun existingMethodInBase(param: T) {}
     open fun injected(param: T): Any = ""
 }
 
-actual open <!ACTUAL_CLASSIFIER_MUST_HAVE_THE_SAME_MEMBERS_AS_NON_FINAL_EXPECT_CLASSIFIER!>class Foo<!> : Transitive() {
+actual open <!ACTUAL_CLASSIFIER_MUST_HAVE_THE_SAME_MEMBERS_AS_NON_FINAL_EXPECT_CLASSIFIER_WARNING!>class Foo<!> : Transitive() {
     actual fun existingMethod() {}
     actual val existingParam: Int = 904
 
-    override fun injected(param: String): <!RETURN_TYPE_CHANGED_IN_NON_FINAL_EXPECT_CLASSIFIER_ACTUALIZATION!>String<!> = "" // covariant override
+    override fun injected(param: String): <!RETURN_TYPE_CHANGED_IN_NON_FINAL_EXPECT_CLASSIFIER_ACTUALIZATION_WARNING!>String<!> = "" // covariant override
 }

@@ -137,6 +137,32 @@ class AppleFrameworkIT : KGPBaseTest() {
         }
     }
 
+    @DisplayName("embedAndSign task does not copy dSYM to Xcode frameworks folder")
+    @OptIn(EnvironmentalVariablesOverride::class)
+    @GradleTest
+    fun testEmbedAnsSignDoesNotCopyDsym(
+        gradleVersion: GradleVersion,
+    ) {
+
+        nativeProject(
+            "sharedAppleFramework",
+            gradleVersion,
+        ) {
+            val environmentVariables = mapOf(
+                "CONFIGURATION" to "debug",
+                "SDK_NAME" to "iphoneos",
+                "ARCHS" to "arm64",
+                "EXPANDED_CODE_SIGN_IDENTITY" to "-",
+                "TARGET_BUILD_DIR" to projectPath.absolutePathString(),
+                "FRAMEWORKS_FOLDER_PATH" to "build/xcode-derived"
+            )
+            build(":shared:embedAndSignAppleFrameworkForXcode", environmentVariables = EnvironmentalVariables(environmentVariables)) {
+                assertDirectoryInProjectExists("build/xcode-derived/sdk.framework")
+                assertDirectoryInProjectDoesNotExist("build/xcode-derived/sdk.framework.DSYM")
+            }
+        }
+    }
+
     @DisplayName("embedAndSignAppleFrameworkForXcode fail")
     @GradleTest
     fun shouldFailWithExecutingEmbedAndSignAppleFrameworkForXcode(
@@ -328,7 +354,7 @@ class AppleFrameworkIT : KGPBaseTest() {
                 .appendText("this can't be compiled")
 
             buildAndFail(":shared:embedAndSignAppleFrameworkForXcode", environmentVariables = environmentVariables) {
-                assertOutputContains("/sharedAppleFramework/shared/src/commonMain/kotlin/com/github/jetbrains/myapplication/Greeting.kt:7:2: error: Expecting a top level declaration")
+                assertOutputContains("/sharedAppleFramework/shared/src/commonMain/kotlin/com/github/jetbrains/myapplication/Greeting.kt:7:2: error: Syntax error: Expecting a top level declaration")
                 assertOutputContains("error: Compilation finished with errors")
             }
         }
@@ -392,7 +418,7 @@ class AppleFrameworkIT : KGPBaseTest() {
                 "-Pkotlin.native.useXcodeMessageStyle=true",
                 environmentVariables = environmentVariables
             ) {
-                assertOutputContains("/sharedAppleFramework/shared/src/commonMain/kotlin/com/github/jetbrains/myapplication/Greeting.kt:7:2: error: Expecting a top level declaration")
+                assertOutputContains("/sharedAppleFramework/shared/src/commonMain/kotlin/com/github/jetbrains/myapplication/Greeting.kt:7:2: error: Syntax error: Expecting a top level declaration")
                 assertOutputContains("error: Compilation finished with errors")
             }
         }
@@ -426,7 +452,7 @@ class AppleFrameworkIT : KGPBaseTest() {
                 "-Pkotlin.native.disableCompilerDaemon=true",
                 environmentVariables = environmentVariables
             ) {
-                assertOutputContains("/sharedAppleFramework/shared/src/commonMain/kotlin/com/github/jetbrains/myapplication/Greeting.kt:7:2: error: Expecting a top level declaration")
+                assertOutputContains("/sharedAppleFramework/shared/src/commonMain/kotlin/com/github/jetbrains/myapplication/Greeting.kt:7:2: error: Syntax error: Expecting a top level declaration")
             }
         }
     }
@@ -475,7 +501,7 @@ class AppleFrameworkIT : KGPBaseTest() {
             }
 
             build(*dependencyInsight("iosAppIosX64ReleaseImplementation0"), "-PmultipleFrameworks") {
-                assertOutputContainsNativeFrameworkVariant("mainStaticReleaseFrameworkIos", gradleVersion)
+                assertOutputDoesNotContain("mainStaticReleaseFrameworkIos")
             }
         }
     }

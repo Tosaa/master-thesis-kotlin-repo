@@ -62,14 +62,6 @@ FILE: [ResolvedTo(IMPORTS)] implicitTypeOnFunctionWithWrongRawContract.kt
         >
      { LAZY_BLOCK }
 
-ARGUMENTS_OF_ANNOTATIONS:
-FILE: [ResolvedTo(IMPORTS)] implicitTypeOnFunctionWithWrongRawContract.kt
-    public final [ResolvedTo(ARGUMENTS_OF_ANNOTATIONS)] fun foo([ResolvedTo(ARGUMENTS_OF_ANNOTATIONS)] bool: R|kotlin/Boolean|): <implicit>
-        [Contract description] <
-            LAZY_EXPRESSION
-        >
-     { LAZY_BLOCK }
-
 CONTRACTS:
 FILE: [ResolvedTo(IMPORTS)] implicitTypeOnFunctionWithWrongRawContract.kt
     public final [ResolvedTo(CONTRACTS)] fun foo([ResolvedTo(CONTRACTS)] bool: R|kotlin/Boolean|): <implicit> {
@@ -80,17 +72,17 @@ IMPLICIT_TYPES_BODY_RESOLVE:
 FILE: [ResolvedTo(IMPORTS)] implicitTypeOnFunctionWithWrongRawContract.kt
     public final [ResolvedTo(IMPLICIT_TYPES_BODY_RESOLVE)] fun foo([ResolvedTo(IMPLICIT_TYPES_BODY_RESOLVE)] bool: R|kotlin/Boolean|): R|kotlin/Boolean|
         [Contract description] <
-            <Unresolved name: abc>#
+            abc#
         >
      {
         ^foo R|<local>/bool|
     }
 
-ANNOTATIONS_ARGUMENTS_MAPPING:
+ANNOTATION_ARGUMENTS:
 FILE: [ResolvedTo(IMPORTS)] implicitTypeOnFunctionWithWrongRawContract.kt
-    public final [ResolvedTo(ANNOTATIONS_ARGUMENTS_MAPPING)] fun foo([ResolvedTo(ANNOTATIONS_ARGUMENTS_MAPPING)] bool: R|kotlin/Boolean|): R|kotlin/Boolean|
+    public final [ResolvedTo(ANNOTATION_ARGUMENTS)] fun foo([ResolvedTo(ANNOTATION_ARGUMENTS)] bool: R|kotlin/Boolean|): R|kotlin/Boolean|
         [Contract description] <
-            <Unresolved name: abc>#
+            abc#
         >
      {
         ^foo R|<local>/bool|

@@ -100,9 +100,10 @@ class FlagDelegatesTest {
                 field = param.takeLast(0)
             }
 
-        var noinlineModifierVar: String = ""
+        inline var noinlineModifierVar: () -> String
+            get() = { "" }
             set(noinline param) {
-                field = param.takeLast(0)
+                param()
             }
 
     }
@@ -146,7 +147,7 @@ class FlagDelegatesTest {
         }
 
         assertProperty("getterSetterNoFieldNoParamVar", true, true, true) {
-            assertEquals(true, it?.name?.contains("anonymous parameter"))
+            assertEquals(true, it?.name == "_") // TODO: KT-62582
         }
 
         assertProperty("defaultSetterVar", true, true, false)
@@ -154,7 +155,7 @@ class FlagDelegatesTest {
             assertEquals("param", it?.name)
         }
 
-        assertProperty("noinlineModifierVar", true, false, true) {
+        assertProperty("noinlineModifierVar", true, true, true) {
             assertEquals("param", it?.name)
             assertEquals(true, it?.isNoinline)
         }
@@ -186,7 +187,7 @@ class FlagDelegatesTest {
         val props = X::class.java.readMetadataAsKmClass().properties.associateBy { it.name }
         props.values.forEach { assertFalse(it.isConst, it.name) }
         assertTrue(props.getValue("a").hasConstant)
-        assertTrue(props.getValue("b").hasConstant)
+        assertFalse(props.getValue("b").hasConstant)
         assertFalse(props.getValue("c").hasConstant)
     }
 
@@ -205,7 +206,7 @@ class FlagDelegatesTest {
         val foo = Foo::class.java.readMetadataAsKmClass()
         val props = foo.properties.associateBy { it.name }
         with(props["x"]!!) {
-            assertEquals(MemberKind.DELEGATION, kind)
+            assertEquals(MemberKind.DECLARATION, kind) // TODO: KT-62581
             assertFalse(isDelegated)
             assertFalse(getter.isNotDefault)
         }

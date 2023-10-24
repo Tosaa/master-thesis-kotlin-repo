@@ -20,7 +20,6 @@ import com.intellij.psi.stubs.StubElement
 import com.intellij.util.indexing.FileContent
 import com.intellij.util.indexing.FileContentImpl
 import org.jetbrains.kotlin.analysis.decompiler.psi.BuiltInsVirtualFileProvider
-import java.util.concurrent.ConcurrentHashMap
 import org.jetbrains.kotlin.analysis.decompiler.psi.KotlinBuiltInDecompiler
 import org.jetbrains.kotlin.analysis.decompiler.psi.KotlinBuiltInFileType
 import org.jetbrains.kotlin.analysis.decompiler.stub.file.ClsKotlinBinaryClassCache
@@ -28,8 +27,9 @@ import org.jetbrains.kotlin.analysis.decompiler.stub.file.KotlinClsStubBuilder
 import org.jetbrains.kotlin.analysis.project.structure.KtModule
 import org.jetbrains.kotlin.analysis.providers.KotlinDeclarationProvider
 import org.jetbrains.kotlin.analysis.providers.KotlinDeclarationProviderFactory
+import org.jetbrains.kotlin.analysis.providers.KotlinDeclarationProviderMerger
 import org.jetbrains.kotlin.analysis.providers.createDeclarationProvider
-import org.jetbrains.kotlin.analysis.providers.impl.util.mergeOnly
+import org.jetbrains.kotlin.analysis.providers.impl.declarationProviders.CompositeKotlinDeclarationProvider
 import org.jetbrains.kotlin.fileClasses.javaFileFacadeFqName
 import org.jetbrains.kotlin.idea.KotlinLanguage
 import org.jetbrains.kotlin.name.*
@@ -38,6 +38,7 @@ import org.jetbrains.kotlin.psi.stubs.KotlinClassOrObjectStub
 import org.jetbrains.kotlin.psi.stubs.elements.KtStubElementTypes
 import org.jetbrains.kotlin.psi.stubs.impl.*
 import org.jetbrains.kotlin.serialization.deserialization.builtins.BuiltInSerializerProtocol
+import java.util.concurrent.ConcurrentHashMap
 
 public class KotlinStaticDeclarationProvider internal constructor(
     private val index: KotlinStaticDeclarationIndex,
@@ -373,10 +374,10 @@ public class KotlinFakeClsStubsCache {
     }
 }
 
-public class KotlinStaticDeclarationProviderMerger(private val project: Project) : KotlinDeclarationProviderMergerBase() {
-    override fun mergeToList(declarationProviders: List<KotlinDeclarationProvider>): List<KotlinDeclarationProvider> =
-        declarationProviders.mergeOnly<_, KotlinStaticDeclarationProvider> { providers ->
-            val combinedScope = GlobalSearchScope.union(providers.map { it.scope })
+public class KotlinStaticDeclarationProviderMerger(private val project: Project) : KotlinDeclarationProviderMerger() {
+    override fun merge(providers: List<KotlinDeclarationProvider>): KotlinDeclarationProvider =
+        providers.mergeSpecificProviders<_, KotlinStaticDeclarationProvider>(CompositeKotlinDeclarationProvider.factory) { targetProviders ->
+            val combinedScope = GlobalSearchScope.union(targetProviders.map { it.scope })
             project.createDeclarationProvider(combinedScope, module = null).apply {
                 check(this is KotlinStaticDeclarationProvider) {
                     "`KotlinStaticDeclarationProvider` can only be merged into a combined declaration provider of the same type."

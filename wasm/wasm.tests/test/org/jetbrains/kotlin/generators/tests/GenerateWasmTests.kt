@@ -6,8 +6,10 @@
 package org.jetbrains.kotlin.generators.tests
 
 import org.jetbrains.kotlin.generators.generateTestGroupSuiteWithJUnit5
+import org.jetbrains.kotlin.generators.util.TestGeneratorUtil
 import org.jetbrains.kotlin.wasm.test.*
 import org.jetbrains.kotlin.wasm.test.diagnostics.AbstractDiagnosticsWasmTest
+import org.jetbrains.kotlin.wasm.test.diagnostics.AbstractDiagnosticsFirWasmTest
 
 fun main(args: Array<String>) {
     System.setProperty("java.awt.headless", "true")
@@ -28,7 +30,11 @@ fun main(args: Array<String>) {
     generateTestGroupSuiteWithJUnit5(args) {
         testGroup("wasm/wasm.tests/tests-gen", "compiler/testData") {
             testClass<AbstractDiagnosticsWasmTest> {
-                model("diagnostics/wasmTests")
+                model("diagnostics/wasmTests", excludedPattern = TestGeneratorUtil.KT_OR_KTS_WITH_FIR_PREFIX)
+            }
+
+            testClass<AbstractDiagnosticsFirWasmTest> {
+                model("diagnostics/wasmTests", excludedPattern = TestGeneratorUtil.KT_OR_KTS_WITH_FIR_PREFIX)
             }
         }
 

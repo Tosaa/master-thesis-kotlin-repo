@@ -1376,12 +1376,8 @@ open class PsiRawFirBuilder(
             }
         }
 
-        private val KtElement.isDirectlyInsideEnumEntry get() = parent?.parent is KtEnumEntry
-
         override fun visitClassOrObject(classOrObject: KtClassOrObject, data: FirElement?): FirElement {
-            // NB: enum entry nested classes are considered local by FIR design (see discussion in KT-45115)
-            val isLocalWithinParent = classOrObject.isDirectlyInsideEnumEntry
-                    || classOrObject.parent !is KtClassBody && classOrObject.isLocal
+            val isLocalWithinParent = classOrObject.parent !is KtClassBody && classOrObject.isLocal
             val classIsExpect = classOrObject.hasExpectModifier() || context.containerIsExpect
             val sourceElement = classOrObject.toFirSourceElement()
             return withChildClassName(
@@ -1605,7 +1601,8 @@ open class PsiRawFirBuilder(
                     moduleData = baseModuleData
                     origin = FirDeclarationOrigin.Source
                     name = typeAlias.nameAsSafeName
-                    status = FirDeclarationStatusImpl(typeAlias.visibility, Modality.FINAL).apply {
+                    val isLocal = context.inLocalContext
+                    status = FirDeclarationStatusImpl(if (isLocal) Visibilities.Local else typeAlias.visibility, Modality.FINAL).apply {
                         isExpect = typeAliasIsExpect
                         isActual = typeAlias.hasActualModifier()
                     }

@@ -10,7 +10,7 @@ import org.gradle.api.Project
 import org.gradle.api.Task
 import org.gradle.api.file.FileSystemOperations
 import org.gradle.api.provider.Property
-import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.TaskAction
 import org.gradle.api.tasks.TaskProvider
 import org.gradle.work.DisableCachingByDefault
@@ -23,7 +23,7 @@ import org.jetbrains.kotlin.gradle.plugin.PropertiesProvider.Companion.kotlinPro
 import org.jetbrains.kotlin.gradle.plugin.await
 import org.jetbrains.kotlin.gradle.plugin.ide.Idea222Api
 import org.jetbrains.kotlin.gradle.plugin.ide.ideaImportDependsOn
-import org.jetbrains.kotlin.gradle.plugin.whenEvaluated
+import org.jetbrains.kotlin.gradle.utils.whenEvaluated
 import org.jetbrains.kotlin.gradle.tasks.dependsOn
 import org.jetbrains.kotlin.gradle.tasks.locateOrRegisterTask
 import java.io.File
@@ -165,7 +165,7 @@ internal val Project.cleanNativeDistributionCommonizerTask: TaskProvider<CleanNa
                 group = "interop"
                 description = "Deletes all previously commonized klib's from the Kotlin/Native distribution"
 
-                commonizerDirectory.set(commonizeNativeDistributionTask.map { it.rootOutputDirectory })
+                commonizerDirectory.set(commonizeNativeDistributionTask.flatMap { it.rootOutputDirectoryProperty.asFile })
             }
         )
     }
@@ -175,7 +175,7 @@ internal abstract class CleanNativeDistributionCommonizerTask : DefaultTask() {
     @get:Inject
     abstract val fileSystemOperations: FileSystemOperations
 
-    @get:OutputDirectory
+    @get:Internal
     abstract val commonizerDirectory: Property<File>
 
     @TaskAction

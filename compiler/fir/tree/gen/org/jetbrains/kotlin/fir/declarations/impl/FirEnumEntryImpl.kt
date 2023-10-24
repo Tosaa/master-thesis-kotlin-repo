@@ -3,6 +3,9 @@
  * Use of this source code is governed by the Apache 2.0 license that can be found in the license/LICENSE.txt file.
  */
 
+// This file was generated automatically. See compiler/fir/tree/tree-generator/Readme.md.
+// DO NOT MODIFY IT MANUALLY.
+
 @file:Suppress("DuplicatedCode", "unused")
 
 package org.jetbrains.kotlin.fir.declarations.impl
@@ -34,11 +37,6 @@ import org.jetbrains.kotlin.fir.MutableOrEmptyList
 import org.jetbrains.kotlin.fir.builder.toMutableOrEmpty
 import org.jetbrains.kotlin.fir.declarations.ResolveStateAccess
 
-/*
- * This file was generated automatically
- * DO NOT MODIFY IT MANUALLY
- */
-
 @OptIn(ResolveStateAccess::class)
 internal class FirEnumEntryImpl(
     override val source: KtSourceElement?,
@@ -59,12 +57,18 @@ internal class FirEnumEntryImpl(
     override var annotations: MutableOrEmptyList<FirAnnotation>,
     override val symbol: FirEnumEntrySymbol,
 ) : FirEnumEntry() {
-    override val receiverParameter: FirReceiverParameter? get() = null
-    override val delegate: FirExpression? get() = null
-    override val isVar: Boolean get() = false
-    override val isVal: Boolean get() = true
-    override val getter: FirPropertyAccessor? get() = null
-    override val setter: FirPropertyAccessor? get() = null
+    override val receiverParameter: FirReceiverParameter?
+        get() = null
+    override val delegate: FirExpression?
+        get() = null
+    override val isVar: Boolean
+        get() = false
+    override val isVal: Boolean
+        get() = true
+    override val getter: FirPropertyAccessor?
+        get() = null
+    override val setter: FirPropertyAccessor?
+        get() = null
 
     init {
         symbol.bind(this)

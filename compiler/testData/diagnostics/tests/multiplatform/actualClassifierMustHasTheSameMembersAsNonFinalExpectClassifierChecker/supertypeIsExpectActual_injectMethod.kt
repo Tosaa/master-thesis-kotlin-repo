@@ -15,8 +15,6 @@ expect open class Foo : Base {
 // MODULE: m2-jvm()()(m1-common)
 // FILE: jvm.kt
 
-@OptIn(ExperimentalMultiplatform::class)
-@AllowDifferentMembersInActual
 actual open class Base {
     actual fun existingMethodInBase() {}
     fun injected() {}

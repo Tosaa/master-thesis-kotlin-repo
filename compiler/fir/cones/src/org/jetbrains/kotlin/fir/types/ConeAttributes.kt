@@ -17,7 +17,7 @@ abstract class ConeAttribute<out T : ConeAttribute<T>> : AnnotationMarker {
     abstract fun union(other: @UnsafeVariance T?): T?
     abstract fun intersect(other: @UnsafeVariance T?): T?
 
-    /*
+    /**
      * This function is used to decide how multiple attributes should be united in presence of typealiases:
      * typealias B = @SomeAttribute(1) A
      * typealias C = @SomeAttribute(2) B
@@ -33,6 +33,11 @@ abstract class ConeAttribute<out T : ConeAttribute<T>> : AnnotationMarker {
     open fun renderForReadability(): String = toString()
 
     abstract val key: KClass<out T>
+
+    /**
+     * This property indicates whether this attribute should be kept when inferring declaration return type.
+     */
+    abstract val keepInInferredDeclarationType: Boolean
 }
 
 typealias ConeAttributeKey = KClass<out ConeAttribute<*>>
@@ -118,6 +123,11 @@ class ConeAttributes private constructor(attributes: List<ConeAttribute<*>>) : A
             }
             add(newAttribute)
         })
+    }
+
+    fun filterNecessaryToKeep(): ConeAttributes {
+        return if (all { it.keepInInferredDeclarationType }) this
+        else create(filter { it.keepInInferredDeclarationType })
     }
 
     private inline fun perform(other: ConeAttributes, op: ConeAttribute<*>.(ConeAttribute<*>?) -> ConeAttribute<*>?): ConeAttributes {

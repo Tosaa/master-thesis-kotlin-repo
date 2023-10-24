@@ -32,7 +32,6 @@ import org.jetbrains.kotlin.psi.KtExpression
 
 object FirJvmErrors {
     // Declarations
-    val CONFLICTING_JVM_DECLARATIONS by error0<PsiElement>()
     val OVERRIDE_CANNOT_BE_STATIC by error0<PsiElement>()
     val JVM_STATIC_NOT_IN_OBJECT_OR_CLASS_COMPANION by error0<PsiElement>(SourceElementPositioningStrategies.DECLARATION_SIGNATURE)
     val JVM_STATIC_NOT_IN_OBJECT_OR_COMPANION by error0<PsiElement>(SourceElementPositioningStrategies.DECLARATION_SIGNATURE)
@@ -71,7 +70,6 @@ object FirJvmErrors {
     val REDUNDANT_REPEATABLE_ANNOTATION by warning2<KtAnnotationEntry, FqName, FqName>()
 
     // Super
-    val SUPER_CALL_WITH_DEFAULT_PARAMETERS by error1<PsiElement, String>()
     val INTERFACE_CANT_CALL_DEFAULT_METHOD_VIA_SUPER by error0<PsiElement>(SourceElementPositioningStrategies.REFERENCE_BY_QUALIFIED)
 
     // JVM Records

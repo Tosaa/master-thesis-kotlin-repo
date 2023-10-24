@@ -196,7 +196,7 @@ abstract class CommonCompilerArguments : CommonToolArguments() {
             field = value
         }
 
-    @Argument(value = "-Xmulti-platform", description = "Enable experimental language support for multi-platform projects")
+    @Argument(value = "-Xmulti-platform", description = "Enable language support for multi-platform projects")
     var multiPlatform = false
         set(value) {
             checkFrozen()
@@ -574,20 +574,10 @@ abstract class CommonCompilerArguments : CommonToolArguments() {
 
     @Argument(
         value = "-Xmetadata-klib",
-        description = "Produce a klib that only contains the declarations metadata"
+        description = "Produce a klib that only contains the declarations metadata",
+        deprecatedName = "-Xexpect-actual-linker"
     )
     var metadataKlib: Boolean = false
-        set(value) {
-            checkFrozen()
-            field = value
-        }
-
-    /** TODO: replace by [metadataKlib] */
-    @Argument(
-        value = "-Xexpect-actual-linker",
-        description = "Enable experimental expect/actual linker"
-    )
-    var expectActualLinker = false
         set(value) {
             checkFrozen()
             field = value
@@ -818,7 +808,7 @@ abstract class CommonCompilerArguments : CommonToolArguments() {
                 )
             }
             put(AnalysisFlags.optIn, useExperimentalFqNames + optIn?.toList().orEmpty())
-            put(AnalysisFlags.skipExpectedActualDeclarationChecker, expectActualLinker || metadataKlib) // TODO (KT-61136): drop `expectActualLinker` later, after the appropriate changes in the Gradle plugin
+            put(AnalysisFlags.skipExpectedActualDeclarationChecker, metadataKlib)
             put(AnalysisFlags.explicitApiVersion, apiVersion != null)
             put(AnalysisFlags.allowResultReturnType, allowResultReturnType)
             ExplicitApiMode.fromString(explicitApi)?.also { put(AnalysisFlags.explicitApiMode, it) } ?: collector.report(
@@ -893,7 +883,7 @@ abstract class CommonCompilerArguments : CommonToolArguments() {
             }
 
             if (progressiveMode) {
-                LanguageFeature.values().filter { it.kind.enabledInProgressiveMode }.forEach {
+                LanguageFeature.entries.filter { it.enabledInProgressiveMode }.forEach {
                     // Don't overwrite other settings: users may want to turn off some particular
                     // breaking change manually instead of turning off whole progressive mode
                     if (!contains(it)) put(it, LanguageFeature.State.ENABLED)

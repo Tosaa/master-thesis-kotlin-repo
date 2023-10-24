@@ -13905,6 +13905,42 @@ public class FirJsCodegenBoxTestGenerated extends AbstractFirJsCodegenBoxTest {
     }
 
     @Nested
+    @TestMetadata("compiler/testData/codegen/box/fileCheck")
+    @TestDataPath("$PROJECT_ROOT")
+    public class FileCheck {
+        @Test
+        public void testAllFilesPresentInFileCheck() throws Exception {
+            KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("compiler/testData/codegen/box/fileCheck"), Pattern.compile("^(.+)\\.kt$"), null, TargetBackend.JS_IR, true);
+        }
+
+        @Nested
+        @TestMetadata("compiler/testData/codegen/box/fileCheck/kt53261")
+        @TestDataPath("$PROJECT_ROOT")
+        public class Kt53261 {
+            @Test
+            public void testAllFilesPresentInKt53261() throws Exception {
+                KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("compiler/testData/codegen/box/fileCheck/kt53261"), Pattern.compile("^(.+)\\.kt$"), null, TargetBackend.JS_IR, true);
+            }
+        }
+
+        @Nested
+        @TestMetadata("compiler/testData/codegen/box/fileCheck/stringConcatenationTypeNarrowing")
+        @TestDataPath("$PROJECT_ROOT")
+        public class StringConcatenationTypeNarrowing {
+            @Test
+            public void testAllFilesPresentInStringConcatenationTypeNarrowing() throws Exception {
+                KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("compiler/testData/codegen/box/fileCheck/stringConcatenationTypeNarrowing"), Pattern.compile("^(.+)\\.kt$"), null, TargetBackend.JS_IR, true);
+            }
+
+            @Test
+            @TestMetadata("kt53119_side_effect.kt")
+            public void testKt53119_side_effect() throws Exception {
+                runTest("compiler/testData/codegen/box/fileCheck/stringConcatenationTypeNarrowing/kt53119_side_effect.kt");
+            }
+        }
+    }
+
+    @Nested
     @TestMetadata("compiler/testData/codegen/box/finally")
     @TestDataPath("$PROJECT_ROOT")
     public class Finally {
@@ -21632,6 +21668,16 @@ public class FirJsCodegenBoxTestGenerated extends AbstractFirJsCodegenBoxTest {
         }
 
         @Nested
+        @TestMetadata("compiler/testData/codegen/box/involvesIrInterpreter/constEvaluationFromJavaWorld")
+        @TestDataPath("$PROJECT_ROOT")
+        public class ConstEvaluationFromJavaWorld {
+            @Test
+            public void testAllFilesPresentInConstEvaluationFromJavaWorld() throws Exception {
+                KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("compiler/testData/codegen/box/involvesIrInterpreter/constEvaluationFromJavaWorld"), Pattern.compile("^(.+)\\.kt$"), null, TargetBackend.JS_IR, true);
+            }
+        }
+
+        @Nested
         @TestMetadata("compiler/testData/codegen/box/involvesIrInterpreter/intrinsicConst")
         @TestDataPath("$PROJECT_ROOT")
         public class IntrinsicConst {
@@ -23820,6 +23866,12 @@ public class FirJsCodegenBoxTestGenerated extends AbstractFirJsCodegenBoxTest {
                 runTest("compiler/testData/codegen/box/multiplatform/k2/expectValInInlineClass.kt");
             }
 
+            @Test
+            @TestMetadata("internalOverride.kt")
+            public void testInternalOverride() throws Exception {
+                runTest("compiler/testData/codegen/box/multiplatform/k2/internalOverride.kt");
+            }
+
             @Nested
             @TestMetadata("compiler/testData/codegen/box/multiplatform/k2/annotations")
             @TestDataPath("$PROJECT_ROOT")
@@ -24139,6 +24191,12 @@ public class FirJsCodegenBoxTestGenerated extends AbstractFirJsCodegenBoxTest {
                 @TestMetadata("constructor.kt")
                 public void testConstructor() throws Exception {
                     runTest("compiler/testData/codegen/box/multiplatform/k2/defaultArguments/constructor.kt");
+                }
+
+                @Test
+                @TestMetadata("defaultArgumentInDelegatedFunction.kt")
+                public void testDefaultArgumentInDelegatedFunction() throws Exception {
+                    runTest("compiler/testData/codegen/box/multiplatform/k2/defaultArguments/defaultArgumentInDelegatedFunction.kt");
                 }
 
                 @Test

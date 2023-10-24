@@ -5,27 +5,28 @@
 
 package org.jetbrains.kotlin.generators.tree
 
-abstract class AbstractField : Importable {
+abstract class AbstractField {
 
     abstract val name: String
 
-    open val arguments = mutableListOf<Importable>()
+    abstract val typeRef: TypeRefWithNullability
 
-    abstract val nullable: Boolean
+    val nullable: Boolean
+        get() = typeRef.nullable
 
-    abstract var isVolatile: Boolean
+    abstract val isVolatile: Boolean
 
-    abstract var isFinal: Boolean
+    abstract val isFinal: Boolean
 
-    abstract var isLateinit: Boolean
+    abstract val isLateinit: Boolean
 
-    abstract var isParameter: Boolean
+    abstract val isParameter: Boolean
 
     open val arbitraryImportables: MutableList<Importable> = mutableListOf()
 
     open var optInAnnotation: ArbitraryImportable? = null
 
-    abstract var isMutable: Boolean
+    abstract val isMutable: Boolean
     open val withGetter: Boolean get() = false
     open val customSetter: String? get() = null
 

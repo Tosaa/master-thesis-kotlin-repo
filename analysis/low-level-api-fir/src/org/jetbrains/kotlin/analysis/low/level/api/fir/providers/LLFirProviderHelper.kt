@@ -8,7 +8,6 @@ package org.jetbrains.kotlin.analysis.low.level.api.fir.providers
 import com.intellij.psi.search.GlobalSearchScope
 import org.jetbrains.kotlin.analysis.low.level.api.fir.caches.getNotNullValueForNotNullContext
 import org.jetbrains.kotlin.analysis.low.level.api.fir.file.builder.LLFirFileBuilder
-import org.jetbrains.kotlin.analysis.low.level.api.fir.project.structure.CompositeKotlinPackageProvider
 import org.jetbrains.kotlin.analysis.low.level.api.fir.resolve.extensions.LLFirResolveExtensionTool
 import org.jetbrains.kotlin.analysis.low.level.api.fir.resolve.extensions.llResolveExtensionTool
 import org.jetbrains.kotlin.analysis.low.level.api.fir.sessions.LLFirSession
@@ -17,6 +16,7 @@ import org.jetbrains.kotlin.analysis.low.level.api.fir.util.LLFirKotlinSymbolNam
 import org.jetbrains.kotlin.analysis.providers.KotlinDeclarationProvider
 import org.jetbrains.kotlin.analysis.providers.createPackageProvider
 import org.jetbrains.kotlin.analysis.providers.impl.declarationProviders.CompositeKotlinDeclarationProvider
+import org.jetbrains.kotlin.analysis.providers.impl.packageProviders.CompositeKotlinPackageProvider
 import org.jetbrains.kotlin.builtins.StandardNames
 import org.jetbrains.kotlin.config.AnalysisFlags
 import org.jetbrains.kotlin.fir.caches.firCachesFactory
@@ -63,14 +63,14 @@ internal class LLFirProviderHelper(
         )
     )
 
-    private val packageProvider = CompositeKotlinPackageProvider.create(
+    val packageProvider = CompositeKotlinPackageProvider.create(
         listOfNotNull(
             firSession.project.createPackageProvider(searchScope),
             extensionTool?.packageProvider,
         )
     )
 
-    private val allowKotlinPackage = canContainKotlinPackage ||
+    val allowKotlinPackage: Boolean = canContainKotlinPackage ||
             firSession.languageVersionSettings.getFlag(AnalysisFlags.allowKotlinPackage)
 
     private val classifierByClassId =

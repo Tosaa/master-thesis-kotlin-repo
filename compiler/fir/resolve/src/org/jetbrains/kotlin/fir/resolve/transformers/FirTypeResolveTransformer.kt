@@ -125,6 +125,10 @@ open class FirTypeResolveTransformer(
 
     fun transformClassTypeParameters(regularClass: FirRegularClass, data: Any?) {
         withScopeCleanup {
+            // Remove type parameter scopes for classes that are neither inner nor local
+            if (removeOuterTypeParameterScope(regularClass)) {
+                this.scopes = staticScopes
+            }
             addTypeParametersScope(regularClass)
             regularClass.typeParameters.forEach {
                 it.accept(this, data)
@@ -351,6 +355,7 @@ open class FirTypeResolveTransformer(
                         else -> shouldNotBeCalled()
                     }
                     FirAnnotationResolvePhase.CompilerRequiredAnnotations -> {
+                        annotationCall.transformTypeArguments(this, data)
                         annotationCall.replaceAnnotationResolvePhase(FirAnnotationResolvePhase.Types)
                         val alternativeResolvedTypeRef =
                             originalTypeRef.delegatedTypeRef?.transformSingle(this, data) ?: return annotationCall
@@ -374,6 +379,7 @@ open class FirTypeResolveTransformer(
             }
             else -> {
                 val transformedTypeRef = originalTypeRef.transformSingle(this, data)
+                annotationCall.transformTypeArguments(this, data)
                 annotationCall.replaceAnnotationResolvePhase(FirAnnotationResolvePhase.Types)
                 annotationCall.replaceAnnotationTypeRef(transformedTypeRef)
             }

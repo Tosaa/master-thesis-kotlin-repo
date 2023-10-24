@@ -3,6 +3,9 @@
  * Use of this source code is governed by the Apache 2.0 license that can be found in the license/LICENSE.txt file.
  */
 
+// This file was generated automatically. See compiler/fir/tree/tree-generator/Readme.md.
+// DO NOT MODIFY IT MANUALLY.
+
 package org.jetbrains.kotlin.fir.contracts
 
 import org.jetbrains.kotlin.KtSourceElement
@@ -11,16 +14,12 @@ import org.jetbrains.kotlin.fir.FirPureAbstractElement
 import org.jetbrains.kotlin.fir.contracts.description.ConeContractDescriptionElement
 import org.jetbrains.kotlin.fir.visitors.*
 
-/*
- * This file was generated automatically
- * DO NOT MODIFY IT MANUALLY
- */
-
 abstract class FirContractElementDeclaration : FirPureAbstractElement(), FirElement {
     abstract override val source: KtSourceElement?
     abstract val effect: ConeContractDescriptionElement
 
-    override fun <R, D> accept(visitor: FirVisitor<R, D>, data: D): R = visitor.visitContractElementDeclaration(this, data)
+    override fun <R, D> accept(visitor: FirVisitor<R, D>, data: D): R =
+        visitor.visitContractElementDeclaration(this, data)
 
     @Suppress("UNCHECKED_CAST")
     override fun <E : FirElement, D> transform(transformer: FirTransformer<D>, data: D): E =

@@ -99,7 +99,7 @@ IdeVersionConfigurator.setCurrentIde(project)
 
 if (!project.hasProperty("versions.kotlin-native")) {
     // BEWARE! Bumping this version doesn't take an immediate effect on TeamCity: KTI-1107
-    extra["versions.kotlin-native"] = "2.0.0-dev-3904"
+    extra["versions.kotlin-native"] = "2.0.0-dev-5387"
 }
 
 val irCompilerModules = arrayOf(
@@ -113,6 +113,15 @@ val irCompilerModules = arrayOf(
     ":compiler:ir.interpreter",
     ":wasm:wasm.ir"
 ).also { extra["irCompilerModules"] = it }
+
+val irCompilerModulesForIDE = arrayOf(
+    ":compiler:ir.tree",
+    ":compiler:ir.serialization.common",
+    ":compiler:ir.serialization.jvm",
+    ":compiler:ir.serialization.js", // used in IJ android plugin in `ComposeIrGenerationExtension`
+    ":compiler:ir.backend.common",
+    ":compiler:ir.interpreter",
+).also { extra["irCompilerModulesForIDE"] = it }
 
 val commonCompilerModules = arrayOf(
     ":compiler:psi",
@@ -133,6 +142,7 @@ val commonCompilerModules = arrayOf(
     ":core:compiler.common.jvm",
     ":core:compiler.common.js",
     ":core:compiler.common.native",
+    ":core:compiler.common.wasm",
     ":core:util.runtime",
     ":compiler:frontend.common.jvm",
     ":compiler:frontend.java", // TODO this is fe10 module but some utils used in fir ide now
@@ -166,6 +176,8 @@ val firCompilerCoreModules = arrayOf(
     ":compiler:fir:checkers:checkers.jvm",
     ":compiler:fir:checkers:checkers.js",
     ":compiler:fir:checkers:checkers.native",
+    ":compiler:fir:checkers:checkers.wasm",
+    ":compiler:fir:checkers:checkers.web.common",
     ":compiler:fir:entrypoint", // TODO should not be in core modules but FIR IDE uses DependencyListForCliModule from this module
     ":compiler:fir:fir2ir:jvm-backend",  // TODO should not be in core modules but FIR IDE uses Fir2IrSignatureComposer from this module
     ":compiler:fir:fir2ir" // TODO should not be in core modules but FIR IDE uses Fir2IrSignatureComposer from this module
@@ -243,6 +255,7 @@ extra["kotlinJpsPluginEmbeddedDependencies"] = listOf(
     ":core:compiler.common.jvm",
     ":core:compiler.common.js",
     ":core:compiler.common.native",
+    ":core:compiler.common.wasm",
     ":core:descriptors",
     ":core:descriptors.jvm",
     ":compiler:backend.common.jvm",
@@ -286,7 +299,6 @@ extra["compilerArtifactsForIde"] = listOfNotNull(
     ":prepare:ide-plugin-dependencies:incremental-compilation-impl-tests-for-ide",
     ":prepare:ide-plugin-dependencies:js-ir-runtime-for-ide",
     ":prepare:ide-plugin-dependencies:kotlin-build-common-tests-for-ide",
-    ":prepare:ide-plugin-dependencies:kotlin-compiler-for-ide",
     ":prepare:ide-plugin-dependencies:kotlin-compiler-cli-for-ide",
     ":prepare:ide-plugin-dependencies:kotlin-gradle-statistics-for-ide",
     ":prepare:ide-plugin-dependencies:kotlin-jps-common-for-ide",
@@ -302,7 +314,6 @@ extra["compilerArtifactsForIde"] = listOfNotNull(
     ":prepare:ide-plugin-dependencies:kotlin-backend-native-for-ide".takeIf { kotlinBuildProperties.isKotlinNativeEnabled },
     ":prepare:ide-plugin-dependencies:kotlin-compiler-tests-for-ide",
     ":prepare:ide-plugin-dependencies:kotlin-compiler-testdata-for-ide",
-    ":prepare:ide-plugin-dependencies:kotlin-stdlib-minimal-for-test-for-ide",
     ":prepare:ide-plugin-dependencies:low-level-api-fir-for-ide",
     ":prepare:ide-plugin-dependencies:high-level-api-for-ide",
     ":prepare:ide-plugin-dependencies:high-level-api-impl-base-for-ide",
@@ -354,7 +365,6 @@ val coreLibProjects by extra {
         ":kotlin-test:kotlin-test-junit",
         ":kotlin-test:kotlin-test-junit5",
         ":kotlin-test:kotlin-test-testng",
-        ":kotlin-test:kotlin-test-js".takeIf { !kotlinBuildProperties.isInJpsBuildIdeaSync },
         ":kotlin-reflect"
     )
 }
@@ -608,12 +618,10 @@ tasks {
         (coreLibProjects + listOfNotNull(
             ":kotlin-stdlib:samples",
             ":kotlin-test:kotlin-test-js-ir".takeIf { !kotlinBuildProperties.isInJpsBuildIdeaSync },
-            ":kotlin-test:kotlin-test-js:kotlin-test-js-it".takeIf { !kotlinBuildProperties.isInJpsBuildIdeaSync },
             ":kotlin-test:kotlin-test-js-ir:kotlin-test-js-ir-it".takeIf { !kotlinBuildProperties.isInJpsBuildIdeaSync },
             ":kotlinx-metadata-jvm",
             ":tools:binary-compatibility-validator",
             ":tools:jdk-api-validator",
-            //":kotlin-stdlib-wasm",
         )).forEach {
             dependsOn("$it:check")
         }
@@ -959,11 +967,16 @@ if (disableVerificationTasks) {
 
 gradle.taskGraph.whenReady(checkYarnAndNPMSuppressed)
 
+val cacheRedirectorEnabled = findProperty("cacheRedirectorEnabled")?.toString()?.toBoolean() == true
+
 plugins.withType(org.jetbrains.kotlin.gradle.targets.js.nodejs.NodeJsRootPlugin::class) {
     extensions.configure(org.jetbrains.kotlin.gradle.targets.js.nodejs.NodeJsRootExtension::class.java) {
         // Node.js with canary v8 that supports recent Wasm GC changes
-        nodeVersion = "21.0.0-v8-canary202309167e82ab1fa2"
-        nodeDownloadBaseUrl = "https://nodejs.org/download/v8-canary"
+        nodeVersion = "21.0.0-v8-canary20231019bd785be450"
+        nodeDownloadBaseUrl = if (cacheRedirectorEnabled)
+            "https://cache-redirector.jetbrains.com/nodejs.org/download/v8-canary"
+        else
+            "https://nodejs.org/download/v8-canary"
 
         npmInstallTaskProvider.configure {
             args += listOf("--network-concurrency", "1", "--mutex", "network")
@@ -974,8 +987,17 @@ plugins.withType(org.jetbrains.kotlin.gradle.targets.js.nodejs.NodeJsRootPlugin:
     }
 }
 
+dependencies {
+    // Drop when KT-61766 fixed
+    add(
+        configurations.implicitDependencies.name,
+        "org.jetbrains.kotlinx:kotlinx-collections-immutable-metadata:${rootProject.extra["versions.kotlinx-collections-immutable"]}"
+    ) {
+        isTransitive = false
+    }
+}
+
 afterEvaluate {
-    val cacheRedirectorEnabled = findProperty("cacheRedirectorEnabled")?.toString()?.toBoolean() == true
     if (cacheRedirectorEnabled) {
         rootProject.plugins.withType(org.jetbrains.kotlin.gradle.targets.js.yarn.YarnPlugin::class.java) {
             rootProject.the<org.jetbrains.kotlin.gradle.targets.js.yarn.YarnRootExtension>().downloadBaseUrl =

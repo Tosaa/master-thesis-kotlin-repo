@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2021 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Copyright 2010-2023 JetBrains s.r.o. and Kotlin Programming Language contributors.
  * Use of this source code is governed by the Apache 2.0 license that can be found in the license/LICENSE.txt file.
  */
 
@@ -98,8 +98,13 @@ fun ConeDefinitelyNotNullType.Companion.create(
 }
 
 @OptIn(DynamicTypeConstructor::class)
-fun ConeDynamicType.Companion.create(session: FirSession): ConeDynamicType =
-    ConeDynamicType(session.builtinTypes.nothingType.type, session.builtinTypes.nullableAnyType.type)
+fun ConeDynamicType.Companion.create(
+    session: FirSession,
+    attributes: ConeAttributes = ConeAttributes.Empty,
+) = ConeDynamicType(
+    session.builtinTypes.nothingType.type.withAttributes(attributes),
+    session.builtinTypes.nullableAnyType.type.withAttributes(attributes),
+)
 
 /**
  * This call is required if you want to use a type with annotations that are linked to a declaration from this declaration inside another
@@ -121,7 +126,7 @@ fun ConeDynamicType.Companion.create(session: FirSession): ConeDynamicType =
  * and as a result we will have resolved annotation arguments in the type.
  * At the same time, `declaration` can be still in [FirResolvePhase.CONTRACTS] phase, because no one called a resolution yet.
  * So now imagine a situation when one thread (1) wants to read annotation arguments from the fully resolved anonymous function,
- * and another thread (2) wants to resolve `declaration` to [FirResolvePhase.ANNOTATIONS_ARGUMENTS_MAPPING] phase.
+ * and another thread (2) wants to resolve `declaration` to [FirResolvePhase.ANNOTATION_ARGUMENTS] phase.
  * As a result, we will have a moment there thread 2 will replace arguments with a lazy expression
  * to be sure that we will have a safe basis for resolution (see StateKeeper concept in LL FIR).
  * And thread 1 will see unexpected unresolved annotation arguments in fully resolved function, because those type references

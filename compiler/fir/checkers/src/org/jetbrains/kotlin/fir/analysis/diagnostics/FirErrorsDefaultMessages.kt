@@ -43,6 +43,8 @@ import org.jetbrains.kotlin.fir.analysis.diagnostics.FirDiagnosticRenderers.SYMB
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirDiagnosticRenderers.SYMBOLS_ON_NEWLINE_WITH_INDENT
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirDiagnosticRenderers.VARIABLE_NAME
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirDiagnosticRenderers.WHEN_MISSING_CASES
+import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.ABBREVIATED_NOTHING_PROPERTY_TYPE
+import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.ABBREVIATED_NOTHING_RETURN_TYPE
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.ABSENCE_OF_PRIMARY_CONSTRUCTOR_FOR_VALUE_CLASS
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.ABSTRACT_CLASS_MEMBER_NOT_IMPLEMENTED
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.ABSTRACT_DELEGATED_PROPERTY
@@ -163,6 +165,7 @@ import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.DATA_CLASS_WITHOU
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.DATA_OBJECT_CUSTOM_EQUALS_OR_HASH_CODE
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.DECLARATION_CANT_BE_INLINED
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.DECLARATION_CANT_BE_INLINED_DEPRECATION
+import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.DEFAULT_ARGUMENTS_IN_EXPECT_ACTUALIZED_BY_FAKE_OVERRIDE
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.DEFAULT_ARGUMENTS_IN_EXPECT_WITH_ACTUAL_TYPEALIAS
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.DEFAULT_VALUE_NOT_ALLOWED_IN_OVERRIDE
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.DEFINITELY_NON_NULLABLE_AS_REIFIED
@@ -370,6 +373,7 @@ import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.METHOD_OF_ANY_IMP
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.MISPLACED_TYPE_PARAMETER_CONSTRAINTS
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.MISSING_CONSTRUCTOR_KEYWORD
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.MISSING_DEPENDENCY_CLASS
+import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.MISSING_DEPENDENCY_SUPERCLASS
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.MISSING_STDLIB_CLASS
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.MISSING_VAL_ON_ANNOTATION_PARAMETER
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.MIXING_FUNCTIONAL_KINDS_IN_SUPERTYPES
@@ -395,6 +399,7 @@ import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.NAMED_ARGUMENTS_N
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.NAMED_PARAMETER_NOT_FOUND
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.NAME_FOR_AMBIGUOUS_PARAMETER
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.NAME_IN_CONSTRAINT_IS_NOT_A_TYPE_PARAMETER
+import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.NESTED_CLASS_ACCESSED_VIA_INSTANCE_REFERENCE
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.NESTED_CLASS_NOT_ALLOWED
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.NEWER_VERSION_IN_SINCE_KOTLIN
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.NEW_INFERENCE_ERROR
@@ -486,6 +491,7 @@ import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.PACKAGE_CANNOT_BE
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.PACKAGE_OR_CLASSIFIER_REDECLARATION
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.PLATFORM_CLASS_MAPPED_TO_KOTLIN
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.PLUGIN_ANNOTATION_AMBIGUITY
+import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.POTENTIALLY_NON_REPORTED_ANNOTATION
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.PRE_RELEASE_CLASS
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.PRIMARY_CONSTRUCTOR_DELEGATION_CALL_EXPECTED
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.PRIMARY_CONSTRUCTOR_REQUIRED_FOR_DATA_CLASS
@@ -579,6 +585,7 @@ import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.SUPERTYPE_IS_EXTE
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.SUPERTYPE_NOT_A_CLASS_OR_INTERFACE
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.SUPERTYPE_NOT_INITIALIZED
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.SUPER_CALL_FROM_PUBLIC_INLINE
+import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.SUPER_CALL_WITH_DEFAULT_PARAMETERS
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.SUPER_IS_NOT_AN_EXPRESSION
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.SUPER_NOT_AVAILABLE
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.TAILREC_ON_VIRTUAL_MEMBER_ERROR
@@ -593,6 +600,7 @@ import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.TYPEALIAS_EXPANSI
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.TYPEALIAS_SHOULD_EXPAND_TO_CLASS
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.TYPE_ARGUMENTS_NOT_ALLOWED
+import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.TYPE_ARGUMENTS_FOR_OUTER_CLASS_WHEN_NESTED_REFERENCED
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.TYPE_ARGUMENTS_REDUNDANT_IN_SUPER_QUALIFIER
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.TYPE_ARGUMENT_ON_TYPED_VALUE_CLASS_EQUALS
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.TYPE_CANT_BE_USED_FOR_CONST_VAL
@@ -761,6 +769,12 @@ object FirErrorsDefaultMessages : BaseDiagnosticRendererFactory() {
             "Cannot access class ''{0}''. Check your module classpath for missing or conflicting dependencies.",
             RENDER_TYPE,
         )
+        map.put(
+            MISSING_DEPENDENCY_SUPERCLASS,
+            "Cannot access ''{0}'' which is a supertype of ''{1}''. Check your module classpath for missing or conflicting dependencies.",
+            RENDER_TYPE,
+            RENDER_TYPE,
+        )
 
         map.put(ASSIGNMENT_IN_EXPRESSION_CONTEXT, "Only expressions are allowed in this context.")
         map.put(EXPRESSION_EXPECTED, "Only expressions are allowed here.")
@@ -843,6 +857,11 @@ object FirErrorsDefaultMessages : BaseDiagnosticRendererFactory() {
 
         map.put(ILLEGAL_SELECTOR, "The expression cannot be a selector (cannot occur after a dot).")
         map.put(NO_RECEIVER_ALLOWED, "No receiver can be passed to this function or property.")
+        map.put(
+            SUPER_CALL_WITH_DEFAULT_PARAMETERS,
+            "Super-calls with default arguments are prohibited. Please specify all arguments of ''super.{0}'' explicitly.",
+            TO_STRING
+        )
 
         // Supertypes
         map.put(NOT_A_SUPERTYPE, "Not an immediate supertype.")
@@ -1015,6 +1034,10 @@ object FirErrorsDefaultMessages : BaseDiagnosticRendererFactory() {
             NON_SOURCE_ANNOTATION_ON_INLINED_LAMBDA_EXPRESSION,
             "The lambda expression here is an inlined argument, so this annotation cannot be stored anywhere.",
         )
+        map.put(
+            POTENTIALLY_NON_REPORTED_ANNOTATION,
+            "Deprecations and opt-ins on a method overridden from 'Any' may not be reported.",
+        )
 
         // OptIn
         map.put(OPT_IN_USAGE, "{1}", TO_STRING, STRING)
@@ -1162,6 +1185,7 @@ object FirErrorsDefaultMessages : BaseDiagnosticRendererFactory() {
         map.put(REDUNDANT_SPREAD_OPERATOR_IN_NAMED_FORM_IN_ANNOTATION, "Redundant spread (*) operator.")
         map.put(REDUNDANT_SPREAD_OPERATOR_IN_NAMED_FORM_IN_FUNCTION, "Redundant spread (*) operator.")
         map.put(INFERENCE_UNSUCCESSFUL_FORK, "Unsuccessful inference fork at position ''{0}''.", TO_STRING)
+        map.put(NESTED_CLASS_ACCESSED_VIA_INSTANCE_REFERENCE, "Nested {0} accessed via instance reference", RENDER_CLASS_OR_OBJECT_NAME)
         map.put(
             INFERRED_TYPE_VARIABLE_INTO_EMPTY_INTERSECTION,
             "Type argument for type parameter ''{0}'' cannot be inferred because it has incompatible upper bounds: {1} ({2}{3}).",
@@ -1270,6 +1294,7 @@ object FirErrorsDefaultMessages : BaseDiagnosticRendererFactory() {
         )
 
         map.put(TYPE_ARGUMENTS_NOT_ALLOWED, "Type parameters cannot be parameterized with type arguments.") // *
+        map.put(TYPE_ARGUMENTS_FOR_OUTER_CLASS_WHEN_NESTED_REFERENCED, "Type arguments for outer class are redundant when nested class is referenced")
         val wrongNumberOfTypeArguments = "{0,choice,0#No type arguments|1#One type argument|1<{0,number,integer} type arguments} expected"
         map.put(
             WRONG_NUMBER_OF_TYPE_ARGUMENTS,
@@ -1408,6 +1433,9 @@ object FirErrorsDefaultMessages : BaseDiagnosticRendererFactory() {
 
         map.put(IMPLICIT_NOTHING_RETURN_TYPE, "Return type 'Nothing' needs to be specified explicitly.")
         map.put(IMPLICIT_NOTHING_PROPERTY_TYPE, "Property type 'Nothing' needs to be specified explicitly.")
+
+        map.put(ABBREVIATED_NOTHING_RETURN_TYPE, "'Nothing' return type can't be specified with type alias.")
+        map.put(ABBREVIATED_NOTHING_PROPERTY_TYPE, "'Nothing' property type can't be specified with type alias.")
 
         map.put(CYCLIC_GENERIC_UPPER_BOUND, "Type parameter has cyclic upper bounds.")
 
@@ -1965,6 +1993,13 @@ object FirErrorsDefaultMessages : BaseDiagnosticRendererFactory() {
         map.put(
             DEFAULT_ARGUMENTS_IN_EXPECT_WITH_ACTUAL_TYPEALIAS,
             "Default argument values inside expect declaration ''{0}'' are not allowed if it is actualized via typealias. " +
+                    "Possible fix is to remove default argument values in members:{1}",
+            DECLARATION_NAME,
+            SYMBOLS_ON_NEWLINE_WITH_INDENT,
+        )
+        map.put(
+            DEFAULT_ARGUMENTS_IN_EXPECT_ACTUALIZED_BY_FAKE_OVERRIDE,
+            "Default argument values inside expect declaration ''{0}'' are not allowed for methods actualized via fake override. " +
                     "Possible fix is to remove default argument values in members:{1}",
             DECLARATION_NAME,
             SYMBOLS_ON_NEWLINE_WITH_INDENT,

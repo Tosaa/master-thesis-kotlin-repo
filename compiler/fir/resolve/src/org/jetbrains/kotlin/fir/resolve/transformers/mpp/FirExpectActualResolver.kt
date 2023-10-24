@@ -19,6 +19,7 @@ import org.jetbrains.kotlin.fir.types.*
 import org.jetbrains.kotlin.mpp.CallableSymbolMarker
 import org.jetbrains.kotlin.resolve.calls.mpp.AbstractExpectActualCompatibilityChecker
 import org.jetbrains.kotlin.resolve.multiplatform.ExpectActualCompatibility
+import org.jetbrains.kotlin.utils.zipIfSizesAreEqual
 
 object FirExpectActualResolver {
     fun findExpectForActual(
@@ -26,7 +27,7 @@ object FirExpectActualResolver {
         useSiteSession: FirSession,
         scopeSession: ScopeSession,
         context: FirExpectActualMatchingContext,
-    ): ExpectForActualData? {
+    ): ExpectForActualData {
         with(context) {
             val result = when (actualSymbol) {
                 is FirCallableSymbol<*> -> {
@@ -44,22 +45,17 @@ object FirExpectActualResolver {
                                 ?.fullyExpandedClass(useSiteSession)
 
                             val expectTypeParameters = expectContainingClass?.typeParameterSymbols.orEmpty()
-                            val actualTypeParameters = actualContainingClass
-                                ?.typeParameterSymbols
-                                .orEmpty()
+                            val actualTypeParameters = actualContainingClass?.typeParameterSymbols.orEmpty()
 
-                            parentSubstitutor = createExpectActualTypeParameterSubstitutor(
-                                expectTypeParameters,
-                                actualTypeParameters,
-                                useSiteSession,
-                            )
+                            parentSubstitutor = (expectTypeParameters zipIfSizesAreEqual actualTypeParameters)
+                                ?.let { createExpectActualTypeParameterSubstitutor(it, useSiteSession) }
 
                             when (actualSymbol) {
                                 is FirConstructorSymbol -> expectContainingClass?.getConstructors(scopeSession)
                                 else -> expectContainingClass?.getMembersForExpectClass(actualSymbol.name)
                             }.orEmpty()
                         }
-                        callableId.isLocal -> return null
+                        callableId.isLocal -> return emptyMap()
                         else -> {
                             val scope = FirPackageMemberScope(callableId.packageName, useSiteSession, useSiteSession.dependenciesSymbolProvider)
                             mutableListOf<FirCallableSymbol<*>>().apply {
@@ -89,7 +85,7 @@ object FirExpectActualResolver {
                 }
                 is FirClassLikeSymbol<*> -> {
                     val expectClassSymbol = useSiteSession.dependenciesSymbolProvider
-                        .getClassLikeSymbolByClassId(actualSymbol.classId) as? FirRegularClassSymbol ?: return null
+                        .getClassLikeSymbolByClassId(actualSymbol.classId) as? FirRegularClassSymbol ?: return emptyMap()
                     val compatibility = AbstractExpectActualCompatibilityChecker.getClassifiersCompatibility(
                         expectClassSymbol,
                         actualSymbol,
@@ -98,7 +94,7 @@ object FirExpectActualResolver {
                     )
                     mapOf(compatibility to listOf(expectClassSymbol))
                 }
-                else -> null
+                else -> emptyMap()
             }
             return result
         }

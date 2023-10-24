@@ -154,7 +154,7 @@ internal class KtFirExpressionTypeProvider(
         val assignment = expression.parent as? KtBinaryExpression ?: return null
         if (assignment.operationToken !in KtTokens.ALL_ASSIGNMENTS) return null
         if (assignment.left != expression) return null
-        val setTargetParameterType = fir.argumentsToSubstitutedValueParameters()?.values?.last()?.substitutedType ?: return null
+        val setTargetParameterType = fir.argumentsToSubstitutedValueParameters()?.values?.lastOrNull()?.substitutedType ?: return null
         return setTargetParameterType.asKtType()
     }
 
@@ -223,7 +223,10 @@ internal class KtFirExpressionTypeProvider(
 
         val callee = (firCall.calleeReference as? FirResolvedNamedReference)?.resolvedSymbol
         if (callee?.fir?.origin == FirDeclarationOrigin.SamConstructor) {
-            return (callee.fir as FirSimpleFunction).returnTypeRef.coneType.asKtType()
+            val substitutor = (firCall as? FirQualifiedAccessExpression)
+                ?.createConeSubstitutorFromTypeArguments(discardErrorTypes = true)
+                ?: ConeSubstitutor.Empty
+            return substitutor.substituteOrSelf((callee.fir as FirSimpleFunction).returnTypeRef.coneType).asKtType()
         }
 
         val argumentsToParameters = firCall.argumentsToSubstitutedValueParameters(substituteWithErrorTypes = false) ?: return null
@@ -314,6 +317,7 @@ internal class KtFirExpressionTypeProvider(
         // Given: `val x: T = expression`
         // Expected type of `expression` is `T`
         val property = expression.unwrapQualified<KtProperty> { property, expr -> property.initializer == expr } ?: return null
+        if (property.typeReference == null) return null
         return getReturnTypeForKtDeclaration(property).nonErrorTypeOrNull()
     }
 
@@ -326,6 +330,7 @@ internal class KtFirExpressionTypeProvider(
             // which may raise an exception if we attempt to retrieve, e.g., callable declaration from it.
             return null
         }
+        if (function.typeReference == null) return null
         return getReturnTypeForKtDeclaration(function).nonErrorTypeOrNull()
     }
 

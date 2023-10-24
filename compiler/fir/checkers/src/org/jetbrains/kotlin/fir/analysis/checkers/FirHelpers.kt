@@ -33,6 +33,7 @@ import org.jetbrains.kotlin.fir.resolve.*
 import org.jetbrains.kotlin.fir.resolve.providers.firProvider
 import org.jetbrains.kotlin.fir.resolve.providers.symbolProvider
 import org.jetbrains.kotlin.fir.scopes.*
+import org.jetbrains.kotlin.fir.scopes.impl.declaredMemberScope
 import org.jetbrains.kotlin.fir.scopes.impl.multipleDelegatesWithTheSameSignature
 import org.jetbrains.kotlin.fir.symbols.ConeTypeParameterLookupTag
 import org.jetbrains.kotlin.fir.symbols.FirBasedSymbol
@@ -71,6 +72,12 @@ fun FirClassSymbol<*>.unsubstitutedScope(context: CheckerContext): FirTypeScope 
         context.sessionHolder.session,
         context.sessionHolder.scopeSession,
         withForcedTypeCalculator = false,
+        memberRequiredPhase = FirResolvePhase.STATUS,
+    )
+
+fun FirClassSymbol<*>.declaredMemberScope(context: CheckerContext): FirContainingNamesAwareScope =
+    this.declaredMemberScope(
+        context.sessionHolder.session,
         memberRequiredPhase = FirResolvePhase.STATUS,
     )
 
@@ -197,6 +204,7 @@ fun CheckerContext.findClosestClassOrObject(): FirClass? {
             it is FirRegularClass ||
             it is FirAnonymousObject
         ) {
+            @Suppress("USELESS_CAST") // K2 warning suppression, TODO: KT-62472
             return it as FirClass
         }
     }
@@ -299,14 +307,27 @@ fun isSubtypeForTypeMismatch(context: ConeInferenceContext, subtype: ConeKotlinT
 }
 
 fun FirCallableDeclaration.isVisibleInClass(parentClass: FirClass): Boolean {
-    return symbol.isVisibleInClass(parentClass.symbol)
+    return symbol.isVisibleInClass(parentClass.symbol, symbol.resolvedStatus)
 }
 
-fun FirCallableSymbol<*>.isVisibleInClass(parentClassSymbol: FirClassSymbol<*>): Boolean {
+fun FirBasedSymbol<*>.isVisibleInClass(parentClassSymbol: FirClassSymbol<*>): Boolean {
+    val status = when (this) {
+        is FirCallableSymbol<*> -> resolvedStatus
+        is FirClassLikeSymbol -> resolvedStatus
+        else -> return true
+    }
+    return isVisibleInClass(parentClassSymbol, status)
+}
+
+fun FirBasedSymbol<*>.isVisibleInClass(parentClassSymbol: FirClassSymbol<*>, status: FirDeclarationStatus): Boolean {
     val classPackage = parentClassSymbol.classId.packageFqName
-    if (visibility == Visibilities.Private ||
-        !visibility.visibleFromPackage(classPackage, callableId.packageName)
-    ) return false
+    val packageName = when (this) {
+        is FirCallableSymbol<*> -> callableId.packageName
+        is FirClassLikeSymbol<*> -> classId.packageFqName
+        else -> return true
+    }
+    val visibility = status.visibility
+    if (visibility == Visibilities.Private || !visibility.visibleFromPackage(classPackage, packageName)) return false
     if (
         visibility == Visibilities.Internal &&
         (moduleData != parentClassSymbol.moduleData || parentClassSymbol.moduleData in moduleData.friendDependencies)
@@ -801,28 +822,37 @@ fun FirElement.isLhsOfAssignment(context: CheckerContext): Boolean {
  */
 fun ConeKotlinType?.collectUpperBounds(): Set<ConeClassLikeType> {
     if (this == null) return emptySet()
-    return when (this) {
-        is ConeErrorType -> emptySet() // Ignore error types
-        is ConeLookupTagBasedType -> when (this) {
-            is ConeClassLikeType -> setOf(this)
-            is ConeTypeVariableType -> {
-                (lookupTag.originalTypeParameter as? ConeTypeParameterLookupTag)?.typeParameterSymbol.collectUpperBounds()
-            }
-            is ConeTypeParameterType -> lookupTag.typeParameterSymbol.collectUpperBounds()
-            else -> throw IllegalStateException("missing branch for ${javaClass.name}")
-        }
-        is ConeDefinitelyNotNullType -> original.collectUpperBounds()
-        is ConeIntersectionType -> intersectedTypes.flatMap { it.collectUpperBounds() }.toSet()
-        is ConeFlexibleType -> upperBound.collectUpperBounds()
-        is ConeCapturedType -> constructor.supertypes?.flatMap { it.collectUpperBounds() }?.toSet().orEmpty()
-        is ConeIntegerConstantOperatorType -> setOf(getApproximatedType())
-        is ConeStubType, is ConeIntegerLiteralConstantType -> throw IllegalStateException("$this should not reach here")
-    }
-}
 
-private fun FirTypeParameterSymbol?.collectUpperBounds(): Set<ConeClassLikeType> {
-    if (this == null) return emptySet()
-    return resolvedBounds.flatMap { it.coneType.collectUpperBounds() }.toSet()
+    val upperBounds = mutableSetOf<ConeClassLikeType>()
+    val seen = mutableSetOf<ConeKotlinType>()
+    fun collect(type: ConeKotlinType) {
+        if (!seen.add(type)) return // Avoid infinite recursion.
+
+        when (type) {
+            is ConeErrorType -> return // Ignore error types
+            is ConeLookupTagBasedType -> when (type) {
+                is ConeClassLikeType -> upperBounds.add(type)
+                is ConeTypeVariableType -> {
+                    val symbol = (type.lookupTag.originalTypeParameter as? ConeTypeParameterLookupTag)?.typeParameterSymbol ?: return
+                    symbol.resolvedBounds.forEach { collect(it.coneType) }
+                }
+                is ConeTypeParameterType -> {
+                    val symbol = type.lookupTag.typeParameterSymbol
+                    symbol.resolvedBounds.forEach { collect(it.coneType) }
+                }
+                else -> throw IllegalStateException("missing branch for ${javaClass.name}")
+            }
+            is ConeDefinitelyNotNullType -> collect(type.original)
+            is ConeIntersectionType -> type.intersectedTypes.forEach(::collect)
+            is ConeFlexibleType -> collect(type.upperBound)
+            is ConeCapturedType -> type.constructor.supertypes?.forEach(::collect)
+            is ConeIntegerConstantOperatorType -> upperBounds.add(type.getApproximatedType())
+            is ConeStubType, is ConeIntegerLiteralConstantType -> throw IllegalStateException("$type should not reach here")
+        }
+    }
+
+    collect(this)
+    return upperBounds
 }
 
 fun ConeKotlinType.leastUpperBound(session: FirSession): ConeKotlinType {

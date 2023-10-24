@@ -21,18 +21,21 @@ import org.jetbrains.kotlin.analysis.project.structure.builder.buildKtLibraryMod
 import org.jetbrains.kotlin.analysis.project.structure.builder.buildKtSdkModule
 import org.jetbrains.kotlin.analysis.project.structure.builder.buildKtSourceModule
 import org.jetbrains.kotlin.builtins.StandardNames
-import org.jetbrains.kotlin.codegen.forTestCompile.ForTestCompileRuntime
 import org.jetbrains.kotlin.name.CallableId
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.Name
+import org.jetbrains.kotlin.name.StandardClassIds
 import org.jetbrains.kotlin.platform.CommonPlatforms
 import org.jetbrains.kotlin.platform.TargetPlatform
 import org.jetbrains.kotlin.platform.js.JsPlatforms
 import org.jetbrains.kotlin.platform.jvm.JvmPlatforms
 import org.jetbrains.kotlin.psi.KtCallExpression
 import org.jetbrains.kotlin.psi.KtFile
+import org.jetbrains.kotlin.psi.KtNamedFunction
+import org.jetbrains.kotlin.psi.KtTypeReference
 import org.jetbrains.kotlin.psi.psiUtil.findDescendantOfType
+import org.jetbrains.kotlin.utils.PathUtil
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
 import java.nio.file.Path
@@ -79,7 +82,7 @@ class StandaloneSessionBuilderTest {
 
     @Test
     fun testKotlinStdlibJvm() {
-        doTestKotlinStdLibResolve(JvmPlatforms.defaultJvmPlatform, ForTestCompileRuntime.runtimeJarForTests().toPath())
+        doTestKotlinStdLibResolve(JvmPlatforms.defaultJvmPlatform, PathUtil.kotlinPathsForDistDirectory.stdlibPath.toPath())
     }
 
     @Test
@@ -89,7 +92,19 @@ class StandaloneSessionBuilderTest {
 
     @Test
     fun testKotlinStdLibJs() {
-        doTestKotlinStdLibResolve(JsPlatforms.defaultJsPlatform, Paths.get("dist/kotlinc/lib/kotlin-stdlib-js.jar"))
+        doTestKotlinStdLibResolve(JsPlatforms.defaultJsPlatform, PathUtil.kotlinPathsForDistDirectory.jsStdLibKlibPath.toPath())
+    }
+
+    @Test
+    fun testKotlinStdLibJsWithInvalidKlib() {
+        doTestKotlinStdLibResolve(
+            JsPlatforms.defaultJsPlatform,
+            PathUtil.kotlinPathsForDistDirectory.jsStdLibKlibPath.toPath(),
+            additionalStdlibRoots = listOf(
+                Paths.get(System.getProperty("java.home")), // directory which exists and does not contain KLibs inside
+                PathUtil.kotlinPathsForDistDirectory.stdlibPath.toPath(), // file which exists and not a KLib
+            )
+        )
     }
 
     @Test
@@ -122,7 +137,10 @@ class StandaloneSessionBuilderTest {
         ktCallExpression.assertIsCallOf(CallableId(FqName.ROOT, Name.identifier("foo")))
     }
 
-    private fun doTestKotlinStdLibResolve(targetPlatform: TargetPlatform, platformStdlibPath: Path) {
+    private fun doTestKotlinStdLibResolve(
+        targetPlatform: TargetPlatform, platformStdlibPath: Path,
+        additionalStdlibRoots: List<Path> = emptyList(),
+    ) {
         lateinit var sourceModule: KtSourceModule
         val session = buildStandaloneAnalysisAPISession {
             registerProjectService(KtLifetimeTokenProvider::class.java, KtAlwaysAccessibleLifetimeTokenProvider())
@@ -132,6 +150,7 @@ class StandaloneSessionBuilderTest {
                 val stdlib = addModule(
                     buildKtLibraryModule {
                         addBinaryRoot(platformStdlibPath)
+                        addBinaryRoots(additionalStdlibRoots)
                         platform = targetPlatform
                         libraryName = "stdlib"
                     }
@@ -147,8 +166,14 @@ class StandaloneSessionBuilderTest {
             }
         }
         val ktFile = session.modulesWithFiles.getValue(sourceModule).single() as KtFile
+
+        // call
         val ktCallExpression = ktFile.findDescendantOfType<KtCallExpression>()!!
         ktCallExpression.assertIsCallOf(CallableId(StandardNames.COLLECTIONS_PACKAGE_FQ_NAME, Name.identifier("listOf")))
+
+        // builtin type
+        val typeReference = ktFile.findDescendantOfType<KtNamedFunction>()!!.typeReference!!
+        typeReference.assertIsReferenceTo(StandardClassIds.Unit)
     }
 
 
@@ -159,6 +184,13 @@ class StandaloneSessionBuilderTest {
             val symbol = ktCallInfo.successfulFunctionCallOrNull()?.symbol
             Assertions.assertInstanceOf(KtFunctionSymbol::class.java, symbol); symbol as KtFunctionSymbol
             Assertions.assertEquals(callableId, symbol.callableIdIfNonLocal)
+        }
+    }
+
+    private fun KtTypeReference.assertIsReferenceTo(classId: ClassId) {
+        analyze(this) {
+            val actualClassId = getKtType().expandedClassSymbol?.classIdIfNonLocal
+            Assertions.assertEquals(classId, actualClassId)
         }
     }
 }

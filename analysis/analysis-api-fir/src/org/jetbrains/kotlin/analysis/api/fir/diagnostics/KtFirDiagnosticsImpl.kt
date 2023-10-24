@@ -395,6 +395,13 @@ internal class MissingDependencyClassImpl(
     token: KtLifetimeToken,
 ) : KtAbstractFirDiagnostic<PsiElement>(firDiagnostic, token), KtFirDiagnostic.MissingDependencyClass
 
+internal class MissingDependencySuperclassImpl(
+    override val missingType: KtType,
+    override val declarationType: KtType,
+    firDiagnostic: KtPsiDiagnostic,
+    token: KtLifetimeToken,
+) : KtAbstractFirDiagnostic<PsiElement>(firDiagnostic, token), KtFirDiagnostic.MissingDependencySuperclass
+
 internal class CreatingAnInstanceOfAbstractClassImpl(
     firDiagnostic: KtPsiDiagnostic,
     token: KtLifetimeToken,
@@ -1024,6 +1031,11 @@ internal class NonSourceAnnotationOnInlinedLambdaExpressionImpl(
     firDiagnostic: KtPsiDiagnostic,
     token: KtLifetimeToken,
 ) : KtAbstractFirDiagnostic<KtAnnotationEntry>(firDiagnostic, token), KtFirDiagnostic.NonSourceAnnotationOnInlinedLambdaExpression
+
+internal class PotentiallyNonReportedAnnotationImpl(
+    firDiagnostic: KtPsiDiagnostic,
+    token: KtLifetimeToken,
+) : KtAbstractFirDiagnostic<KtAnnotationEntry>(firDiagnostic, token), KtFirDiagnostic.PotentiallyNonReportedAnnotation
 
 internal class WrongJsQualifierImpl(
     firDiagnostic: KtPsiDiagnostic,
@@ -1724,6 +1736,12 @@ internal class InferenceUnsuccessfulForkImpl(
     token: KtLifetimeToken,
 ) : KtAbstractFirDiagnostic<PsiElement>(firDiagnostic, token), KtFirDiagnostic.InferenceUnsuccessfulFork
 
+internal class NestedClassAccessedViaInstanceReferenceImpl(
+    override val symbol: KtClassLikeSymbol,
+    firDiagnostic: KtPsiDiagnostic,
+    token: KtLifetimeToken,
+) : KtAbstractFirDiagnostic<PsiElement>(firDiagnostic, token), KtFirDiagnostic.NestedClassAccessedViaInstanceReference
+
 internal class OverloadResolutionAmbiguityImpl(
     override val candidates: List<KtSymbol>,
     firDiagnostic: KtPsiDiagnostic,
@@ -1815,6 +1833,11 @@ internal class TypeArgumentsNotAllowedImpl(
     firDiagnostic: KtPsiDiagnostic,
     token: KtLifetimeToken,
 ) : KtAbstractFirDiagnostic<PsiElement>(firDiagnostic, token), KtFirDiagnostic.TypeArgumentsNotAllowed
+
+internal class TypeArgumentsForOuterClassWhenNestedReferencedImpl(
+    firDiagnostic: KtPsiDiagnostic,
+    token: KtLifetimeToken,
+) : KtAbstractFirDiagnostic<PsiElement>(firDiagnostic, token), KtFirDiagnostic.TypeArgumentsForOuterClassWhenNestedReferenced
 
 internal class WrongNumberOfTypeArgumentsImpl(
     override val expectedCount: Int,
@@ -2016,6 +2039,16 @@ internal class ImplicitNothingPropertyTypeImpl(
     firDiagnostic: KtPsiDiagnostic,
     token: KtLifetimeToken,
 ) : KtAbstractFirDiagnostic<PsiElement>(firDiagnostic, token), KtFirDiagnostic.ImplicitNothingPropertyType
+
+internal class AbbreviatedNothingReturnTypeImpl(
+    firDiagnostic: KtPsiDiagnostic,
+    token: KtLifetimeToken,
+) : KtAbstractFirDiagnostic<PsiElement>(firDiagnostic, token), KtFirDiagnostic.AbbreviatedNothingReturnType
+
+internal class AbbreviatedNothingPropertyTypeImpl(
+    firDiagnostic: KtPsiDiagnostic,
+    token: KtLifetimeToken,
+) : KtAbstractFirDiagnostic<PsiElement>(firDiagnostic, token), KtFirDiagnostic.AbbreviatedNothingPropertyType
 
 internal class CyclicGenericUpperBoundImpl(
     firDiagnostic: KtPsiDiagnostic,
@@ -3005,7 +3038,7 @@ internal class ExpectedLateinitPropertyImpl(
 internal class SupertypeInitializedInExpectedClassImpl(
     firDiagnostic: KtPsiDiagnostic,
     token: KtLifetimeToken,
-) : KtAbstractFirDiagnostic<PsiElement>(firDiagnostic, token), KtFirDiagnostic.SupertypeInitializedInExpectedClass
+) : KtAbstractFirDiagnostic<KtElement>(firDiagnostic, token), KtFirDiagnostic.SupertypeInitializedInExpectedClass
 
 internal class ExpectedPrivateDeclarationImpl(
     firDiagnostic: KtPsiDiagnostic,
@@ -3068,6 +3101,13 @@ internal class DefaultArgumentsInExpectWithActualTypealiasImpl(
     firDiagnostic: KtPsiDiagnostic,
     token: KtLifetimeToken,
 ) : KtAbstractFirDiagnostic<KtTypeAlias>(firDiagnostic, token), KtFirDiagnostic.DefaultArgumentsInExpectWithActualTypealias
+
+internal class DefaultArgumentsInExpectActualizedByFakeOverrideImpl(
+    override val expectClassSymbol: KtClassLikeSymbol,
+    override val members: List<KtFunctionLikeSymbol>,
+    firDiagnostic: KtPsiDiagnostic,
+    token: KtLifetimeToken,
+) : KtAbstractFirDiagnostic<KtClass>(firDiagnostic, token), KtFirDiagnostic.DefaultArgumentsInExpectActualizedByFakeOverride
 
 internal class ExpectedFunctionSourceWithDefaultArgumentsNotFoundImpl(
     firDiagnostic: KtPsiDiagnostic,
@@ -4089,11 +4129,6 @@ internal class PreReleaseClassImpl(
     firDiagnostic: KtPsiDiagnostic,
     token: KtLifetimeToken,
 ) : KtAbstractFirDiagnostic<PsiElement>(firDiagnostic, token), KtFirDiagnostic.PreReleaseClass
-
-internal class ConflictingJvmDeclarationsImpl(
-    firDiagnostic: KtPsiDiagnostic,
-    token: KtLifetimeToken,
-) : KtAbstractFirDiagnostic<PsiElement>(firDiagnostic, token), KtFirDiagnostic.ConflictingJvmDeclarations
 
 internal class OverrideCannotBeStaticImpl(
     firDiagnostic: KtPsiDiagnostic,

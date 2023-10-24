@@ -55,7 +55,7 @@ private fun Executor.service(project: Project) = object: ExecutorService {
         val request = ExecuteRequest(
                 executableAbsolutePath = execSpec.executable,
                 args = execSpec.args,
-                timeout = 15.toDuration(DurationUnit.MINUTES),
+                timeout = 40.toDuration(DurationUnit.MINUTES),
         ).apply {
             execSpec.standardInput?.let {
                 stdin = it
@@ -184,20 +184,6 @@ val Project.executor: ExecutorService
             ?: throw IllegalStateException("Executor wasn't found")
 
 /**
- * Creates a new executor service with additional action [actionParameter] executed after the main one.
- * The following is an example how to pass an environment parameter
- * @code `executor.add(Action { it.environment = mapOf("JAVA_OPTS" to "-verbose:gc") })::execute`
- */
-fun ExecutorService.add(actionParameter: Action<in ExecSpec>) = object : ExecutorService {
-    override val project: Project get() = this@add.project
-    override fun execute(action: Action<in ExecSpec>): ExecResult? =
-            this@add.execute(Action {
-                action.execute(this)
-                actionParameter.execute(this)
-            })
-}
-
-/**
  * Executes the [executable] with the given [arguments]
  * and checks that the program finished with zero exit code.
  */
@@ -220,8 +206,3 @@ fun Project.executeAndCheck(executable: Path, arguments: List<String> = emptyLis
  * @see Project.exec
  */
 fun localExecutor(project: Project) = { a: Action<in ExecSpec> -> project.exec(a) }
-
-fun localExecutorService(project: Project): ExecutorService = object : ExecutorService {
-    override val project: Project get() = project
-    override fun execute(action: Action<in ExecSpec>): ExecResult? = project.exec(action)
-}

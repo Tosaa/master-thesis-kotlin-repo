@@ -76,9 +76,27 @@ public class SourceGetOrBuildFirTestGenerated extends AbstractSourceGetOrBuildFi
         }
 
         @Test
+        @TestMetadata("annotationInsideWhereFunction.kt")
+        public void testAnnotationInsideWhereFunction() throws Exception {
+            runTest("analysis/low-level-api-fir/testData/getOrBuildFir/annotations/annotationInsideWhereFunction.kt");
+        }
+
+        @Test
+        @TestMetadata("annotationInsideWhereProperty.kt")
+        public void testAnnotationInsideWhereProperty() throws Exception {
+            runTest("analysis/low-level-api-fir/testData/getOrBuildFir/annotations/annotationInsideWhereProperty.kt");
+        }
+
+        @Test
         @TestMetadata("annotationOnConstructorProperty.kt")
         public void testAnnotationOnConstructorProperty() throws Exception {
             runTest("analysis/low-level-api-fir/testData/getOrBuildFir/annotations/annotationOnConstructorProperty.kt");
+        }
+
+        @Test
+        @TestMetadata("annotationOnEnumClass.kt")
+        public void testAnnotationOnEnumClass() throws Exception {
+            runTest("analysis/low-level-api-fir/testData/getOrBuildFir/annotations/annotationOnEnumClass.kt");
         }
 
         @Test
@@ -303,6 +321,12 @@ public class SourceGetOrBuildFirTestGenerated extends AbstractSourceGetOrBuildFi
         @TestMetadata("callInsideLambdaInsideSuperCallFromSingleSecondaryConstructor.kt")
         public void testCallInsideLambdaInsideSuperCallFromSingleSecondaryConstructor() throws Exception {
             runTest("analysis/low-level-api-fir/testData/getOrBuildFir/calls/callInsideLambdaInsideSuperCallFromSingleSecondaryConstructor.kt");
+        }
+
+        @Test
+        @TestMetadata("callInsideLambdaInsideSuperCallInsideImplicitConstructor.kt")
+        public void testCallInsideLambdaInsideSuperCallInsideImplicitConstructor() throws Exception {
+            runTest("analysis/low-level-api-fir/testData/getOrBuildFir/calls/callInsideLambdaInsideSuperCallInsideImplicitConstructor.kt");
         }
 
         @Test
@@ -1100,6 +1124,48 @@ public class SourceGetOrBuildFirTestGenerated extends AbstractSourceGetOrBuildFi
         }
 
         @Test
+        @TestMetadata("superType2.kt")
+        public void testSuperType2() throws Exception {
+            runTest("analysis/low-level-api-fir/testData/getOrBuildFir/types/superType2.kt");
+        }
+
+        @Test
+        @TestMetadata("superType3.kt")
+        public void testSuperType3() throws Exception {
+            runTest("analysis/low-level-api-fir/testData/getOrBuildFir/types/superType3.kt");
+        }
+
+        @Test
+        @TestMetadata("superTypeAndGeneratedProperty.kt")
+        public void testSuperTypeAndGeneratedProperty() throws Exception {
+            runTest("analysis/low-level-api-fir/testData/getOrBuildFir/types/superTypeAndGeneratedProperty.kt");
+        }
+
+        @Test
+        @TestMetadata("superTypeInObject.kt")
+        public void testSuperTypeInObject() throws Exception {
+            runTest("analysis/low-level-api-fir/testData/getOrBuildFir/types/superTypeInObject.kt");
+        }
+
+        @Test
+        @TestMetadata("superTypeInObject2.kt")
+        public void testSuperTypeInObject2() throws Exception {
+            runTest("analysis/low-level-api-fir/testData/getOrBuildFir/types/superTypeInObject2.kt");
+        }
+
+        @Test
+        @TestMetadata("superTypeInObject3.kt")
+        public void testSuperTypeInObject3() throws Exception {
+            runTest("analysis/low-level-api-fir/testData/getOrBuildFir/types/superTypeInObject3.kt");
+        }
+
+        @Test
+        @TestMetadata("superTypeOnEnumClass.kt")
+        public void testSuperTypeOnEnumClass() throws Exception {
+            runTest("analysis/low-level-api-fir/testData/getOrBuildFir/types/superTypeOnEnumClass.kt");
+        }
+
+        @Test
         @TestMetadata("typeArgument.kt")
         public void testTypeArgument() throws Exception {
             runTest("analysis/low-level-api-fir/testData/getOrBuildFir/types/typeArgument.kt");
@@ -1136,6 +1202,18 @@ public class SourceGetOrBuildFirTestGenerated extends AbstractSourceGetOrBuildFi
         }
 
         @Test
+        @TestMetadata("whereFunction.kt")
+        public void testWhereFunction() throws Exception {
+            runTest("analysis/low-level-api-fir/testData/getOrBuildFir/types/whereFunction.kt");
+        }
+
+        @Test
+        @TestMetadata("whereProperty.kt")
+        public void testWhereProperty() throws Exception {
+            runTest("analysis/low-level-api-fir/testData/getOrBuildFir/types/whereProperty.kt");
+        }
+
+        @Test
         @TestMetadata("wholeType.kt")
         public void testWholeType() throws Exception {
             runTest("analysis/low-level-api-fir/testData/getOrBuildFir/types/wholeType.kt");
@@ -1158,9 +1236,21 @@ public class SourceGetOrBuildFirTestGenerated extends AbstractSourceGetOrBuildFi
         }
 
         @Test
+        @TestMetadata("enum.kt")
+        public void testEnum() throws Exception {
+            runTest("analysis/low-level-api-fir/testData/getOrBuildFir/wholeDeclaration/enum.kt");
+        }
+
+        @Test
         @TestMetadata("enumEntry.kt")
         public void testEnumEntry() throws Exception {
             runTest("analysis/low-level-api-fir/testData/getOrBuildFir/wholeDeclaration/enumEntry.kt");
+        }
+
+        @Test
+        @TestMetadata("externalJavaAnnotation.kt")
+        public void testExternalJavaAnnotation() throws Exception {
+            runTest("analysis/low-level-api-fir/testData/getOrBuildFir/wholeDeclaration/externalJavaAnnotation.kt");
         }
 
         @Test
@@ -1221,6 +1311,12 @@ public class SourceGetOrBuildFirTestGenerated extends AbstractSourceGetOrBuildFi
         @TestMetadata("nestedClass.kt")
         public void testNestedClass() throws Exception {
             runTest("analysis/low-level-api-fir/testData/getOrBuildFir/wholeDeclaration/nestedClass.kt");
+        }
+
+        @Test
+        @TestMetadata("notNullJavaAnnotation.kt")
+        public void testNotNullJavaAnnotation() throws Exception {
+            runTest("analysis/low-level-api-fir/testData/getOrBuildFir/wholeDeclaration/notNullJavaAnnotation.kt");
         }
 
         @Test

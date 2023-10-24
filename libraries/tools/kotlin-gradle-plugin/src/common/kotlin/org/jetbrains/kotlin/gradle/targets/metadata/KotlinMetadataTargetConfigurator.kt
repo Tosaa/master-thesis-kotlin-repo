@@ -19,6 +19,7 @@ import org.gradle.api.tasks.bundling.Zip
 import org.jetbrains.kotlin.commonizer.SharedCommonizerTarget
 import org.jetbrains.kotlin.gradle.dsl.KotlinCommonOptions
 import org.jetbrains.kotlin.gradle.dsl.kotlinExtension
+import org.jetbrains.kotlin.gradle.dsl.metadataTarget
 import org.jetbrains.kotlin.gradle.dsl.multiplatformExtension
 import org.jetbrains.kotlin.gradle.plugin.*
 import org.jetbrains.kotlin.gradle.plugin.mpp.*
@@ -30,6 +31,7 @@ import org.jetbrains.kotlin.gradle.targets.native.internal.sharedCommonizerTarge
 import org.jetbrains.kotlin.gradle.tasks.KotlinNativeCompile
 import org.jetbrains.kotlin.gradle.tasks.KotlinTasksProvider
 import org.jetbrains.kotlin.gradle.tasks.registerTask
+import org.jetbrains.kotlin.gradle.utils.whenEvaluated
 import org.jetbrains.kotlin.gradle.utils.*
 import org.jetbrains.kotlin.statistics.metrics.BooleanMetrics
 import org.jetbrains.kotlin.tooling.core.extrasLazyProperty
@@ -68,11 +70,12 @@ class KotlinMetadataTargetConfigurator :
             KotlinBuildStatsService.getInstance()?.report(BooleanMetrics.ENABLED_HMPP, true)
 
             target.compilations.withType(KotlinCommonCompilation::class.java).getByName(KotlinCompilation.MAIN_COMPILATION_NAME).run {
+                // Force the default 'main' compilation to produce *.kotlin_metadata regardless of the klib feature flag.
+                forceCompilationToKotlinMetadata = true
+
                 // Capture it here to use in onlyIf spec. Direct usage causes serialization of target attempt when configuration cache is enabled
                 val isCompatibilityMetadataVariantEnabled = target.project.isCompatibilityMetadataVariantEnabled
                 if (isCompatibilityMetadataVariantEnabled) {
-                    // Force the default 'main' compilation to produce *.kotlin_metadata regardless of the klib feature flag.
-                    forceCompilationToKotlinMetadata = true
                     // Add directly dependsOn sources for Legacy Compatibility Metadata variant
                     // it isn't necessary for KLib compilations
                     // see [KotlinCompilationSourceSetInclusion.AddSourcesWithoutDependsOnClosure]
@@ -397,7 +400,7 @@ internal fun Project.createGenerateProjectStructureMetadataTask(): TaskProvider<
         task.description = "Generates serialized project structure metadata of the current project (for tooling)"
     }
 
-internal val KotlinSourceSet.isNativeSourceSet: Future<Boolean> by futureExtension("isNativeSourceSet") {
+internal val KotlinSourceSet.isNativeSourceSet: Future<Boolean> by extrasStoredFuture {
     val compilations = internal.awaitPlatformCompilations()
     compilations.isNotEmpty() && compilations.all { it.platformType == KotlinPlatformType.native }
 }
@@ -482,7 +485,7 @@ internal suspend fun KotlinMetadataTarget.awaitMetadataCompilationsCreated(): Na
 }
 
 internal suspend fun Project.findMetadataCompilation(sourceSet: KotlinSourceSet): KotlinMetadataCompilation<*>? {
-    val metadataTarget = multiplatformExtension.metadata() as KotlinMetadataTarget
+    val metadataTarget = multiplatformExtension.metadataTarget
     metadataTarget.awaitMetadataCompilationsCreated()
     return metadataTarget.compilations.findByName(sourceSet.name) as KotlinMetadataCompilation<*>?
 }

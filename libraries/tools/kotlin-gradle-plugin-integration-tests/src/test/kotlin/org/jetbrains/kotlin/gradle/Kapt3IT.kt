@@ -351,13 +351,13 @@ open class Kapt3IT : Kapt3BaseIT() {
 
     @DisplayName("Kapt is working with incremental compilation")
     @GradleTest
-    fun testSimpleWithIC(gradleVersion: GradleVersion) {
+   open fun testSimpleWithIC(gradleVersion: GradleVersion) {
         doTestSimpleWithIC(gradleVersion)
     }
 
     @DisplayName("Kapt is working with incremental compilation, when kotlin.incremental.useClasspathSnapshot=true")
     @GradleTest
-    fun testSimpleWithIC_withClasspathSnapshot(gradleVersion: GradleVersion) {
+    open fun testSimpleWithIC_withClasspathSnapshot(gradleVersion: GradleVersion) {
         doTestSimpleWithIC(gradleVersion, useClasspathSnapshot = true)
     }
 
@@ -1313,12 +1313,12 @@ open class Kapt3IT : Kapt3BaseIT() {
                 assertKaptSuccessful()
                 assertTasksExecuted(":kaptGenerateStubsKotlin", ":kaptKotlin", ":compileKotlin")
                 assertOutputDoesNotContain("Falling back to 1.9.")
-                assertOutputContains("Kapt 4 is an experimental feature. Use with caution.")
+                assertOutputContains("K2 kapt is an experimental feature. Use with caution.")
             }
             build("-Pkapt.use.k2=true", "cleanCompileKotlin", "compileKotlin") {
                 assertTasksExecuted(":compileKotlin")
                 // The warning should not be displayed for the compile task.
-                assertOutputDoesNotContain("Kapt 4 is an experimental feature. Use with caution.")
+                assertOutputDoesNotContain("K2 kapt is an experimental feature. Use with caution.")
             }
         }
     }

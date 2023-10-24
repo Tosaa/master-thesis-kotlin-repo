@@ -46,12 +46,6 @@ FILE: [ResolvedTo(IMPORTS)] topLevelFunctions.kt
     public? final? [ResolvedTo(RAW_FIR)] fun receive([ResolvedTo(RAW_FIR)] value: String): R|kotlin/Unit| { LAZY_BLOCK }
     public? final? [ResolvedTo(RAW_FIR)] fun functionWithLazyBody(): String { LAZY_BLOCK }
 
-ARGUMENTS_OF_ANNOTATIONS:
-FILE: [ResolvedTo(IMPORTS)] topLevelFunctions.kt
-    public final [ResolvedTo(ARGUMENTS_OF_ANNOTATIONS)] fun resolveMe(): R|kotlin/Unit| { LAZY_BLOCK }
-    public? final? [ResolvedTo(RAW_FIR)] fun receive([ResolvedTo(RAW_FIR)] value: String): R|kotlin/Unit| { LAZY_BLOCK }
-    public? final? [ResolvedTo(RAW_FIR)] fun functionWithLazyBody(): String { LAZY_BLOCK }
-
 CONTRACTS:
 FILE: [ResolvedTo(IMPORTS)] topLevelFunctions.kt
     public final [ResolvedTo(CONTRACTS)] fun resolveMe(): R|kotlin/Unit| {
@@ -68,9 +62,9 @@ FILE: [ResolvedTo(IMPORTS)] topLevelFunctions.kt
     public? final? [ResolvedTo(RAW_FIR)] fun receive([ResolvedTo(RAW_FIR)] value: String): R|kotlin/Unit| { LAZY_BLOCK }
     public? final? [ResolvedTo(RAW_FIR)] fun functionWithLazyBody(): String { LAZY_BLOCK }
 
-ANNOTATIONS_ARGUMENTS_MAPPING:
+ANNOTATION_ARGUMENTS:
 FILE: [ResolvedTo(IMPORTS)] topLevelFunctions.kt
-    public final [ResolvedTo(ANNOTATIONS_ARGUMENTS_MAPPING)] fun resolveMe(): R|kotlin/Unit| {
+    public final [ResolvedTo(ANNOTATION_ARGUMENTS)] fun resolveMe(): R|kotlin/Unit| {
         receive#(functionWithLazyBody#())
     }
     public? final? [ResolvedTo(RAW_FIR)] fun receive([ResolvedTo(RAW_FIR)] value: String): R|kotlin/Unit| { LAZY_BLOCK }

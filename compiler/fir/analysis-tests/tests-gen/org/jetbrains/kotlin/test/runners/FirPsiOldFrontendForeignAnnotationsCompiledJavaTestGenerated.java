@@ -23,7 +23,7 @@ public class FirPsiOldFrontendForeignAnnotationsCompiledJavaTestGenerated extend
     public class Tests {
         @Test
         public void testAllFilesPresentInTests() throws Exception {
-            KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("compiler/testData/diagnostics/foreignAnnotationsTests/tests"), Pattern.compile("^(.+)\\.kt$"), Pattern.compile("^(.+)\\.(reversed|fir|ll)\\.kts?$"), true);
+            KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("compiler/testData/diagnostics/foreignAnnotationsTests/tests"), Pattern.compile("^(.+)\\.kt$"), Pattern.compile("^(.+)\\.(reversed|fir|ll)\\.kts?$"), true, "externalAnnotations");
         }
 
         @Test
@@ -682,6 +682,12 @@ public class FirPsiOldFrontendForeignAnnotationsCompiledJavaTestGenerated extend
                 @TestMetadata("IgnoreAnnotations.kt")
                 public void testIgnoreAnnotations() throws Exception {
                     runTest("compiler/testData/diagnostics/foreignAnnotationsTests/java8Tests/jspecify/strictMode/IgnoreAnnotations.kt");
+                }
+
+                @Test
+                @TestMetadata("interconnectedGenerics.kt")
+                public void testInterconnectedGenerics() throws Exception {
+                    runTest("compiler/testData/diagnostics/foreignAnnotationsTests/java8Tests/jspecify/strictMode/interconnectedGenerics.kt");
                 }
 
                 @Test

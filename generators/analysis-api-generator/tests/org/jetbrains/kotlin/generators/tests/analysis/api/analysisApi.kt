@@ -26,6 +26,7 @@ import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.components.express
 import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.components.importOptimizer.AbstractAnalysisApiImportOptimizerTest
 import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.components.multiplatformInfoProvider.AbstractExpectForActualTest
 import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.components.psiTypeProvider.AbstractAnalysisApiExpressionPsiTypeProviderTest
+import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.components.psiTypeProvider.AbstractAnalysisApiKtTypeByPsiTypeProviderTest
 import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.components.psiTypeProvider.AbstractAnalysisApiPsiTypeProviderTest
 import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.components.referenceResolveProvider.AbstractIsImplicitCompanionReferenceTest
 import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.components.resolveExtensionInfoProvider.AbstractResolveExtensionInfoProviderTest
@@ -35,6 +36,7 @@ import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.components.signatu
 import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.components.signatureSubstitution.AbstractAnalysisApiSymbolAsSignatureTest
 import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.components.signatureSubstitution.AbstractAnalysisApiSymbolSubstitutionTest
 import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.components.smartCastProvider.AbstractHLSmartCastInfoTest
+import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.components.substitutorProvider.AbstractCreateInheritanceTypeSubstitutorTest
 import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.components.substututorFactory.AbstractSubstitutorBuilderTest
 import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.components.symbolDeclarationOverridesProvider.AbstractIsSubclassOfTest
 import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.components.symbolDeclarationOverridesProvider.AbstractOverriddenDeclarationProviderTest
@@ -65,7 +67,7 @@ import org.jetbrains.kotlin.generators.util.TestGeneratorUtil
 internal fun AnalysisApiTestGroup.generateAnalysisApiTests() {
     test(
         AbstractReferenceResolveTest::class,
-        filter = testModuleKindIs(TestModuleKind.Source, TestModuleKind.LibrarySource) and
+        filter = testModuleKindIs(TestModuleKind.Source, TestModuleKind.ScriptSource, TestModuleKind.LibrarySource) and
                 analysisApiModeIs(AnalysisApiMode.Ide, AnalysisApiMode.Standalone),
     ) { data ->
         when (data.moduleKind) {
@@ -76,6 +78,8 @@ internal fun AnalysisApiTestGroup.generateAnalysisApiTests() {
                     excludeDirsRecursively = listOf("withErrors")
                 )
             }
+
+            TestModuleKind.ScriptSource -> model(data, "referenceResolve")
 
             else -> {
                 model("referenceResolve", pattern = TestGeneratorUtil.KT_WITHOUT_DOTS_IN_NAME)
@@ -336,6 +340,10 @@ private fun AnalysisApiTestGroup.generateAnalysisApiComponentsTests() {
         test(AbstractAnalysisApiExpressionPsiTypeProviderTest::class, filter = frontendIs(FrontendKind.Fir)) {
             model(it, "psiType/forExpression")
         }
+
+        test(AbstractAnalysisApiKtTypeByPsiTypeProviderTest::class, filter = frontendIs(FrontendKind.Fir)){
+            model(it, "psiType/asKtType")
+        }
     }
 
     component("resolveExtensionInfoProvider", filter = frontendIs(FrontendKind.Fir)) {
@@ -433,6 +441,12 @@ private fun AnalysisApiTestGroup.generateAnalysisApiComponentsTests() {
         }
     }
 
+    component("substitutorProvider", filter = frontendIs(FrontendKind.Fir)) {
+        test(AbstractCreateInheritanceTypeSubstitutorTest::class) {
+            model(it, "createInheritanceTypeSubstitutor")
+        }
+    }
+
 
     component("referenceResolveProvider") {
         test(AbstractIsImplicitCompanionReferenceTest::class) {
@@ -464,15 +478,22 @@ private fun AnalysisApiTestGroup.generateAnalysisApiComponentsTests() {
             }
 
             test(
-                AbstractMemberScopeByFqNameTest::class,
+                AbstractMemberScopeTest::class,
                 filter = frontendIs(FrontendKind.Fir),
             ) {
                 when (it.analysisApiMode) {
                     AnalysisApiMode.Ide ->
-                        model(it, "memberScopeByFqName")
+                        model(it, "memberScope")
                     AnalysisApiMode.Standalone ->
-                        model(it, "memberScopeByFqName", excludeDirsRecursively = listOf("withTestCompilerPluginEnabled"))
+                        model(it, "memberScope", excludeDirsRecursively = listOf("withTestCompilerPluginEnabled"))
                 }
+            }
+
+            test(
+                AbstractStaticMemberScopeTest::class,
+                filter = frontendIs(FrontendKind.Fir),
+            ) {
+                model(it, "staticMemberScope")
             }
 
             test(AbstractFileScopeTest::class) {
@@ -488,6 +509,20 @@ private fun AnalysisApiTestGroup.generateAnalysisApiComponentsTests() {
                 filter = frontendIs(FrontendKind.Fir),
             ) {
                 model(it, "declaredMemberScope")
+            }
+
+            test(
+                AbstractStaticDeclaredMemberScopeTest::class,
+                filter = frontendIs(FrontendKind.Fir),
+            ) {
+                model(it, "staticDeclaredMemberScope")
+            }
+
+            test(
+                AbstractCombinedDeclaredMemberScopeTest::class,
+                filter = frontendIs(FrontendKind.Fir),
+            ) {
+                model(it, "combinedDeclaredMemberScope")
             }
         }
     }

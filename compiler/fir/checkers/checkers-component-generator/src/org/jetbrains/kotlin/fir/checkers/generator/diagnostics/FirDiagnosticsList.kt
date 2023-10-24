@@ -183,6 +183,10 @@ object DIAGNOSTICS_LIST : DiagnosticList("FirErrors") {
         val MISSING_DEPENDENCY_CLASS by error<PsiElement>(PositioningStrategy.REFERENCED_NAME_BY_QUALIFIED) {
             parameter<ConeKotlinType>("type")
         }
+        val MISSING_DEPENDENCY_SUPERCLASS by error<PsiElement>(PositioningStrategy.REFERENCED_NAME_BY_QUALIFIED) {
+            parameter<ConeKotlinType>("missingType")
+            parameter<ConeKotlinType>("declarationType")
+        }
     }
 
     val CALL_RESOLUTION by object : DiagnosticGroup("Call resolution") {
@@ -230,6 +234,9 @@ object DIAGNOSTICS_LIST : DiagnosticList("FirErrors") {
         val ABSTRACT_SUPER_CALL_WARNING by warning<PsiElement>(PositioningStrategy.REFERENCED_NAME_BY_QUALIFIED)
         val INSTANCE_ACCESS_BEFORE_SUPER_CALL by error<PsiElement> {
             parameter<String>("target")
+        }
+        val SUPER_CALL_WITH_DEFAULT_PARAMETERS by error<PsiElement> {
+            parameter<String>("name")
         }
     }
 
@@ -393,6 +400,8 @@ object DIAGNOSTICS_LIST : DiagnosticList("FirErrors") {
         val VOLATILE_ON_DELEGATE by error<KtAnnotationEntry>()
 
         val NON_SOURCE_ANNOTATION_ON_INLINED_LAMBDA_EXPRESSION by error<KtAnnotationEntry>()
+
+        val POTENTIALLY_NON_REPORTED_ANNOTATION by warning<KtAnnotationEntry>()
     }
 
     val OPT_IN by object : DiagnosticGroup("OptIn") {
@@ -633,6 +642,9 @@ object DIAGNOSTICS_LIST : DiagnosticList("FirErrors") {
         val INFERENCE_UNSUCCESSFUL_FORK by error<PsiElement> {
             parameter<String>("message")
         }
+        val NESTED_CLASS_ACCESSED_VIA_INSTANCE_REFERENCE by error<PsiElement> {
+            parameter<FirClassLikeSymbol<*>>("symbol")
+        }
     }
 
     val AMBIGUITY by object : DiagnosticGroup("Ambiguity") {
@@ -680,6 +692,7 @@ object DIAGNOSTICS_LIST : DiagnosticList("FirErrors") {
             parameter<ConeKotlinType>("actualUpperBound")
         }
         val TYPE_ARGUMENTS_NOT_ALLOWED by error<PsiElement>()
+        val TYPE_ARGUMENTS_FOR_OUTER_CLASS_WHEN_NESTED_REFERENCED by error<PsiElement>()
         val WRONG_NUMBER_OF_TYPE_ARGUMENTS by error<PsiElement> {
             parameter<Int>("expectedCount")
             parameter<FirClassLikeSymbol<*>>("classifier")
@@ -767,6 +780,13 @@ object DIAGNOSTICS_LIST : DiagnosticList("FirErrors") {
 
         val IMPLICIT_NOTHING_RETURN_TYPE by error<PsiElement>(PositioningStrategy.NAME_IDENTIFIER)
         val IMPLICIT_NOTHING_PROPERTY_TYPE by error<PsiElement>(PositioningStrategy.NAME_IDENTIFIER)
+
+        val ABBREVIATED_NOTHING_RETURN_TYPE by error<PsiElement>(PositioningStrategy.NAME_IDENTIFIER) {
+            isSuppressible = true
+        }
+        val ABBREVIATED_NOTHING_PROPERTY_TYPE by error<PsiElement>(PositioningStrategy.NAME_IDENTIFIER) {
+            isSuppressible = true
+        }
 
         val CYCLIC_GENERIC_UPPER_BOUND by error<PsiElement>()
 
@@ -1214,7 +1234,7 @@ object DIAGNOSTICS_LIST : DiagnosticList("FirErrors") {
         // TODO: need to cover `by` as well as delegate expression
         val EXPECTED_DELEGATED_PROPERTY by error<KtExpression>()
         val EXPECTED_LATEINIT_PROPERTY by error<KtModifierListOwner>(PositioningStrategy.LATEINIT_MODIFIER)
-        val SUPERTYPE_INITIALIZED_IN_EXPECTED_CLASS by error<PsiElement>()
+        val SUPERTYPE_INITIALIZED_IN_EXPECTED_CLASS by error<KtElement>(PositioningStrategy.SUPERTYPE_INITIALIZED_IN_EXPECTED_CLASS_DIAGNOSTIC)
         val EXPECTED_PRIVATE_DECLARATION by error<KtModifierListOwner>(PositioningStrategy.VISIBILITY_MODIFIER)
         val EXPECTED_EXTERNAL_DECLARATION by error<KtModifierListOwner>(PositioningStrategy.EXTERNAL_MODIFIER)
         val EXPECTED_TAILREC_FUNCTION by error<KtModifierListOwner>(PositioningStrategy.TAILREC_MODIFIER)
@@ -1230,6 +1250,10 @@ object DIAGNOSTICS_LIST : DiagnosticList("FirErrors") {
         val DEFAULT_ARGUMENTS_IN_EXPECT_WITH_ACTUAL_TYPEALIAS by error<KtTypeAlias> {
             parameter<FirClassSymbol<*>>("expectClassSymbol")
             parameter<Collection<FirCallableSymbol<*>>>("members")
+        }
+        val DEFAULT_ARGUMENTS_IN_EXPECT_ACTUALIZED_BY_FAKE_OVERRIDE by error<KtClass>(PositioningStrategy.SUPERTYPES_LIST) {
+            parameter<FirRegularClassSymbol>("expectClassSymbol")
+            parameter<Collection<FirNamedFunctionSymbol>>("members")
         }
         val EXPECTED_FUNCTION_SOURCE_WITH_DEFAULT_ARGUMENTS_NOT_FOUND by error<PsiElement>()
 

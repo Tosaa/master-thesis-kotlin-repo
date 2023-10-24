@@ -38,11 +38,6 @@ FILE: [ResolvedTo(IMPORTS)] typeParameterOfTopSetter.kt
     public final [ResolvedTo(EXPECT_ACTUAL_MATCHING)] val <[ResolvedTo(EXPECT_ACTUAL_MATCHING)] Type> R|Type|.x: R|kotlin/Int|
         public [ResolvedTo(EXPECT_ACTUAL_MATCHING)] get(): R|kotlin/Int| { LAZY_BLOCK }
 
-ARGUMENTS_OF_ANNOTATIONS:
-FILE: [ResolvedTo(IMPORTS)] typeParameterOfTopSetter.kt
-    public final [ResolvedTo(ARGUMENTS_OF_ANNOTATIONS)] val <[ResolvedTo(ARGUMENTS_OF_ANNOTATIONS)] Type> R|Type|.x: R|kotlin/Int|
-        public [ResolvedTo(ARGUMENTS_OF_ANNOTATIONS)] get(): R|kotlin/Int| { LAZY_BLOCK }
-
 CONTRACTS:
 FILE: [ResolvedTo(IMPORTS)] typeParameterOfTopSetter.kt
     public final [ResolvedTo(CONTRACTS)] val <[ResolvedTo(CONTRACTS)] Type> R|Type|.x: R|kotlin/Int|
@@ -57,10 +52,10 @@ FILE: [ResolvedTo(IMPORTS)] typeParameterOfTopSetter.kt
             ^ IntegerLiteral(42)
         }
 
-ANNOTATIONS_ARGUMENTS_MAPPING:
+ANNOTATION_ARGUMENTS:
 FILE: [ResolvedTo(IMPORTS)] typeParameterOfTopSetter.kt
-    public final [ResolvedTo(ANNOTATIONS_ARGUMENTS_MAPPING)] val <[ResolvedTo(ANNOTATIONS_ARGUMENTS_MAPPING)] Type> R|Type|.x: R|kotlin/Int|
-        public [ResolvedTo(ANNOTATIONS_ARGUMENTS_MAPPING)] get(): R|kotlin/Int| {
+    public final [ResolvedTo(ANNOTATION_ARGUMENTS)] val <[ResolvedTo(ANNOTATION_ARGUMENTS)] Type> R|Type|.x: R|kotlin/Int|
+        public [ResolvedTo(ANNOTATION_ARGUMENTS)] get(): R|kotlin/Int| {
             ^ IntegerLiteral(42)
         }
 

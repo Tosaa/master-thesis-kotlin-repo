@@ -121,11 +121,8 @@ class FirProviderImpl(val session: FirSession, val kotlinScopeProvider: FirKotli
         override fun visitElement(element: FirElement, data: FirRecorderData) {}
 
         override fun visitRegularClass(regularClass: FirRegularClass, data: FirRecorderData) {
+            visitClassifier(regularClass, data)
             val classId = regularClass.symbol.classId
-            val prevFile = data.state.classifierContainerFileMap.put(classId, data.file)
-            data.state.classifierMap.put(classId, regularClass)?.let {
-                data.nameConflictsTracker?.registerClassifierRedeclaration(classId, regularClass.symbol, data.file, it.symbol, prevFile)
-            }
 
             if (!classId.isNestedClass && !classId.isLocal) {
                 data.state.classesInPackage.getOrPut(classId.packageFqName, ::mutableSetOf).add(classId.shortClassName)
@@ -136,13 +133,24 @@ class FirProviderImpl(val session: FirSession, val kotlinScopeProvider: FirKotli
         }
 
         override fun visitTypeAlias(typeAlias: FirTypeAlias, data: FirRecorderData) {
+            visitClassifier(typeAlias, data)
             val classId = typeAlias.symbol.classId
-            val prevFile = data.state.classifierContainerFileMap.put(classId, data.file)
-            data.state.classifierMap.put(classId, typeAlias)?.let {
-                data.nameConflictsTracker?.registerClassifierRedeclaration(classId, typeAlias.symbol, data.file, it.symbol, prevFile)
-            }
-
             data.state.classifierInPackage.getOrPut(classId.packageFqName, ::mutableSetOf).add(classId.shortClassName)
+        }
+
+        private fun visitClassifier(classLike: FirClassLikeDeclaration, data: FirRecorderData) {
+            val classId = classLike.symbol.classId
+
+            if (classId !in data.state.classifierMap) {
+                data.state.classifierMap[classId] = classLike
+                data.state.classifierContainerFileMap[classId] = data.file
+            } else {
+                data.nameConflictsTracker?.registerClassifierRedeclaration(
+                    classId, classLike.symbol, data.file,
+                    data.state.classifierMap.getValue(classId).symbol,
+                    data.state.classifierContainerFileMap.getValue(classId),
+                )
+            }
         }
 
         override fun visitPropertyAccessor(

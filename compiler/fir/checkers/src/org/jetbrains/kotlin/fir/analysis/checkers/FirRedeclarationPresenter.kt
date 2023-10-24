@@ -75,9 +75,6 @@ internal object FirRedeclarationPresenter {
 
     fun represent(it: FirNamedFunctionSymbol) = buildString {
         appendRepresentationBeforeCallableId(it)
-        if (it.isOperator) {
-            append("operator ")
-        }
         appendRepresentation(it.callableId)
         appendValueParameters(it)
     }
@@ -86,6 +83,10 @@ internal object FirRedeclarationPresenter {
     fun represent(it: FirVariableSymbol<*>) = buildString {
         appendRepresentationBeforeCallableId(it)
         appendRepresentation(it.callableId)
+
+        if (it is FirFieldSymbol) {
+            append("#f")
+        }
     }
 
     fun represent(it: FirTypeAliasSymbol) = representClassLike(it)

@@ -221,18 +221,20 @@ internal fun deserializeClassToSymbol(
             val zippedParameters =
                 classOrObject.primaryConstructorParameters zip declarations.filterIsInstance<FirProperty>()
             addDeclaration(
-                createDataClassCopyFunction(
+                // Explicit type arguments are needed to workaround KT-62544
+                createDataClassCopyFunction<Any, KtClassOrObject, KtParameter>(
                     classId,
                     classOrObject,
                     context.dispatchReceiver,
                     zippedParameters,
+                    isFromLibrary = true,
                     createClassTypeRefWithSourceKind = { firPrimaryConstructor.returnTypeRef.copyWithNewSourceKind(it) },
                     createParameterTypeRefWithSourceKind = { property, newKind ->
                         property.returnTypeRef.copyWithNewSourceKind(newKind)
                     },
-                    toFirSource = { src, kind -> KtFakeSourceElement(src as PsiElement, kind) },
+                    toFirSource = { src: Any?, kind -> KtFakeSourceElement(src as PsiElement, kind) },
                     addValueParameterAnnotations = { annotations += context.annotationDeserializer.loadAnnotations(it) },
-                    isVararg = { it.isVarArg }
+                    isVararg = { it.isVarArg },
                 )
             )
         }

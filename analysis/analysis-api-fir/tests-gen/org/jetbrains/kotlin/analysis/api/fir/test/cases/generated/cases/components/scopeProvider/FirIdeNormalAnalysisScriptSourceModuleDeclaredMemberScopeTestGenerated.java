@@ -47,6 +47,12 @@ public class FirIdeNormalAnalysisScriptSourceModuleDeclaredMemberScopeTestGenera
     }
 
     @Test
+    @TestMetadata("scriptWithClassDeclaration.kts")
+    public void testScriptWithClassDeclaration() throws Exception {
+        runTest("analysis/analysis-api/testData/components/scopeProvider/declaredMemberScope/scriptWithClassDeclaration.kts");
+    }
+
+    @Test
     @TestMetadata("simpleScriptWithResultDeclaration.kts")
     public void testSimpleScriptWithResultDeclaration() throws Exception {
         runTest("analysis/analysis-api/testData/components/scopeProvider/declaredMemberScope/simpleScriptWithResultDeclaration.kts");

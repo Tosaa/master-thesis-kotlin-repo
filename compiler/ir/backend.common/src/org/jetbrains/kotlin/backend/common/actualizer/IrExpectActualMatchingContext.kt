@@ -28,7 +28,6 @@ import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.resolve.calls.mpp.ExpectActualCollectionArgumentsCompatibilityCheckStrategy
 import org.jetbrains.kotlin.resolve.calls.mpp.ExpectActualMatchingContext
 import org.jetbrains.kotlin.resolve.calls.mpp.ExpectActualMatchingContext.AnnotationCallInfo
-import org.jetbrains.kotlin.mpp.SourceElementMarker
 import org.jetbrains.kotlin.resolve.checkers.OptInNames
 import org.jetbrains.kotlin.resolve.multiplatform.ExpectActualCompatibility
 import org.jetbrains.kotlin.types.AbstractTypeChecker
@@ -37,8 +36,6 @@ import org.jetbrains.kotlin.types.Variance
 import org.jetbrains.kotlin.types.model.KotlinTypeMarker
 import org.jetbrains.kotlin.types.model.TypeSubstitutorMarker
 import org.jetbrains.kotlin.types.model.TypeSystemContext
-import org.jetbrains.kotlin.utils.addToStdlib.UnsafeCastFunction
-import org.jetbrains.kotlin.utils.addToStdlib.castAll
 import org.jetbrains.kotlin.utils.addToStdlib.shouldNotBeCalled
 
 internal abstract class IrExpectActualMatchingContext(
@@ -179,8 +176,11 @@ internal abstract class IrExpectActualMatchingContext(
             else -> shouldNotBeCalled()
         }
 
-    override val RegularClassSymbolMarker.superTypes: List<KotlinTypeMarker>
+    override val RegularClassSymbolMarker.superTypes: List<IrType>
         get() = asIr().superTypes
+
+    override val RegularClassSymbolMarker.superTypesRefs: List<TypeRefMarker>
+        get() = superTypes
 
     override val RegularClassSymbolMarker.defaultType: KotlinTypeMarker
         get() = asIr().defaultType
@@ -238,16 +238,14 @@ internal abstract class IrExpectActualMatchingContext(
     override val PropertySymbolMarker.setter: FunctionSymbolMarker?
         get() = asIr().setter?.symbol
 
-    @OptIn(UnsafeCastFunction::class)
     override fun createExpectActualTypeParameterSubstitutor(
-        expectTypeParameters: List<TypeParameterSymbolMarker>,
-        actualTypeParameters: List<TypeParameterSymbolMarker>,
+        expectActualTypeParameters: List<Pair<TypeParameterSymbolMarker, TypeParameterSymbolMarker>>,
         parentSubstitutor: TypeSubstitutorMarker?,
     ): TypeSubstitutorMarker {
-        val expectParameters = expectTypeParameters.castAll<IrTypeParameterSymbol>()
-        val actualParameters = actualTypeParameters.castAll<IrTypeParameterSymbol>()
-        val actualTypes = actualParameters.map { it.owner.defaultType }
-        val substitutor = IrTypeSubstitutor(expectParameters, actualTypes, typeContext.irBuiltIns, allowEmptySubstitution = true)
+        val typeParametersToArguments = expectActualTypeParameters.associate { (expect, actual) ->
+            (expect as IrTypeParameterSymbol) to (actual as IrTypeParameterSymbol).owner.defaultType
+        }
+        val substitutor = IrTypeSubstitutor(typeParametersToArguments, allowEmptySubstitution = true)
         return when (parentSubstitutor) {
             null -> substitutor
             is AbstractIrTypeSubstitutor -> IrChainedSubstitutor(parentSubstitutor, substitutor)
@@ -279,10 +277,13 @@ internal abstract class IrExpectActualMatchingContext(
     override val CallableSymbolMarker.dispatchReceiverType: KotlinTypeMarker?
         get() = (asIr().parent as? IrClass)?.defaultType
 
-    override val CallableSymbolMarker.extensionReceiverType: KotlinTypeMarker?
+    override val CallableSymbolMarker.extensionReceiverType: IrType?
         get() = safeAsIr<IrFunction>()?.extensionReceiverParameter?.type
 
-    override val CallableSymbolMarker.returnType: KotlinTypeMarker
+    override val CallableSymbolMarker.extensionReceiverTypeRef: TypeRefMarker?
+        get() = extensionReceiverType
+
+    override val CallableSymbolMarker.returnType: IrType
         get() = processIr(
             onFunction = { it.returnType },
             onProperty = { it.getter?.returnType ?: it.backingField?.type ?: error("No type for property: $it") },
@@ -290,6 +291,10 @@ internal abstract class IrExpectActualMatchingContext(
             onValueParameter = { it.type },
             onEnumEntry = { it.parentAsClass.defaultType }
         )
+
+    override val CallableSymbolMarker.returnTypeRef: TypeRefMarker
+        get() = returnType
+
 
     override val CallableSymbolMarker.typeParameters: List<TypeParameterSymbolMarker>
         get() = processIr(
@@ -320,14 +325,20 @@ internal abstract class IrExpectActualMatchingContext(
         return irConstructor.constructedClass.isAnnotationClass
     }
 
-    override val TypeParameterSymbolMarker.bounds: List<KotlinTypeMarker>
+    override val TypeParameterSymbolMarker.bounds: List<IrType>
         get() = asIr().superTypes
+    override val TypeParameterSymbolMarker.boundsTypeRefs: List<TypeRefMarker>
+        get() = bounds
     override val TypeParameterSymbolMarker.variance: Variance
         get() = asIr().variance
     override val TypeParameterSymbolMarker.isReified: Boolean
         get() = asIr().isReified
 
-    override fun areCompatibleExpectActualTypes(expectType: KotlinTypeMarker?, actualType: KotlinTypeMarker?): Boolean {
+    override fun areCompatibleExpectActualTypes(
+        expectType: KotlinTypeMarker?,
+        actualType: KotlinTypeMarker?,
+        parameterOfAnnotationComparisonMode: Boolean,
+    ): Boolean {
         if (expectType == null) return actualType == null
         if (actualType == null) return false
         /*
@@ -348,11 +359,31 @@ internal abstract class IrExpectActualMatchingContext(
          */
         val actualizedExpectType = expectType.actualize()
         val actualizedActualType = actualType.actualize()
+
+        if (parameterOfAnnotationComparisonMode && actualizedExpectType is IrSimpleType && actualizedExpectType.isArray() &&
+            actualizedActualType is IrSimpleType && actualizedActualType.isArray()
+        ) {
+            return AbstractTypeChecker.equalTypes(
+                createTypeCheckerState(),
+                actualizedExpectType.convertToArrayWithOutProjections(),
+                actualizedActualType.convertToArrayWithOutProjections()
+            )
+        }
+
         return AbstractTypeChecker.equalTypes(
             createTypeCheckerState(),
             actualizedExpectType,
             actualizedActualType
         )
+    }
+
+    private fun IrSimpleType.convertToArrayWithOutProjections(): IrSimpleType {
+        val argumentsWithOutProjection = List(arguments.size) { i ->
+            val typeArgument = arguments[i]
+            if (typeArgument !is IrSimpleType) typeArgument
+            else makeTypeProjection(typeArgument, Variance.OUT_VARIANCE)
+        }
+        return IrSimpleTypeImpl(classifier, isNullable(), argumentsWithOutProjection, annotations)
     }
 
     private fun createTypeCheckerState(): TypeCheckerState {
@@ -438,7 +469,7 @@ internal abstract class IrExpectActualMatchingContext(
             var ir = asIr()
 
             if (ir.isFakeOverride && ir is IrOverridableDeclaration<*>) {
-                ir.resolveFakeOverrideOrNull()?.let { ir = it }
+                ir.resolveFakeOverride()?.let { ir = it }
             }
 
             return when (ir.origin) {
@@ -533,4 +564,29 @@ internal abstract class IrExpectActualMatchingContext(
     private object IrSourceElementStub : SourceElementMarker
 
     override fun DeclarationSymbolMarker.getSourceElement(): SourceElementMarker = IrSourceElementStub
+
+    override fun TypeRefMarker.getClassId(): ClassId? = (this as IrType).getClass()?.classId
+
+    override fun checkAnnotationsOnTypeRefAndArguments(
+        expectContainingSymbol: DeclarationSymbolMarker,
+        actualContainingSymbol: DeclarationSymbolMarker,
+        expectTypeRef: TypeRefMarker,
+        actualTypeRef: TypeRefMarker,
+        checker: ExpectActualMatchingContext.AnnotationsCheckerCallback
+    ) {
+        check(expectTypeRef is IrType && actualTypeRef is IrType)
+
+        fun IrType.getAnnotations() = annotations.map(::AnnotationCallInfoImpl)
+
+        checker.check(expectTypeRef.getAnnotations(), actualTypeRef.getAnnotations(), IrSourceElementStub)
+
+        if (expectTypeRef !is IrSimpleType || actualTypeRef !is IrSimpleType) return
+        if (expectTypeRef.arguments.size != actualTypeRef.arguments.size) return
+
+        for ((expectArg, actualArg) in expectTypeRef.arguments.zip(actualTypeRef.arguments)) {
+            val expectArgType = expectArg.typeOrNull ?: continue
+            val actualArgType = actualArg.typeOrNull ?: continue
+            checkAnnotationsOnTypeRefAndArguments(expectContainingSymbol, actualContainingSymbol, expectArgType, actualArgType, checker)
+        }
+    }
 }

@@ -70,15 +70,6 @@ FILE: [ResolvedTo(IMPORTS)] secondaryConstructor.kt
 
     }
 
-ARGUMENTS_OF_ANNOTATIONS:
-FILE: [ResolvedTo(IMPORTS)] secondaryConstructor.kt
-    public final [ResolvedTo(ARGUMENTS_OF_ANNOTATIONS)] fun resolveMe(): R|kotlin/Unit| { LAZY_BLOCK }
-    public? final? [ResolvedTo(RAW_FIR)] fun receive([ResolvedTo(RAW_FIR)] value: A): R|kotlin/Unit| { LAZY_BLOCK }
-    public? final? [ResolvedTo(RAW_FIR)] class A : R|kotlin/Any| {
-        public? [ResolvedTo(RAW_FIR)] [ContainingClassKey=A] constructor([ResolvedTo(RAW_FIR)] x: Int): R|A| { LAZY_BLOCK }
-
-    }
-
 CONTRACTS:
 FILE: [ResolvedTo(IMPORTS)] secondaryConstructor.kt
     public final [ResolvedTo(CONTRACTS)] fun resolveMe(): R|kotlin/Unit| {
@@ -101,9 +92,9 @@ FILE: [ResolvedTo(IMPORTS)] secondaryConstructor.kt
 
     }
 
-ANNOTATIONS_ARGUMENTS_MAPPING:
+ANNOTATION_ARGUMENTS:
 FILE: [ResolvedTo(IMPORTS)] secondaryConstructor.kt
-    public final [ResolvedTo(ANNOTATIONS_ARGUMENTS_MAPPING)] fun resolveMe(): R|kotlin/Unit| {
+    public final [ResolvedTo(ANNOTATION_ARGUMENTS)] fun resolveMe(): R|kotlin/Unit| {
         receive#(A#(IntegerLiteral(42)))
     }
     public? final? [ResolvedTo(RAW_FIR)] fun receive([ResolvedTo(RAW_FIR)] value: A): R|kotlin/Unit| { LAZY_BLOCK }

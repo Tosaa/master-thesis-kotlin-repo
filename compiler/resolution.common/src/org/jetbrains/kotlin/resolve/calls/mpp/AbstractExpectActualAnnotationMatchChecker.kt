@@ -12,6 +12,7 @@ import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.name.StandardClassIds
 import org.jetbrains.kotlin.resolve.checkers.OptInNames
 import org.jetbrains.kotlin.resolve.multiplatform.ExpectActualCompatibility
+import org.jetbrains.kotlin.utils.zipIfSizesAreEqual
 import org.jetbrains.kotlin.resolve.multiplatform.ExpectActualAnnotationsIncompatibilityType as IncompatibilityType
 
 object AbstractExpectActualAnnotationMatchChecker {
@@ -84,6 +85,13 @@ object AbstractExpectActualAnnotationMatchChecker {
             arePropertyGetterAndSetterAnnotationsCompatible(expectSymbol, actualSymbol)?.let { return it }
         }
 
+        areAnnotationsSetOnTypesCompatible(
+            expectSymbol, actualSymbol, expectSymbol.extensionReceiverTypeRef, actualSymbol.extensionReceiverTypeRef
+        )?.let { return it }
+
+        areAnnotationsSetOnTypesCompatible(expectSymbol, actualSymbol, expectSymbol.returnTypeRef, actualSymbol.returnTypeRef)
+            ?.let { return it }
+
         return null
     }
 
@@ -126,6 +134,16 @@ object AbstractExpectActualAnnotationMatchChecker {
             checkAnnotationsOnEnumEntries(expectSymbol, actualSymbol)?.let { return it }
         }
 
+        // actual may have more super types, that's why we can't just zip them.
+        // Identifying super type with ClassId (without type parameters) is enough because same type can't be extended twice.
+        val actualSuperTypes = actualSymbol.superTypesRefs.groupBy { it.getClassId() }
+        for (expectSuperType in expectSymbol.superTypesRefs) {
+            val expectClassId = expectSuperType.getClassId() ?: continue
+            val actualSuperType = actualSuperTypes[expectClassId]?.singleOrNull() ?: continue
+            areAnnotationsSetOnTypesCompatible(expectSymbol, actualSymbol, expectSuperType, actualSuperType)
+                ?.let { return it }
+        }
+
         return null
     }
 
@@ -148,13 +166,12 @@ object AbstractExpectActualAnnotationMatchChecker {
         val expectParams = expectSymbol.valueParameters
         val actualParams = actualSymbol.valueParameters
 
-        if (expectParams.size != actualParams.size) return null
-
-        return expectParams.zip(actualParams).firstNotNullOfOrNull { (expectParam, actualParam) ->
+        return expectParams.zipIfSizesAreEqual(actualParams)?.firstNotNullOfOrNull { (expectParam, actualParam) ->
             areAnnotationsSetOnDeclarationsCompatible(expectParam, actualParam)?.let {
                 // Write containing declarations into diagnostic
                 Incompatibility(expectSymbol, actualSymbol, actualParam.getSourceElement(), it.type)
             }
+                ?: areAnnotationsSetOnTypesCompatible(expectSymbol, actualSymbol, expectParam.returnTypeRef, actualParam.returnTypeRef)
         }
     }
 
@@ -173,14 +190,58 @@ object AbstractExpectActualAnnotationMatchChecker {
 
         val expectParams = expectSymbol.getTypeParameters() ?: return null
         val actualParams = actualSymbol.getTypeParameters() ?: return null
-        if (expectParams.size != actualParams.size) return null
 
-        return expectParams.zip(actualParams).firstNotNullOfOrNull { (expectParam, actualParam) ->
+        return expectParams.zipIfSizesAreEqual(actualParams)?.firstNotNullOfOrNull { (expectParam, actualParam) ->
             areAnnotationsSetOnDeclarationsCompatible(expectParam, actualParam)?.let {
                 // Write containing declarations into diagnostic
                 Incompatibility(expectSymbol, actualSymbol, actualParam.getSourceElement(), it.type)
             }
+                ?: areAnnotationsOnTypeParameterBoundsCompatible(expectSymbol, actualSymbol, expectParam, actualParam)
         }
+    }
+
+    context (ExpectActualMatchingContext<*>)
+    private fun areAnnotationsOnTypeParameterBoundsCompatible(
+        expectDeclarationSymbol: DeclarationSymbolMarker,
+        actualDeclarationSymbol: DeclarationSymbolMarker,
+        expectParam: TypeParameterSymbolMarker,
+        actualParam: TypeParameterSymbolMarker,
+    ): Incompatibility? {
+        val expectBounds = expectParam.boundsTypeRefs
+        val actualBounds = actualParam.boundsTypeRefs
+
+        return expectBounds.zipIfSizesAreEqual(actualBounds)?.firstNotNullOfOrNull { (expectType, actualType) ->
+            // Identifying bounds by ClassId (without type parameters) is enough because type can't have two bounds of same type.
+            if (expectType.getClassId() != actualType.getClassId()) {
+                // Expect and actual type bounds must be same and have same order, otherwise expect-actual compatibility checker
+                // reports error. So, skip in case of incompatibility to not report extra warning.
+                return@firstNotNullOfOrNull null
+            }
+            areAnnotationsSetOnTypesCompatible(expectDeclarationSymbol, actualDeclarationSymbol, expectType, actualType)
+        }
+    }
+
+    context (ExpectActualMatchingContext<*>)
+    private fun areAnnotationsSetOnTypesCompatible(
+        expectDeclarationSymbol: DeclarationSymbolMarker,
+        actualDeclarationSymbol: DeclarationSymbolMarker,
+        expectTypeRef: TypeRefMarker?,
+        actualTypeRef: TypeRefMarker?,
+    ): Incompatibility? {
+        if (expectTypeRef == null || actualTypeRef == null) return null
+
+        var firstIncompatibility: Incompatibility? = null
+
+        checkAnnotationsOnTypeRefAndArguments(
+            expectDeclarationSymbol, actualDeclarationSymbol,
+            expectTypeRef, actualTypeRef
+        ) { expectAnnotations, actualAnnotations, actualTypeRefSource ->
+            if (firstIncompatibility == null) {
+                firstIncompatibility = areAnnotationListsCompatible(expectAnnotations, actualAnnotations, actualDeclarationSymbol)
+                    ?.let { Incompatibility(expectDeclarationSymbol, actualDeclarationSymbol, actualTypeRefSource, type = it) }
+            }
+        }
+        return firstIncompatibility
     }
 
     context (ExpectActualMatchingContext<*>)
@@ -188,12 +249,20 @@ object AbstractExpectActualAnnotationMatchChecker {
         expectSymbol: DeclarationSymbolMarker,
         actualSymbol: DeclarationSymbolMarker,
     ): Incompatibility? {
-        // TODO(Roman.Efremov, KT-60671): check annotations set on types
+        return areAnnotationListsCompatible(expectSymbol.annotations, actualSymbol.annotations, actualSymbol)
+            ?.let { Incompatibility(expectSymbol, actualSymbol, actualSymbol.getSourceElement(), it) }
+    }
 
-        val skipSourceAnnotations = actualSymbol.hasSourceAnnotationsErased
-        val actualAnnotationsByName = actualSymbol.annotations.groupBy { it.classId }
+    context (ExpectActualMatchingContext<*>)
+    private fun areAnnotationListsCompatible(
+        expectAnnotations: List<ExpectActualMatchingContext.AnnotationCallInfo>,
+        actualAnnotations: List<ExpectActualMatchingContext.AnnotationCallInfo>,
+        actualContainerSymbol: DeclarationSymbolMarker,
+    ): IncompatibilityType<ExpectActualMatchingContext.AnnotationCallInfo>? {
+        val skipSourceAnnotations = actualContainerSymbol.hasSourceAnnotationsErased
+        val actualAnnotationsByName = actualAnnotations.groupBy { it.classId }
 
-        for (expectAnnotation in expectSymbol.annotations) {
+        for (expectAnnotation in expectAnnotations) {
             val expectClassId = expectAnnotation.classId ?: continue
             if (expectClassId in SKIPPED_CLASS_IDS || expectAnnotation.isOptIn) {
                 continue
@@ -203,24 +272,18 @@ object AbstractExpectActualAnnotationMatchChecker {
             }
             val actualAnnotationsWithSameClassId = actualAnnotationsByName[expectClassId] ?: emptyList()
             if (actualAnnotationsWithSameClassId.isEmpty()) {
-                return Incompatibility(
-                    expectSymbol,
-                    actualSymbol,
-                    actualSymbol.getSourceElement(),
-                    IncompatibilityType.MissingOnActual(expectAnnotation)
-                )
+                return IncompatibilityType.MissingOnActual(expectAnnotation)
             }
             val collectionCompatibilityChecker = getAnnotationCollectionArgumentsCompatibilityChecker(expectClassId)
             if (actualAnnotationsWithSameClassId.none {
                     areAnnotationArgumentsEqual(expectAnnotation, it, collectionCompatibilityChecker)
                 }) {
-                val incompatibilityType = if (actualAnnotationsWithSameClassId.size == 1) {
+                return if (actualAnnotationsWithSameClassId.size == 1) {
                     IncompatibilityType.DifferentOnActual(expectAnnotation, actualAnnotationsWithSameClassId.single())
                 } else {
                     // In the case of repeatable annotations, we can't choose on which to report
                     IncompatibilityType.MissingOnActual(expectAnnotation)
                 }
-                return Incompatibility(expectSymbol, actualSymbol, actualSymbol.getSourceElement(), incompatibilityType)
             }
         }
         return null

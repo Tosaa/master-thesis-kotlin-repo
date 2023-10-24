@@ -10,6 +10,7 @@ import org.jetbrains.kotlin.analysis.low.level.api.fir.LLFirModuleResolveCompone
 import org.jetbrains.kotlin.analysis.low.level.api.fir.sessions.LLFirSession
 import org.jetbrains.kotlin.analysis.low.level.api.fir.transformers.SyntheticFirClassProvider
 import org.jetbrains.kotlin.analysis.providers.KotlinDeclarationProvider
+import org.jetbrains.kotlin.analysis.providers.KotlinPackageProvider
 import org.jetbrains.kotlin.fir.NoMutableState
 import org.jetbrains.kotlin.fir.ThreadSafeMutableState
 import org.jetbrains.kotlin.fir.declarations.FirClassLikeDeclaration
@@ -106,7 +107,11 @@ internal class LLFirProvider(
     internal inner class SymbolProvider : LLFirKotlinSymbolProvider(session) {
         override val declarationProvider: KotlinDeclarationProvider get() = providerHelper.declarationProvider
 
+        override val packageProvider: KotlinPackageProvider get() = providerHelper.packageProvider
+
         override val symbolNamesProvider: FirSymbolNamesProvider get() = providerHelper.symbolNameCache
+
+        override val allowKotlinPackage get() = providerHelper.allowKotlinPackage
 
         override fun getClassLikeSymbolByClassId(classId: ClassId): FirClassLikeSymbol<*>? {
             if (!providerHelper.symbolNameCache.mayHaveTopLevelClassifier(classId)) return null

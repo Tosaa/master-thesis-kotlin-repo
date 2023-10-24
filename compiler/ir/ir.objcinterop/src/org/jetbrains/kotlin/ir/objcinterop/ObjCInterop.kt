@@ -6,7 +6,6 @@
 package org.jetbrains.kotlin.ir.objcinterop
 
 import org.jetbrains.kotlin.descriptors.*
-import org.jetbrains.kotlin.descriptors.annotations.AnnotationDescriptor
 import org.jetbrains.kotlin.incremental.components.NoLookupLocation
 import org.jetbrains.kotlin.ir.ObsoleteDescriptorBasedAPI
 import org.jetbrains.kotlin.ir.declarations.*
@@ -18,7 +17,6 @@ import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.name.NativeForwardDeclarationKind
 import org.jetbrains.kotlin.name.NativeStandardInteropNames
 import org.jetbrains.kotlin.native.interop.ObjCMethodInfo
-import org.jetbrains.kotlin.resolve.ExternalOverridabilityCondition
 import org.jetbrains.kotlin.resolve.annotations.getAnnotationStringValue
 import org.jetbrains.kotlin.resolve.annotations.getArgumentValueOrNull
 import org.jetbrains.kotlin.resolve.descriptorUtil.fqNameSafe
@@ -27,7 +25,8 @@ import org.jetbrains.kotlin.resolve.descriptorUtil.parentsWithSelf
 import org.jetbrains.kotlin.types.KotlinType
 import org.jetbrains.kotlin.types.TypeUtils
 import org.jetbrains.kotlin.types.typeUtil.supertypes
-import org.jetbrains.kotlin.utils.atMostOne
+
+private fun IrFunction.isFakeOverrideInProgressOfBuilding() = this is IrFunctionWithLateBinding && !isBound && isFakeOverride
 
 internal val interopPackageName = NativeStandardInteropNames.cInteropPackage
 internal val objCObjectFqName = NativeStandardInteropNames.objCObjectClassId.asSingleFqName()
@@ -118,7 +117,7 @@ private fun FunctionDescriptor.decodeObjCMethodAnnotation(): ObjCMethodInfo? {
 }
 
 private fun IrFunction.decodeObjCMethodAnnotation(): ObjCMethodInfo? {
-    assert (this.isReal)
+    require(this.isReal || this.isFakeOverrideInProgressOfBuilding())
 
     val methodInfo = this.annotations.findAnnotation(objCMethodFqName)?.let {
         ObjCMethodInfo(
@@ -158,6 +157,11 @@ private fun FunctionDescriptor.getObjCMethodInfo(onlyExternal: Boolean): ObjCMet
  * @param onlyExternal indicates whether to accept overriding methods from Kotlin classes
  */
 private fun IrSimpleFunction.getObjCMethodInfo(onlyExternal: Boolean): ObjCMethodInfo? {
+    // During fake override building we need this method, but overriddenSymbols are not valid yet.
+    // So let's pretend this override is real. It has annotation copied, if it exists
+    if (this.isFakeOverrideInProgressOfBuilding()) {
+        decodeObjCMethodAnnotation()?.let { return it }
+    }
     if (this.isReal) {
         this.decodeObjCMethodAnnotation()?.let { return it }
 
@@ -186,70 +190,6 @@ fun IrFunction.isObjCBridgeBased(): Boolean {
     return this.annotations.hasAnnotation(objCMethodFqName) ||
             this.annotations.hasAnnotation(objCFactoryFqName) ||
             this.annotations.hasAnnotation(objCConstructorFqName)
-}
-
-/**
- * Describes method overriding rules for Objective-C methods.
- *
- * This class is applied at [org.jetbrains.kotlin.resolve.OverridingUtil] as configured with
- * `META-INF/services/org.jetbrains.kotlin.resolve.ExternalOverridabilityCondition` resource.
- */
-class ObjCOverridabilityCondition : ExternalOverridabilityCondition {
-
-    override fun getContract() = ExternalOverridabilityCondition.Contract.BOTH
-
-    override fun isOverridable(
-            superDescriptor: CallableDescriptor,
-            subDescriptor: CallableDescriptor,
-            subClassDescriptor: ClassDescriptor?
-    ): ExternalOverridabilityCondition.Result {
-        if (superDescriptor.name == subDescriptor.name) { // Slow path:
-            if (superDescriptor is FunctionDescriptor && subDescriptor is FunctionDescriptor) {
-                superDescriptor.getExternalObjCMethodInfo()?.let { superInfo ->
-                    val subInfo = subDescriptor.getExternalObjCMethodInfo()
-                    if (subInfo != null) {
-                        // Overriding Objective-C method by Objective-C method in interop stubs.
-                        // Don't even check method signatures:
-                        return if (superInfo.selector == subInfo.selector) {
-                            ExternalOverridabilityCondition.Result.OVERRIDABLE
-                        } else {
-                            ExternalOverridabilityCondition.Result.INCOMPATIBLE
-                        }
-                    } else {
-                        // Overriding Objective-C method by Kotlin method.
-                        if (!parameterNamesMatch(superDescriptor, subDescriptor)) {
-                            return ExternalOverridabilityCondition.Result.INCOMPATIBLE
-                        }
-                    }
-                }
-            } else if (superDescriptor.isExternalObjCClassProperty() && subDescriptor.isExternalObjCClassProperty()) {
-                return ExternalOverridabilityCondition.Result.OVERRIDABLE
-            }
-        }
-
-        return ExternalOverridabilityCondition.Result.UNKNOWN
-    }
-
-    private fun CallableDescriptor.isExternalObjCClassProperty() = this is PropertyDescriptor &&
-            (this.containingDeclaration as? ClassDescriptor)?.isExternalObjCClass() == true
-
-    private fun parameterNamesMatch(first: FunctionDescriptor, second: FunctionDescriptor): Boolean {
-        // The original Objective-C method selector is represented as
-        // function name and parameter names (except first).
-
-        if (first.valueParameters.size != second.valueParameters.size) {
-            return false
-        }
-
-        first.valueParameters.forEachIndexed { index, parameter ->
-            if (index > 0 && parameter.name != second.valueParameters[index].name) {
-                return false
-            }
-        }
-
-        return true
-    }
-
 }
 
 fun IrConstructor.objCConstructorIsDesignated(): Boolean =

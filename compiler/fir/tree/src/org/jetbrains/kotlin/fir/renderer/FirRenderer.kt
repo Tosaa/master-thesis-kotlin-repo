@@ -46,6 +46,8 @@ class FirRenderer(
     override val valueParameterRenderer: FirValueParameterRenderer? = FirValueParameterRenderer(),
     override val errorExpressionRenderer: FirErrorExpressionRenderer? = FirErrorExpressionOnlyErrorRenderer(),
     override val fileAnnotationsContainerRenderer: FirFileAnnotationsContainerRenderer? = null,
+    override val resolvedNamedReferenceRenderer: FirResolvedNamedReferenceRenderer = FirResolvedNamedReferenceRendererWithLabel(),
+    override val resolvedQualifierRenderer: FirResolvedQualifierRenderer = FirResolvedQualifierRendererWithLabel(),
 ) : FirRendererComponents {
 
     override val visitor = Visitor()
@@ -98,6 +100,8 @@ class FirRenderer(
         valueParameterRenderer?.components = this
         errorExpressionRenderer?.components = this
         fileAnnotationsContainerRenderer?.components = this
+        resolvedNamedReferenceRenderer.components = this
+        resolvedQualifierRenderer.components = this
     }
 
     fun renderElementAsString(element: FirElement, trim: Boolean = false): String {
@@ -924,55 +928,11 @@ class FirRenderer(
         }
 
         override fun visitResolvedNamedReference(resolvedNamedReference: FirResolvedNamedReference) {
-            print("R|")
-            val symbol = resolvedNamedReference.resolvedSymbol
-            val isSubstitutionOverride = (symbol.fir as? FirCallableDeclaration)?.isSubstitutionOverride == true
-
-            if (isSubstitutionOverride) {
-                print("SubstitutionOverride<")
-            }
-
-            referencedSymbolRenderer.printReference(symbol.unwrapIntersectionOverrides())
-
-            if (resolvedNamedReference is FirResolvedCallableReference) {
-                if (resolvedNamedReference.inferredTypeArguments.isNotEmpty()) {
-                    print("<")
-                    for ((index, element) in resolvedNamedReference.inferredTypeArguments.withIndex()) {
-                        if (index > 0) {
-                            print(", ")
-                        }
-                        typeRenderer.render(element)
-                    }
-                    print(">")
-                }
-            }
-
-            if (isSubstitutionOverride) {
-                when (symbol) {
-                    is FirNamedFunctionSymbol -> {
-                        print(": ")
-                        symbol.fir.returnTypeRef.accept(this)
-                    }
-                    is FirPropertySymbol -> {
-                        print(": ")
-                        symbol.fir.returnTypeRef.accept(this)
-                    }
-                }
-                print(">")
-            }
-            if (resolvedNamedReference is FirResolvedErrorReference) {
-                print("<${resolvedNamedReference.diagnostic.reason}>#")
-            }
-            print("|")
+            resolvedNamedReferenceRenderer.render(resolvedNamedReference)
         }
 
         override fun visitResolvedErrorReference(resolvedErrorReference: FirResolvedErrorReference) {
             visitResolvedNamedReference(resolvedErrorReference)
-        }
-
-        private fun FirBasedSymbol<*>.unwrapIntersectionOverrides(): FirBasedSymbol<*> {
-            (this as? FirCallableSymbol<*>)?.baseForIntersectionOverride?.let { return it.unwrapIntersectionOverrides() }
-            return this
         }
 
         override fun visitResolvedCallableReference(resolvedCallableReference: FirResolvedCallableReference) {
@@ -1179,18 +1139,7 @@ class FirRenderer(
         }
 
         override fun visitResolvedQualifier(resolvedQualifier: FirResolvedQualifier) {
-            annotationRenderer?.render(resolvedQualifier)
-            print("Q|")
-            val classId = resolvedQualifier.classId
-            if (classId != null) {
-                print(classId.asString())
-            } else {
-                print(resolvedQualifier.packageFqName.asString().replace(".", "/"))
-            }
-            if (resolvedQualifier.isNullableLHSForCallableReference) {
-                print("?")
-            }
-            print("|")
+            resolvedQualifierRenderer.render(resolvedQualifier)
         }
 
         override fun visitBinaryLogicExpression(binaryLogicExpression: FirBinaryLogicExpression) {

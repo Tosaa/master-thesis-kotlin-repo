@@ -326,6 +326,12 @@ public class JsIrES6InvalidationPerFileTestGenerated extends AbstractJsIrES6Inva
     }
 
     @Test
+    @TestMetadata("jsModuleAnnotationOnObjectWithUsage")
+    public void testJsModuleAnnotationOnObjectWithUsage() throws Exception {
+        runTest("js/js.translator/testData/incremental/invalidation/jsModuleAnnotationOnObjectWithUsage/");
+    }
+
+    @Test
     @TestMetadata("languageVersionSettings")
     public void testLanguageVersionSettings() throws Exception {
         runTest("js/js.translator/testData/incremental/invalidation/languageVersionSettings/");
@@ -341,6 +347,12 @@ public class JsIrES6InvalidationPerFileTestGenerated extends AbstractJsIrES6Inva
     @TestMetadata("localObjectsLeakThroughInterface")
     public void testLocalObjectsLeakThroughInterface() throws Exception {
         runTest("js/js.translator/testData/incremental/invalidation/localObjectsLeakThroughInterface/");
+    }
+
+    @Test
+    @TestMetadata("mainFunction")
+    public void testMainFunction() throws Exception {
+        runTest("js/js.translator/testData/incremental/invalidation/mainFunction/");
     }
 
     @Test

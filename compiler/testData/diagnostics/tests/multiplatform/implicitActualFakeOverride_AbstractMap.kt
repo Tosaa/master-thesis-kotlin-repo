@@ -12,6 +12,4 @@ public expect abstract class AbstractMutableMap<K, V> : MutableMap<K, V> {
 
 import java.util.AbstractMap
 
-@OptIn(kotlin.ExperimentalMultiplatform::class)
-@kotlin.AllowDifferentMembersInActual
 public actual abstract class AbstractMutableMap<K, V>() : MutableMap<K, V>, AbstractMap<K, V>()

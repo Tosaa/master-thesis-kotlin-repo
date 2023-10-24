@@ -26,16 +26,19 @@ import org.jetbrains.kotlin.gradle.plugin.sources.KotlinDependencyScope
 import org.jetbrains.kotlin.gradle.plugin.sources.sourceSetDependencyConfigurationByScope
 import org.jetbrains.kotlin.gradle.targets.metadata.isKotlinGranularMetadataEnabled
 import org.jetbrains.kotlin.gradle.tooling.buildKotlinToolingMetadataTask
+import org.jetbrains.kotlin.gradle.utils.whenEvaluated
 
-internal fun configurePublishingWithMavenPublish(project: Project) = project.pluginManager.withPlugin("maven-publish") {
-    if (project.kotlinPropertiesProvider.createDefaultMultiplatformPublications) {
-        project.extensions.configure(PublishingExtension::class.java) { publishing ->
-            createRootPublication(project, publishing)
-            createTargetPublications(project, publishing)
+internal val MultiplatformPublishingSetupAction = KotlinProjectSetupAction {
+    project.pluginManager.withPlugin("maven-publish") {
+        if (project.kotlinPropertiesProvider.createDefaultMultiplatformPublications) {
+            project.extensions.configure(PublishingExtension::class.java) { publishing ->
+                createRootPublication(project, publishing)
+                createTargetPublications(project, publishing)
+            }
         }
-    }
 
-    project.components.add(project.multiplatformExtension.rootSoftwareComponent)
+        project.components.add(project.multiplatformExtension.rootSoftwareComponent)
+    }
 }
 
 /**

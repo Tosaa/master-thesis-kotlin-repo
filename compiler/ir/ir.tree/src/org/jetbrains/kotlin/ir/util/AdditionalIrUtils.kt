@@ -5,7 +5,6 @@
 
 package org.jetbrains.kotlin.ir.util
 
-import com.intellij.util.containers.SLRUCache
 import org.jetbrains.kotlin.descriptors.DescriptorVisibilities
 import org.jetbrains.kotlin.ir.*
 import org.jetbrains.kotlin.ir.declarations.*
@@ -261,51 +260,26 @@ val IrFileEntry.lineStartOffsets: IntArray
 
 class NaiveSourceBasedFileEntryImpl(
     override val name: String,
-    private val lineStartOffsets: IntArray = intArrayOf(),
+    override val lineStartOffsets: IntArray = intArrayOf(),
     override val maxOffset: Int = UNDEFINED_OFFSET
-) : IrFileEntry {
+) : AbstractIrFileEntry() {
     val lineStartOffsetsAreEmpty: Boolean
         get() = lineStartOffsets.isEmpty()
 
-    private val MAX_SAVED_LINE_NUMBERS = 50
-
-    // Map with several last calculated line numbers.
-    // Calculating for same offset is made many times during code and debug info generation.
-    // In the worst case at least getting column recalculates line because it is usually called after getting line.
-    private val calculatedBeforeLineNumbers = object : SLRUCache<Int, Int>(
-        MAX_SAVED_LINE_NUMBERS / 2, MAX_SAVED_LINE_NUMBERS / 2
-    ) {
-        override fun createValue(key: Int): Int {
-            val index = lineStartOffsets.binarySearch(key)
-            return if (index >= 0) index else -index - 2
-        }
-    }
-
-    private val lineNumberLock = Any()
-
     override fun getLineNumber(offset: Int): Int {
         if (offset == SYNTHETIC_OFFSET) return 0
-        if (offset < 0) return UNDEFINED_LINE_NUMBER
-        return synchronized(lineNumberLock) { calculatedBeforeLineNumbers.get(offset) }
+        return super.getLineNumber(offset)
     }
 
     override fun getColumnNumber(offset: Int): Int {
         if (offset == SYNTHETIC_OFFSET) return 0
-        if (offset < 0) return UNDEFINED_COLUMN_NUMBER
-        val lineNumber = getLineNumber(offset)
-        return if (lineNumber < 0) UNDEFINED_COLUMN_NUMBER else offset - lineStartOffsets[lineNumber]
+        return super.getColumnNumber(offset)
     }
 
-    override fun getSourceRangeInfo(beginOffset: Int, endOffset: Int): SourceRangeInfo =
-        SourceRangeInfo(
-            filePath = name,
-            startOffset = beginOffset,
-            startLineNumber = getLineNumber(beginOffset),
-            startColumnNumber = getColumnNumber(beginOffset),
-            endOffset = endOffset,
-            endLineNumber = getLineNumber(endOffset),
-            endColumnNumber = getColumnNumber(endOffset)
-        )
+    override fun getLineAndColumnNumbers(offset: Int): LineAndColumn {
+        if (offset == SYNTHETIC_OFFSET) return LineAndColumn(0, 0)
+        return super.getLineAndColumnNumbers(offset)
+    }
 }
 
 private fun IrClass.getPropertyDeclaration(name: String): IrProperty? {

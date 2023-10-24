@@ -33,7 +33,7 @@ import org.jetbrains.kotlin.types.Variance
 // 2) parents
 // 3) fields
 object IrTree : AbstractTreeBuilder() {
-    private fun symbol(type: TypeRef, mutable: Boolean = false): SimpleFieldConfig =
+    private fun symbol(type: TypeRefWithNullability, mutable: Boolean = false): SimpleFieldConfig =
         field("symbol", type, mutable = mutable)
 
     private fun descriptor(typeName: String, nullable: Boolean = false): SimpleFieldConfig =
@@ -272,6 +272,15 @@ object IrTree : AbstractTreeBuilder() {
         }
         +field("isFun", boolean) {
             useFieldInIrFactory(defaultValue = false)
+        }
+        +field("hasEnumEntries", boolean) {
+            useFieldInIrFactory(defaultValue = false)
+            kdoc = """
+            Returns true iff this is a class loaded from dependencies which has the `HAS_ENUM_ENTRIES` metadata flag set.
+            This flag is useful for Kotlin/JVM to determine whether an enum class from dependency actually has the `entries` property
+            in its bytecode, as opposed to whether it has it in its member scope, which is true even for enum classes compiled by
+            old versions of Kotlin which did not support the EnumEntries language feature.
+            """.trimIndent()
         }
         +field("source", type<SourceElement>(), mutable = false) {
             useFieldInIrFactory(defaultValue = code("%T.NO_SOURCE", SourceElement::class))
@@ -609,6 +618,14 @@ object IrTree : AbstractTreeBuilder() {
 
         +symbol(packageFragmentSymbolType)
         +field("packageFragmentDescriptor", type(Packages.descriptors, "PackageFragmentDescriptor"), mutable = false)
+        +field("moduleDescriptor", type(Packages.descriptors, "ModuleDescriptor"), mutable = false) {
+            kdoc = """
+            This should be a link to [IrModuleFragment] instead. 
+               
+            Unfortunately, some package fragments (e.g. some synthetic ones and [IrExternalPackageFragment])
+            are not located in any IR module, but still have a module descriptor. 
+            """.trimIndent()
+        }
         +field("packageFqName", type<FqName>())
         +field("fqName", type<FqName>()) {
             baseGetter = code("packageFqName")

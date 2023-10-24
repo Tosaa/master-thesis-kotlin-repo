@@ -21,7 +21,7 @@ import java.util.regex.Pattern;
 public class DiagnosticsWasmTestGenerated extends AbstractDiagnosticsWasmTest {
     @Test
     public void testAllFilesPresentInWasmTests() throws Exception {
-        KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("compiler/testData/diagnostics/wasmTests"), Pattern.compile("^(.+)\\.kt$"), null, true);
+        KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("compiler/testData/diagnostics/wasmTests"), Pattern.compile("^(.+)\\.kt$"), Pattern.compile("^(.+)\\.fir\\.kts?$"), true);
     }
 
     @Nested
@@ -30,7 +30,7 @@ public class DiagnosticsWasmTestGenerated extends AbstractDiagnosticsWasmTest {
     public class JsInterop {
         @Test
         public void testAllFilesPresentInJsInterop() throws Exception {
-            KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("compiler/testData/diagnostics/wasmTests/jsInterop"), Pattern.compile("^(.+)\\.kt$"), null, true);
+            KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("compiler/testData/diagnostics/wasmTests/jsInterop"), Pattern.compile("^(.+)\\.kt$"), Pattern.compile("^(.+)\\.fir\\.kts?$"), true);
         }
 
         @Test
@@ -82,7 +82,7 @@ public class DiagnosticsWasmTestGenerated extends AbstractDiagnosticsWasmTest {
     public class WasmInterop {
         @Test
         public void testAllFilesPresentInWasmInterop() throws Exception {
-            KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("compiler/testData/diagnostics/wasmTests/wasmInterop"), Pattern.compile("^(.+)\\.kt$"), null, true);
+            KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("compiler/testData/diagnostics/wasmTests/wasmInterop"), Pattern.compile("^(.+)\\.kt$"), Pattern.compile("^(.+)\\.fir\\.kts?$"), true);
         }
 
         @Test

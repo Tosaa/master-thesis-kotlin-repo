@@ -39,7 +39,6 @@ import org.jetbrains.kotlin.fir.declarations.utils.classId
 import org.jetbrains.kotlin.fir.expressions.*
 import org.jetbrains.kotlin.fir.expressions.builder.buildFunctionCall
 import org.jetbrains.kotlin.fir.expressions.builder.buildPropertyAccessExpression
-import org.jetbrains.kotlin.fir.java.scopes.JavaClassMembersEnhancementScope
 import org.jetbrains.kotlin.fir.references.FirErrorNamedReference
 import org.jetbrains.kotlin.fir.references.FirNamedReference
 import org.jetbrains.kotlin.fir.references.FirResolvedNamedReference
@@ -320,15 +319,21 @@ private class FirShorteningContext(val analysisSession: KtFirAnalysisSession) {
     fun findScopesAtPosition(
         position: KtElement,
         newImports: Sequence<FqName>,
-        towerContextProvider: FirTowerContextProvider
+        towerContextProvider: FirTowerContextProvider,
+        withImplicitReceivers: Boolean = true,
     ): List<FirScope>? {
         val towerDataContext = towerContextProvider.getClosestAvailableParentContext(position) ?: return null
-        val result = buildList {
-            addAll(towerDataContext.nonLocalTowerDataElements.flatMap {
+        val nonLocalScopes = towerDataContext.nonLocalTowerDataElements
+            .asSequence()
+            .filter { withImplicitReceivers || it.implicitReceiver == null }
+            .flatMap {
                 // We must use `it.getAvailableScopes()` instead of `it.scope` to check scopes of companion objects
                 // and context receivers as well.
                 it.getAvailableScopes()
-            })
+            }
+
+        val result = buildList {
+            addAll(nonLocalScopes)
             addIfNotNull(createFakeImportingScope(newImports))
             addAll(towerDataContext.localScopes)
         }
@@ -468,8 +473,9 @@ private class ElementsToShortenCollector(
 
     private fun processTypeRef(resolvedTypeRef: FirResolvedTypeRef) {
         val typeElement = resolvedTypeRef.correspondingTypePsi ?: return
-        if (typeElement.referenceExpression?.textRange?.intersects(selection) != true) return
         if (typeElement.qualifier == null) return
+
+        if (!typeElement.inSelection) return
 
         val classifierId = resolvedTypeRef.type.lowerBoundIfFlexible().candidateClassId ?: return
 
@@ -535,12 +541,14 @@ private class ElementsToShortenCollector(
 
         val wholeClassQualifier = resolvedQualifier.classId ?: return
         val qualifierPsi = resolvedQualifier.psi ?: return
-        if (!qualifierPsi.textRange.intersects(selection)) return
+
         val wholeQualifierElement = when (qualifierPsi) {
             is KtDotQualifiedExpression -> qualifierPsi
             is KtNameReferenceExpression -> qualifierPsi.getDotQualifiedExpressionForSelector() ?: return
             else -> return
         }
+
+        if (!wholeQualifierElement.inSelection) return
 
         findTypeQualifierToShorten(wholeClassQualifier, wholeQualifierElement)?.let(::addElementToShorten)
     }
@@ -549,8 +557,13 @@ private class ElementsToShortenCollector(
         wholeClassQualifier: ClassId,
         wholeQualifierElement: KtElement,
     ): ElementToShorten? {
-        val positionScopes: List<FirScope> =
-            shorteningContext.findScopesAtPosition(wholeQualifierElement, getNamesToImport(), towerContextProvider) ?: return null
+        val positionScopes = shorteningContext.findScopesAtPosition(
+            wholeQualifierElement,
+            getNamesToImport(),
+            towerContextProvider,
+            withImplicitReceivers = false,
+        ) ?: return null
+
         val allClassIds = wholeClassQualifier.outerClassesWithSelf
         val allQualifiers = wholeQualifierElement.qualifiedElementsWithSelf
         return findClassifierElementsToShorten(
@@ -728,26 +741,8 @@ private class ElementsToShortenCollector(
         classId: ClassId,
         element: KtElement,
         classSymbol: FirClassLikeSymbol<*>,
-        positionScopes: List<FirScope>,
+        scopes: List<FirScope>,
     ): Boolean {
-        // If its parent has a type parameter, we cannot shorten it because it will lose its type parameter.
-        if (classSymbol.hasTypeParameterFromParent()) return false
-
-        /**
-         * Class use-site member scopes may contain classifiers which are not actually available without explicit import.
-         * And if the class is declared in Java, it can be represented with JavaClassMembersEnhancementScope.
-         */
-        val scopes = positionScopes.filter {
-            when (it) {
-                // KTIJ-24684, KTIJ-24662
-                is FirClassUseSiteMemberScope -> false
-                // KTIJ-26785
-                is JavaClassMembersEnhancementScope -> false
-
-                else -> true
-            }
-        }
-
         val name = classId.shortClassName
         val availableClassifiers = shorteningContext.findClassifiersInScopesByName(scopes, name)
         val matchingAvailableSymbol = availableClassifiers.firstOrNull { it.availableSymbol.symbol.classIdIfExists == classId }
@@ -784,6 +779,9 @@ private class ElementsToShortenCollector(
             val classSymbol = shorteningContext.toClassSymbol(classId) ?: return null
             val option = classShortenOption(classSymbol)
             if (option == ShortenOption.DO_NOT_SHORTEN) continue
+
+            // If its parent has a type parameter, we do not shorten it ATM because it will lose its type parameter. See KTIJ-26072
+            if (classSymbol.hasTypeParameterFromParent()) continue
 
             if (shortenClassifierIfAlreadyImported(classId, element, classSymbol, positionScopes)) {
                 return createElementToShorten(element, null, false)
@@ -1028,9 +1026,10 @@ private class ElementsToShortenCollector(
         if (!canBePossibleToDropReceiver(firPropertyAccess)) return
 
         val propertyReferenceExpression = firPropertyAccess.correspondingNameReference ?: return
-        if (!propertyReferenceExpression.textRange.intersects(selection)) return
-
         val qualifiedProperty = propertyReferenceExpression.getQualifiedElement() as? KtDotQualifiedExpression ?: return
+
+        if (!qualifiedProperty.inSelection) return
+
         val propertySymbol = firPropertyAccess.referencedSymbol ?: return
 
         val option = callableShortenOption(propertySymbol)
@@ -1074,9 +1073,7 @@ private class ElementsToShortenCollector(
         val qualifiedCallExpression = functionCall.psi as? KtDotQualifiedExpression ?: return
         val callExpression = qualifiedCallExpression.selectorExpression as? KtCallExpression ?: return
 
-        val calleeTextRange = callExpression.calleeExpression?.textRange
-        val qualifierTextRange = qualifiedCallExpression.receiverExpression.textRange
-        if (calleeTextRange?.intersects(selection) != true && !qualifierTextRange.intersects(selection)) return
+        if (!qualifiedCallExpression.inSelection) return
 
         val calleeReference = functionCall.calleeReference
         val calledSymbol = findUnambiguousReferencedCallableId(calleeReference) ?: return
@@ -1221,6 +1218,40 @@ private class ElementsToShortenCollector(
             is ShortenKDocQualifier -> addElementToShorten(elementInfoToShorten.element, nameToImport, isImportWithStar)
         }
     }
+
+    /**
+     * Checks whether type reference of [this] type is considered to be in the [selection] text range.
+     *
+     * Examples of calls:
+     *
+     * - `|foo.Bar<...>|` - true
+     * - `foo.|Bar|<...>` - true
+     * - `foo.|B|ar<...>` - true
+     * - `|foo|.Bar<...>` - false
+     * - `foo.Bar|<...>|` - false
+     */
+    private val KtUserType.inSelection: Boolean
+        get() {
+            val typeReference = referenceExpression ?: return false
+            return typeReference.textRange.intersects(selection)
+        }
+
+    /**
+     * Checks whether callee reference of [this] qualified expression is considered to be in the [selection] text range.
+     *
+     * Examples of calls:
+     *
+     *  - `|foo.bar()|` - true
+     * - `foo.|bar|()` - true
+     * - `foo.|b|ar()` - true
+     * - `|foo|.bar()` - false
+     * - `foo.bar|(...)|` - false
+     */
+    private val KtDotQualifiedExpression.inSelection: Boolean
+        get() {
+            val selectorReference = getQualifiedElementSelector() ?: return false
+            return selectorReference.textRange.intersects(selection)
+        }
 
     private val ClassId.outerClassesWithSelf: Sequence<ClassId>
         get() = generateSequence(this) { it.outerClassId }

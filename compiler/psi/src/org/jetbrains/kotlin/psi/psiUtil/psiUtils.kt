@@ -201,6 +201,7 @@ inline fun <reified T : PsiElement> PsiElement.getParentOfTypeAndBranches(
     return getParentOfType<T>(strict)?.getIfChildIsInBranches(this, branches)
 }
 
+@Suppress("NO_TAIL_CALLS_FOUND", "NON_TAIL_RECURSIVE_CALL") // K2 warning suppression, TODO: KT-62472
 tailrec fun PsiElement.getOutermostParentContainedIn(container: PsiElement): PsiElement? {
     val parent = parent
     return if (parent == container) this else parent?.getOutermostParentContainedIn(container)
@@ -234,6 +235,28 @@ inline fun <reified T : PsiElement> PsiElement.forEachDescendantOfType(
 
             if (element is T) {
                 action(element)
+            }
+        }
+    })
+}
+
+inline fun <reified T : PsiElement> PsiElement.forEachDescendantOfTypeInPreorder(noinline action: (T) -> Unit) {
+    forEachDescendantOfTypeInPreorder({ true }, action)
+}
+
+inline fun <reified T : PsiElement> PsiElement.forEachDescendantOfTypeInPreorder(
+    crossinline canGoInside: (PsiElement) -> Boolean,
+    noinline action: (T) -> Unit,
+) {
+    checkDecompiledText()
+    this.accept(object : PsiRecursiveElementVisitor() {
+        override fun visitElement(element: PsiElement) {
+            if (element is T) {
+                action(element)
+            }
+
+            if (canGoInside(element)) {
+                super.visitElement(element)
             }
         }
     })

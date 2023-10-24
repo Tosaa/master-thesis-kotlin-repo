@@ -3,6 +3,9 @@
  * Use of this source code is governed by the Apache 2.0 license that can be found in the license/LICENSE.txt file.
  */
 
+// This file was generated automatically. See compiler/fir/tree/tree-generator/Readme.md.
+// DO NOT MODIFY IT MANUALLY.
+
 @file:Suppress("DuplicatedCode", "unused")
 
 package org.jetbrains.kotlin.fir.declarations.impl
@@ -37,11 +40,6 @@ import org.jetbrains.kotlin.fir.MutableOrEmptyList
 import org.jetbrains.kotlin.fir.builder.toMutableOrEmpty
 import org.jetbrains.kotlin.fir.declarations.ResolveStateAccess
 
-/*
- * This file was generated automatically
- * DO NOT MODIFY IT MANUALLY
- */
-
 @OptIn(ResolveStateAccess::class)
 open class FirPropertyAccessorImpl @FirImplementationDetail constructor(
     override val source: KtSourceElement?,
@@ -64,9 +62,11 @@ open class FirPropertyAccessorImpl @FirImplementationDetail constructor(
     override var annotations: MutableOrEmptyList<FirAnnotation>,
     override val typeParameters: MutableList<FirTypeParameter>,
 ) : FirPropertyAccessor() {
-    override val receiverParameter: FirReceiverParameter? get() = null
+    override val receiverParameter: FirReceiverParameter?
+        get() = null
     override var controlFlowGraphReference: FirControlFlowGraphReference? = null
-    override val isSetter: Boolean get() = !isGetter
+    override val isSetter: Boolean
+        get() = !isGetter
 
     init {
         symbol.bind(this)

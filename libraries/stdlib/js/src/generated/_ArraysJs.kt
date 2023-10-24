@@ -214,9 +214,8 @@ public actual infix fun <T> Array<out T>.contentDeepEquals(other: Array<out T>):
  * For floating point numbers it means that `NaN` is equal to itself and `-0.0` is not equal to `0.0`.
  */
 @SinceKotlin("1.4")
-@library("arrayDeepEquals")
 public actual infix fun <T> Array<out T>?.contentDeepEquals(other: Array<out T>?): Boolean {
-    definedExternally
+    return contentDeepEqualsImpl(other)
 }
 
 /**
@@ -238,9 +237,8 @@ public actual fun <T> Array<out T>.contentDeepHashCode(): Int {
  * If any of arrays contains itself on any nesting level the behavior is undefined.
  */
 @SinceKotlin("1.4")
-@library("arrayDeepHashCode")
 public actual fun <T> Array<out T>?.contentDeepHashCode(): Int {
-    definedExternally
+    return contentDeepHashCodeInternal()
 }
 
 /**
@@ -268,9 +266,8 @@ public actual fun <T> Array<out T>.contentDeepToString(): String {
  * @sample samples.collections.Arrays.ContentOperations.contentDeepToString
  */
 @SinceKotlin("1.4")
-@library("arrayDeepToString")
 public actual fun <T> Array<out T>?.contentDeepToString(): String {
-    definedExternally
+    return contentDeepToStringImpl()
 }
 
 /**
@@ -281,9 +278,8 @@ public actual fun <T> Array<out T>?.contentDeepToString(): String {
  * For floating point numbers it means that `NaN` is equal to itself and `-0.0` is not equal to `0.0`.
  */
 @SinceKotlin("1.4")
-@library("arrayEquals")
 public actual infix fun <T> Array<out T>?.contentEquals(other: Array<out T>?): Boolean {
-    definedExternally
+    return contentEqualsInternal(other)
 }
 
 /**
@@ -294,9 +290,8 @@ public actual infix fun <T> Array<out T>?.contentEquals(other: Array<out T>?): B
  * For floating point numbers it means that `NaN` is equal to itself and `-0.0` is not equal to `0.0`.
  */
 @SinceKotlin("1.4")
-@library("arrayEquals")
 public actual infix fun ByteArray?.contentEquals(other: ByteArray?): Boolean {
-    definedExternally
+    return contentEqualsInternal(other)
 }
 
 /**
@@ -307,9 +302,8 @@ public actual infix fun ByteArray?.contentEquals(other: ByteArray?): Boolean {
  * For floating point numbers it means that `NaN` is equal to itself and `-0.0` is not equal to `0.0`.
  */
 @SinceKotlin("1.4")
-@library("arrayEquals")
 public actual infix fun ShortArray?.contentEquals(other: ShortArray?): Boolean {
-    definedExternally
+    return contentEqualsInternal(other)
 }
 
 /**
@@ -320,9 +314,8 @@ public actual infix fun ShortArray?.contentEquals(other: ShortArray?): Boolean {
  * For floating point numbers it means that `NaN` is equal to itself and `-0.0` is not equal to `0.0`.
  */
 @SinceKotlin("1.4")
-@library("arrayEquals")
 public actual infix fun IntArray?.contentEquals(other: IntArray?): Boolean {
-    definedExternally
+    return contentEqualsInternal(other)
 }
 
 /**
@@ -333,9 +326,8 @@ public actual infix fun IntArray?.contentEquals(other: IntArray?): Boolean {
  * For floating point numbers it means that `NaN` is equal to itself and `-0.0` is not equal to `0.0`.
  */
 @SinceKotlin("1.4")
-@library("arrayEquals")
 public actual infix fun LongArray?.contentEquals(other: LongArray?): Boolean {
-    definedExternally
+    return contentEqualsInternal(other)
 }
 
 /**
@@ -346,9 +338,8 @@ public actual infix fun LongArray?.contentEquals(other: LongArray?): Boolean {
  * For floating point numbers it means that `NaN` is equal to itself and `-0.0` is not equal to `0.0`.
  */
 @SinceKotlin("1.4")
-@library("arrayEquals")
 public actual infix fun FloatArray?.contentEquals(other: FloatArray?): Boolean {
-    definedExternally
+    return contentEqualsInternal(other)
 }
 
 /**
@@ -359,9 +350,8 @@ public actual infix fun FloatArray?.contentEquals(other: FloatArray?): Boolean {
  * For floating point numbers it means that `NaN` is equal to itself and `-0.0` is not equal to `0.0`.
  */
 @SinceKotlin("1.4")
-@library("arrayEquals")
 public actual infix fun DoubleArray?.contentEquals(other: DoubleArray?): Boolean {
-    definedExternally
+    return contentEqualsInternal(other)
 }
 
 /**
@@ -372,9 +362,8 @@ public actual infix fun DoubleArray?.contentEquals(other: DoubleArray?): Boolean
  * For floating point numbers it means that `NaN` is equal to itself and `-0.0` is not equal to `0.0`.
  */
 @SinceKotlin("1.4")
-@library("arrayEquals")
 public actual infix fun BooleanArray?.contentEquals(other: BooleanArray?): Boolean {
-    definedExternally
+    return contentEqualsInternal(other)
 }
 
 /**
@@ -385,90 +374,80 @@ public actual infix fun BooleanArray?.contentEquals(other: BooleanArray?): Boole
  * For floating point numbers it means that `NaN` is equal to itself and `-0.0` is not equal to `0.0`.
  */
 @SinceKotlin("1.4")
-@library("arrayEquals")
 public actual infix fun CharArray?.contentEquals(other: CharArray?): Boolean {
-    definedExternally
+    return contentEqualsInternal(other)
 }
 
 /**
  * Returns a hash code based on the contents of this array as if it is [List].
  */
 @SinceKotlin("1.4")
-@library("arrayHashCode")
 public actual fun <T> Array<out T>?.contentHashCode(): Int {
-    definedExternally
+    return contentHashCodeInternal()
 }
 
 /**
  * Returns a hash code based on the contents of this array as if it is [List].
  */
 @SinceKotlin("1.4")
-@library("arrayHashCode")
 public actual fun ByteArray?.contentHashCode(): Int {
-    definedExternally
+    return contentHashCodeInternal()
 }
 
 /**
  * Returns a hash code based on the contents of this array as if it is [List].
  */
 @SinceKotlin("1.4")
-@library("arrayHashCode")
 public actual fun ShortArray?.contentHashCode(): Int {
-    definedExternally
+    return contentHashCodeInternal()
 }
 
 /**
  * Returns a hash code based on the contents of this array as if it is [List].
  */
 @SinceKotlin("1.4")
-@library("arrayHashCode")
 public actual fun IntArray?.contentHashCode(): Int {
-    definedExternally
+    return contentHashCodeInternal()
 }
 
 /**
  * Returns a hash code based on the contents of this array as if it is [List].
  */
 @SinceKotlin("1.4")
-@library("arrayHashCode")
 public actual fun LongArray?.contentHashCode(): Int {
-    definedExternally
+    return contentHashCodeInternal()
 }
 
 /**
  * Returns a hash code based on the contents of this array as if it is [List].
  */
 @SinceKotlin("1.4")
-@library("arrayHashCode")
 public actual fun FloatArray?.contentHashCode(): Int {
-    definedExternally
+    return contentHashCodeInternal()
 }
 
 /**
  * Returns a hash code based on the contents of this array as if it is [List].
  */
 @SinceKotlin("1.4")
-@library("arrayHashCode")
 public actual fun DoubleArray?.contentHashCode(): Int {
-    definedExternally
+    return contentHashCodeInternal()
 }
 
 /**
  * Returns a hash code based on the contents of this array as if it is [List].
  */
 @SinceKotlin("1.4")
-@library("arrayHashCode")
 public actual fun BooleanArray?.contentHashCode(): Int {
-    definedExternally
+    return contentHashCodeInternal()
 }
 
 /**
  * Returns a hash code based on the contents of this array as if it is [List].
  */
 @SinceKotlin("1.4")
-@library("arrayHashCode")
 public actual fun CharArray?.contentHashCode(): Int {
-    definedExternally
+    return contentHashCodeInternal()
 }
 
 /**
@@ -477,9 +456,8 @@ public actual fun CharArray?.contentHashCode(): Int {
  * @sample samples.collections.Arrays.ContentOperations.contentToString
  */
 @SinceKotlin("1.4")
-@library("arrayToString")
 public actual fun <T> Array<out T>?.contentToString(): String {
-    definedExternally
+    return this?.joinToString(", ", "[", "]") ?: "null"
 }
 
 /**
@@ -488,9 +466,8 @@ public actual fun <T> Array<out T>?.contentToString(): String {
  * @sample samples.collections.Arrays.ContentOperations.contentToString
  */
 @SinceKotlin("1.4")
-@library("arrayToString")
 public actual fun ByteArray?.contentToString(): String {
-    definedExternally
+    return this?.joinToString(", ", "[", "]") ?: "null"
 }
 
 /**
@@ -499,9 +476,8 @@ public actual fun ByteArray?.contentToString(): String {
  * @sample samples.collections.Arrays.ContentOperations.contentToString
  */
 @SinceKotlin("1.4")
-@library("arrayToString")
 public actual fun ShortArray?.contentToString(): String {
-    definedExternally
+    return this?.joinToString(", ", "[", "]") ?: "null"
 }
 
 /**
@@ -510,9 +486,8 @@ public actual fun ShortArray?.contentToString(): String {
  * @sample samples.collections.Arrays.ContentOperations.contentToString
  */
 @SinceKotlin("1.4")
-@library("arrayToString")
 public actual fun IntArray?.contentToString(): String {
-    definedExternally
+    return this?.joinToString(", ", "[", "]") ?: "null"
 }
 
 /**
@@ -521,9 +496,8 @@ public actual fun IntArray?.contentToString(): String {
  * @sample samples.collections.Arrays.ContentOperations.contentToString
  */
 @SinceKotlin("1.4")
-@library("arrayToString")
 public actual fun LongArray?.contentToString(): String {
-    definedExternally
+    return this?.joinToString(", ", "[", "]") ?: "null"
 }
 
 /**
@@ -532,9 +506,8 @@ public actual fun LongArray?.contentToString(): String {
  * @sample samples.collections.Arrays.ContentOperations.contentToString
  */
 @SinceKotlin("1.4")
-@library("arrayToString")
 public actual fun FloatArray?.contentToString(): String {
-    definedExternally
+    return this?.joinToString(", ", "[", "]") ?: "null"
 }
 
 /**
@@ -543,9 +516,8 @@ public actual fun FloatArray?.contentToString(): String {
  * @sample samples.collections.Arrays.ContentOperations.contentToString
  */
 @SinceKotlin("1.4")
-@library("arrayToString")
 public actual fun DoubleArray?.contentToString(): String {
-    definedExternally
+    return this?.joinToString(", ", "[", "]") ?: "null"
 }
 
 /**
@@ -554,9 +526,8 @@ public actual fun DoubleArray?.contentToString(): String {
  * @sample samples.collections.Arrays.ContentOperations.contentToString
  */
 @SinceKotlin("1.4")
-@library("arrayToString")
 public actual fun BooleanArray?.contentToString(): String {
-    definedExternally
+    return this?.joinToString(", ", "[", "]") ?: "null"
 }
 
 /**
@@ -565,9 +536,8 @@ public actual fun BooleanArray?.contentToString(): String {
  * @sample samples.collections.Arrays.ContentOperations.contentToString
  */
 @SinceKotlin("1.4")
-@library("arrayToString")
 public actual fun CharArray?.contentToString(): String {
-    definedExternally
+    return this?.joinToString(", ", "[", "]") ?: "null"
 }
 
 /**
@@ -1356,21 +1326,30 @@ public actual operator fun <T> Array<out T>.plus(elements: Collection<T>): Array
  * Returns an array containing all elements of the original array and then all elements of the given [elements] collection.
  */
 public actual operator fun ByteArray.plus(elements: Collection<Byte>): ByteArray {
-    return fillFromCollection(this.copyOf(size + elements.size), this.size, elements)
+    var index = size
+    val result = this.copyOf(size + elements.size)
+    for (element in elements) result[index++] = element
+    return result
 }
 
 /**
  * Returns an array containing all elements of the original array and then all elements of the given [elements] collection.
  */
 public actual operator fun ShortArray.plus(elements: Collection<Short>): ShortArray {
-    return fillFromCollection(this.copyOf(size + elements.size), this.size, elements)
+    var index = size
+    val result = this.copyOf(size + elements.size)
+    for (element in elements) result[index++] = element
+    return result
 }
 
 /**
  * Returns an array containing all elements of the original array and then all elements of the given [elements] collection.
  */
 public actual operator fun IntArray.plus(elements: Collection<Int>): IntArray {
-    return fillFromCollection(this.copyOf(size + elements.size), this.size, elements)
+    var index = size
+    val result = this.copyOf(size + elements.size)
+    for (element in elements) result[index++] = element
+    return result
 }
 
 /**
@@ -1384,14 +1363,20 @@ public actual operator fun LongArray.plus(elements: Collection<Long>): LongArray
  * Returns an array containing all elements of the original array and then all elements of the given [elements] collection.
  */
 public actual operator fun FloatArray.plus(elements: Collection<Float>): FloatArray {
-    return fillFromCollection(this.copyOf(size + elements.size), this.size, elements)
+    var index = size
+    val result = this.copyOf(size + elements.size)
+    for (element in elements) result[index++] = element
+    return result
 }
 
 /**
  * Returns an array containing all elements of the original array and then all elements of the given [elements] collection.
  */
 public actual operator fun DoubleArray.plus(elements: Collection<Double>): DoubleArray {
-    return fillFromCollection(this.copyOf(size + elements.size), this.size, elements)
+    var index = size
+    val result = this.copyOf(size + elements.size)
+    for (element in elements) result[index++] = element
+    return result
 }
 
 /**
@@ -1405,7 +1390,10 @@ public actual operator fun BooleanArray.plus(elements: Collection<Boolean>): Boo
  * Returns an array containing all elements of the original array and then all elements of the given [elements] collection.
  */
 public actual operator fun CharArray.plus(elements: Collection<Char>): CharArray {
-    return fillFromCollection(this.copyOf(size + elements.size), this.size, elements)
+    var index = size
+    val result = this.copyOf(size + elements.size)
+    for (element in elements) result[index++] = element
+    return result
 }
 
 /**
@@ -1493,9 +1481,8 @@ public actual inline fun <T> Array<out T>.plusElement(element: T): Array<T> {
  * 
  * @sample samples.collections.Arrays.Sorting.sortArray
  */
-@library("primitiveArraySort")
 public actual fun IntArray.sort(): Unit {
-    definedExternally
+    nativeSort()
 }
 
 /**
@@ -1513,9 +1500,8 @@ public actual fun LongArray.sort(): Unit {
  * 
  * @sample samples.collections.Arrays.Sorting.sortArray
  */
-@library("primitiveArraySort")
 public actual fun ByteArray.sort(): Unit {
-    definedExternally
+    nativeSort()
 }
 
 /**
@@ -1523,9 +1509,8 @@ public actual fun ByteArray.sort(): Unit {
  * 
  * @sample samples.collections.Arrays.Sorting.sortArray
  */
-@library("primitiveArraySort")
 public actual fun ShortArray.sort(): Unit {
-    definedExternally
+    nativeSort()
 }
 
 /**
@@ -1533,9 +1518,8 @@ public actual fun ShortArray.sort(): Unit {
  * 
  * @sample samples.collections.Arrays.Sorting.sortArray
  */
-@library("primitiveArraySort")
 public actual fun DoubleArray.sort(): Unit {
-    definedExternally
+    nativeSort()
 }
 
 /**
@@ -1543,9 +1527,8 @@ public actual fun DoubleArray.sort(): Unit {
  * 
  * @sample samples.collections.Arrays.Sorting.sortArray
  */
-@library("primitiveArraySort")
 public actual fun FloatArray.sort(): Unit {
-    definedExternally
+    nativeSort()
 }
 
 /**
@@ -1553,9 +1536,8 @@ public actual fun FloatArray.sort(): Unit {
  * 
  * @sample samples.collections.Arrays.Sorting.sortArray
  */
-@library("primitiveArraySort")
 public actual fun CharArray.sort(): Unit {
-    definedExternally
+    nativeSort(::primitiveCompareTo)
 }
 
 /**
@@ -1728,8 +1710,7 @@ public actual fun DoubleArray.sort(fromIndex: Int = 0, toIndex: Int = size): Uni
 @Suppress("ACTUAL_FUNCTION_WITH_DEFAULT_ARGUMENTS")
 public actual fun CharArray.sort(fromIndex: Int = 0, toIndex: Int = size): Unit {
     AbstractList.checkRangeIndexes(fromIndex, toIndex, size)
-    val subarray = this.asDynamic().subarray(fromIndex, toIndex).unsafeCast<CharArray>()
-    subarray.sort()
+    sortArrayWith(this.unsafeCast<Array<Char>>(), fromIndex, toIndex, naturalOrder())
 }
 
 /**

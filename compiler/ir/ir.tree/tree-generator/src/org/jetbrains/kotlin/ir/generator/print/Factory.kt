@@ -6,14 +6,14 @@
 package org.jetbrains.kotlin.ir.generator.print
 
 import com.squareup.kotlinpoet.*
+import org.jetbrains.kotlin.generators.tree.printer.GeneratedFile
+import org.jetbrains.kotlin.generators.tree.type
 import org.jetbrains.kotlin.ir.generator.IrTree
 import org.jetbrains.kotlin.ir.generator.Packages
 import org.jetbrains.kotlin.ir.generator.config.UseFieldAsParameterInIrFactoryStrategy
 import org.jetbrains.kotlin.ir.generator.model.Model
-import org.jetbrains.kotlin.ir.generator.util.GeneratedFile
 import org.jetbrains.kotlin.ir.generator.util.parameterizedByIfAny
 import org.jetbrains.kotlin.ir.generator.util.tryParameterizedBy
-import org.jetbrains.kotlin.generators.tree.type
 import org.jetbrains.kotlin.util.capitalizeDecapitalize.capitalizeAsciiOnly
 import org.jetbrains.kotlin.utils.addToStdlib.applyIf
 import java.io.File
@@ -43,7 +43,7 @@ internal fun printFactory(generationPath: File, model: Model): GeneratedFile {
                                 .sortedBy { (_, defaultValue) -> defaultValue != null } // All parameters with default values must go last
                             fields.forEach { (field, defaultValue) ->
                                 addParameter(
-                                    ParameterSpec.builder(field.name, field.type.toPoet().copy(nullable = field.nullable))
+                                    ParameterSpec.builder(field.name, field.typeRef.toPoet().copy(nullable = field.nullable))
                                         .defaultValue(defaultValue)
                                         .build(),
                                 )
@@ -104,6 +104,7 @@ internal fun printFactory(generationPath: File, model: Model): GeneratedFile {
             parameter("isExpect")
             parameter("isFun")
             parameter("source")
+            defaultValue["hasEnumEntries"] = false
         }
 
         addDeprecatedFunction(replacement("createConstructor")) {
@@ -272,14 +273,11 @@ internal fun printFactory(generationPath: File, model: Model): GeneratedFile {
 }
 
 private class DeprecatedFunctionBuilder(private val replacement: FunSpec) {
-
     val deprecatedFunctionParameterSpecs = mutableListOf<ParameterSpec>()
-
     var oldName = replacement.name
-
     var returnType = replacement.returnType
-
     var deprecationMessage: String? = null
+    val defaultValue = mutableMapOf<String, Any?>()
 
     fun parameter(name: String, removeDefaultValue: Boolean = false) {
         val replacementParameter =
@@ -322,6 +320,13 @@ private fun TypeSpec.Builder.addDeprecatedFunction(
                                 indent()
                                 add("%N,\n", parameter)
                                 unindent()
+                            } else {
+                                val value = builder.defaultValue[parameter.name]
+                                if (value != null) {
+                                    indent()
+                                    add("$value,\n")
+                                    unindent()
+                                }
                             }
                         }
                     }

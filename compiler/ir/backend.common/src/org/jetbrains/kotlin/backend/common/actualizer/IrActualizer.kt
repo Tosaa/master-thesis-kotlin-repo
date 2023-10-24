@@ -19,6 +19,13 @@ import org.jetbrains.kotlin.ir.util.*
 
 data class IrActualizedResult(val actualizedExpectDeclarations: List<IrDeclaration>)
 
+/**
+ * IrActualizer is responsible for performing actualization.
+ *
+ * The main action is the replacement of references to expect declarations with corresponding actuals on the IR level.
+ *
+ * See `/docs/fir/k2_kmp.md`
+ */
 object IrActualizer {
     fun actualize(
         mainFragment: IrModuleFragment,
@@ -112,7 +119,9 @@ object IrActualizer {
     }
 
     private fun mergeIrFragments(mainFragment: IrModuleFragment, dependentFragments: List<IrModuleFragment>) {
-        mainFragment.files.addAll(0, dependentFragments.flatMap { it.files })
+        val newFiles = dependentFragments.flatMap { it.files }
+        for (file in newFiles) file.module = mainFragment
+        mainFragment.files.addAll(0, newFiles)
     }
 }
 

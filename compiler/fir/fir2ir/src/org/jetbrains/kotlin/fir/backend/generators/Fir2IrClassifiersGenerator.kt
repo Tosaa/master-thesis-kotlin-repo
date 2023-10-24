@@ -11,7 +11,9 @@ import org.jetbrains.kotlin.fir.containingClassForLocalAttr
 import org.jetbrains.kotlin.fir.declarations.*
 import org.jetbrains.kotlin.fir.declarations.utils.*
 import org.jetbrains.kotlin.fir.expressions.FirAnonymousObjectExpression
+import org.jetbrains.kotlin.fir.hasEnumEntries
 import org.jetbrains.kotlin.fir.lazy.Fir2IrLazyClass
+import org.jetbrains.kotlin.fir.moduleData
 import org.jetbrains.kotlin.fir.resolve.getSymbolByLookupTag
 import org.jetbrains.kotlin.fir.resolve.providers.firProvider
 import org.jetbrains.kotlin.fir.symbols.ConeClassLikeLookupTag
@@ -137,13 +139,21 @@ class Fir2IrClassifiersGenerator(val components: Fir2IrComponents) : Fir2IrCompo
                     isData = regularClass.isData,
                     isValue = regularClass.isInline,
                     isExpect = regularClass.isExpect,
-                    isFun = regularClass.isFun
+                    isFun = regularClass.isFun,
+                    hasEnumEntries = regularClass.hasEnumEntries,
                 ).apply {
                     metadata = FirMetadataSource.Class(regularClass)
                 }
             }
         }
-        irClass.parent = parent
+        /*
+         * `regularClass.isLocal` indicates that either class itsef is local or it is a nested class in some other class
+         * Check for parentClassId allows to distinguish between those cases
+         */
+        irClass.setParent(parent)
+        if (!(regularClass.isLocal && regularClass.classId.parentClassId == null)) {
+            addDeclarationToParent(irClass, parent)
+        }
         return irClass
     }
 
@@ -344,9 +354,8 @@ class Fir2IrClassifiersGenerator(val components: Fir2IrComponents) : Fir2IrCompo
             ).apply {
                 this.parent = parent
                 setTypeParameters(this, typeAlias)
-                if (parent is IrFile) {
-                    parent.declarations += this
-                }
+                setParent(parent)
+                addDeclarationToParent(this, parent)
             }
             irTypeAlias
         }
@@ -375,10 +384,12 @@ class Fir2IrClassifiersGenerator(val components: Fir2IrComponents) : Fir2IrCompo
                     isData = false,
                     isValue = false,
                     isExpect = false,
-                    isFun = false
+                    isFun = false,
+                    hasEnumEntries = false,
                 ).apply {
                     metadata = FirMetadataSource.CodeFragment(codeFragment)
-                    parent = containingFile
+                    setParent(containingFile)
+                    addDeclarationToParent(this, containingFile)
                     typeParameters = emptyList()
                     thisReceiver = declareThisReceiverParameter(
                         thisType = IrSimpleTypeImpl(symbol, false, emptyList(), emptyList()),
@@ -417,7 +428,8 @@ class Fir2IrClassifiersGenerator(val components: Fir2IrComponents) : Fir2IrCompo
                     symbol = symbol,
                 ).apply {
                     declarationStorage.enterScope(this.symbol)
-                    this.parent = irParent
+                    setParent(irParent)
+                    addDeclarationToParent(this, irParent)
                     if (isEnumEntryWhichRequiresSubclass(enumEntry)) {
                         // An enum entry with its own members requires an anonymous object generated.
                         // Otherwise, this is a default-ish enum entry whose initializer would be a delegating constructor call,
@@ -468,7 +480,9 @@ class Fir2IrClassifiersGenerator(val components: Fir2IrComponents) : Fir2IrCompo
 
         val parentId = classId.outerClassId
         val parentClass = parentId?.let { createIrClassForNotFoundClass(it.toLookupTag()) }
-        val irParent = parentClass ?: declarationStorage.getIrExternalPackageFragment(classId.packageFqName)
+        val irParent = parentClass ?: declarationStorage.getIrExternalPackageFragment(
+            classId.packageFqName, session.moduleData.dependencies.first()
+        )
 
         return symbolTable.declareClassIfNotExists(signature, { IrClassPublicSymbolImpl(signature) }) {
             irFactory.createClass(

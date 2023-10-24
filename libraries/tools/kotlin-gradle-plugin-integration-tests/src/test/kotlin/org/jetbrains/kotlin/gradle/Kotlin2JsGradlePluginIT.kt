@@ -42,8 +42,8 @@ class Kotlin2JsIrGradlePluginIT : KGPBaseTest() {
             build("build") {
                 checkIrCompilationMessage()
 
-                assertFileInProjectExists("build/kotlin2js/main/lib.js")
-                val dts = projectPath.resolve("build/kotlin2js/main/lib.d.ts")
+                assertFileInProjectExists("build/js/packages/kotlin2JsIrDtsGeneration/kotlin/kotlin2JsIrDtsGeneration.js")
+                val dts = projectPath.resolve("build/js/packages/kotlin2JsIrDtsGeneration/kotlin/kotlin2JsIrDtsGeneration.d.ts")
                 assertFileExists(dts)
                 assertFileContains(dts, "function bar(): string")
             }
@@ -624,6 +624,61 @@ class Kotlin2JsIrGradlePluginIT : KGPBaseTest() {
         }
     }
 
+
+    @DisplayName("package json contains correct extension for ES-modules")
+    @GradleTest
+    fun testPackageJsonWithEsModules(gradleVersion: GradleVersion) {
+        project("kotlin-js-browser-project", gradleVersion) {
+            buildGradleKts.modify(::transformBuildScriptWithPluginsDsl)
+            subProject("app").buildGradleKts.modify {
+                it + """
+                    |
+                    |kotlin.target.useEsModules()
+                    |
+                """.trimMargin()
+            }
+
+            build(":app:packageJson") {
+                val packageJson = projectPath
+                    .resolve("build/js/packages/kotlin-js-browser-app")
+                    .resolve(NpmProject.PACKAGE_JSON)
+                    .let {
+                        Gson().fromJson(it.readText(), PackageJson::class.java)
+                    }
+
+                assertEquals(packageJson.main, "kotlin/kotlin-js-browser-app.mjs")
+
+            }
+        }
+    }
+
+    @DisplayName("public package json contains correct extension for ES-modules")
+    @GradleTest
+    fun testPublicPackageJsonWithEsModules(gradleVersion: GradleVersion) {
+        project("kotlin-js-browser-project", gradleVersion) {
+            buildGradleKts.modify(::transformBuildScriptWithPluginsDsl)
+            subProject("app").buildGradleKts.modify {
+                it + """
+                    |
+                    |kotlin.target.useEsModules()
+                    |
+                """.trimMargin()
+            }
+
+            build(":app:publicPackageJson") {
+                val packageJson = subProject("app").projectPath
+                    .resolve("build/tmp/publicPackageJson")
+                    .resolve(NpmProject.PACKAGE_JSON)
+                    .let {
+                        Gson().fromJson(it.readText(), PackageJson::class.java)
+                    }
+
+                assertEquals(packageJson.main, "kotlin-js-browser-app.mjs")
+
+            }
+        }
+    }
+
     @DisplayName("Multiple targets works without clash")
     @GradleTest
     fun testMultipleJsTargets(gradleVersion: GradleVersion) {
@@ -696,26 +751,6 @@ class Kotlin2JsIrGradlePluginIT : KGPBaseTest() {
         assertOutputContains(USING_JS_IR_BACKEND_MESSAGE)
     }
 
-    @DisplayName("js customized output is included into jar")
-    @GradleTest
-    fun testJarIncludesJsOutputSetExplicitly(gradleVersion: GradleVersion) {
-        project("kotlin2JsModuleKind", gradleVersion) {
-            build(":jar") {
-                checkIrCompilationMessage()
-
-                assertTasksExecuted(":compileKotlin2Js")
-                val jarPath = projectPath.resolve("build/libs/kotlin2JsModuleKind.jar")
-                assertFileExists(jarPath)
-                ZipFile(jarPath.toFile()).use { jar ->
-                    assertEquals(
-                        1, jar.entries().asSequence().count { it.name == "app.js" },
-                        "The jar should contain an entry `app.js` with no duplicates"
-                    )
-                }
-            }
-        }
-    }
-
     @DisplayName("test compilation can access main compilation")
     @GradleTest
     fun testCompileTestCouldAccessProduction(gradleVersion: GradleVersion) {
@@ -724,12 +759,12 @@ class Kotlin2JsIrGradlePluginIT : KGPBaseTest() {
                 checkIrCompilationMessage()
 
                 assertTasksExecuted(
-                    ":compileKotlin2Js",
-                    ":compileTestKotlin2Js"
+                    ":compileKotlinJs",
+                    ":compileTestKotlinJs"
                 )
-                assertFileInProjectExists("build/kotlin2js/main/default/manifest")
+                assertFileInProjectExists("build/classes/kotlin/main/default/manifest")
 
-                assertFileInProjectExists("build/kotlin2js/test/module-tests.js")
+                assertFileInProjectExists("build/js/packages/kotlin2JsProjectWithTests-test/kotlin/kotlin2JsProjectWithTests-test.js")
             }
         }
     }
@@ -1318,6 +1353,17 @@ class Kotlin2JsIrGradlePluginIT : KGPBaseTest() {
             )
             buildAndFail("nodeTest") {
                 assertTasksFailed(":nodeTest")
+                assertOutputContains("Cannot find module 'foo'")
+            }
+        }
+    }
+
+    @DisplayName("mocha has no output during dry run")
+    @GradleTest
+    fun testMochaHasNoDryRunOutput(gradleVersion: GradleVersion) {
+        project("kotlin-js-nodejs-project", gradleVersion) {
+            build("nodeTest") {
+                assertOutputDoesNotContain("0 passing")
             }
         }
     }

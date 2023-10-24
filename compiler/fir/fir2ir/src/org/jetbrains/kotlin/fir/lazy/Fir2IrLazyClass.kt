@@ -7,9 +7,11 @@ package org.jetbrains.kotlin.fir.lazy
 
 import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.fir.backend.*
+import org.jetbrains.kotlin.fir.containingClassLookupTag
 import org.jetbrains.kotlin.fir.declarations.*
 import org.jetbrains.kotlin.fir.declarations.utils.*
 import org.jetbrains.kotlin.fir.dispatchReceiverClassLookupTagOrNull
+import org.jetbrains.kotlin.fir.hasEnumEntries
 import org.jetbrains.kotlin.fir.isNewPlaceForBodyGeneration
 import org.jetbrains.kotlin.fir.isSubstitutionOrIntersectionOverride
 import org.jetbrains.kotlin.fir.scopes.FirContainingNamesAwareScope
@@ -109,6 +111,10 @@ class Fir2IrLazyClass(
         get() = fir.isFun
         set(_) = mutationNotSupported()
 
+    override var hasEnumEntries: Boolean
+        get() = fir.hasEnumEntries
+        set(_) = mutationNotSupported()
+
     override var superTypes: List<IrType> by lazyVar(lock) {
         fir.superTypeRefs.map { it.toIrType(typeConverter) }
     }
@@ -182,23 +188,26 @@ class Fir2IrLazyClass(
         fun addDeclarationsFromScope(scope: FirContainingNamesAwareScope?) {
             if (scope == null) return
             for (name in scope.getCallableNames()) {
-                scope.processFunctionsByName(name) { symbol ->
-                    if (symbol.isSubstitutionOrIntersectionOverride) return@processFunctionsByName
-                    if (!shouldBuildStub(symbol.fir)) return@processFunctionsByName
-                    if (symbol.isStatic || symbol.dispatchReceiverClassLookupTagOrNull() == ownerLookupTag) {
-                        if (symbol.isAbstractMethodOfAny()) {
-                            return@processFunctionsByName
+                scope.processFunctionsByName(name) l@{ symbol ->
+                    when {
+                        symbol.isSubstitutionOrIntersectionOverride -> {}
+                        !shouldBuildStub(symbol.fir) -> {}
+                        symbol.containingClassLookupTag() != ownerLookupTag -> {}
+                        symbol.isAbstractMethodOfAny() -> {}
+                        else -> {
+                            result += declarationStorage.getOrCreateIrFunction(symbol.fir, this, origin)
                         }
-                        result += declarationStorage.getOrCreateIrFunction(symbol.fir, this, origin)
                     }
                 }
-                scope.processPropertiesByName(name) { symbol ->
-                    if (symbol.isSubstitutionOrIntersectionOverride) return@processPropertiesByName
-                    if (!shouldBuildStub(symbol.fir)) return@processPropertiesByName
-                    if (symbol is FirPropertySymbol && (symbol.isStatic || symbol.dispatchReceiverClassLookupTagOrNull() == ownerLookupTag)) {
-                        result.addIfNotNull(
-                            declarationStorage.getOrCreateIrProperty(symbol.fir, this, origin)
-                        )
+                scope.processPropertiesByName(name) l@{ symbol ->
+                    when {
+                        symbol.isSubstitutionOrIntersectionOverride -> {}
+                        !shouldBuildStub(symbol.fir) -> {}
+                        symbol.containingClassLookupTag() != ownerLookupTag -> {}
+                        symbol !is FirPropertySymbol -> {}
+                        else -> {
+                            result += declarationStorage.getOrCreateIrProperty(symbol.fir, this, origin)
+                        }
                     }
                 }
             }

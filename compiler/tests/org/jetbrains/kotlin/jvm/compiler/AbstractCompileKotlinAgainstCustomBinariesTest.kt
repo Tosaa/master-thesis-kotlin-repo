@@ -154,18 +154,15 @@ abstract class AbstractCompileKotlinAgainstCustomBinariesTest : AbstractKotlinCo
         doTestBrokenLibrary("library", "a/E.class")
     }
 
-    // KT-60778 K2: implement MISSING_DEPENDENCY_CLASS(_SUPERCLASS) errors
-    fun testIncompleteHierarchyInJava() = muteForK2 {
+    fun testIncompleteHierarchyInJava() {
         doTestBrokenLibrary("library", "test/Super.class")
     }
 
-    // KT-60778 K2: implement MISSING_DEPENDENCY_CLASS(_SUPERCLASS) errors
-    fun testIncompleteHierarchyInKotlin() = muteForK2 {
+    fun testIncompleteHierarchyInKotlin() {
         doTestBrokenLibrary("library", "test/Super.class")
     }
 
-    // KT-60778 K2: implement MISSING_DEPENDENCY_CLASS(_SUPERCLASS) errors
-    fun testIncompleteHierarchyMissingInterface() = muteForK2 {
+    fun testIncompleteHierarchyMissingInterface() {
         doTestBrokenLibrary("library", "test/A.class")
     }
 
@@ -173,8 +170,7 @@ abstract class AbstractCompileKotlinAgainstCustomBinariesTest : AbstractKotlinCo
         doTestBrokenLibrary("library", "test/Super.class")
     }
 
-    // KT-60778 K2: implement MISSING_DEPENDENCY_CLASS(_SUPERCLASS) errors
-    fun testMissingStaticClass() = muteForK2 {
+    fun testMissingStaticClass() {
         doTestBrokenLibrary("library", "test/C\$D.class")
     }
 
@@ -183,7 +179,7 @@ abstract class AbstractCompileKotlinAgainstCustomBinariesTest : AbstractKotlinCo
     }
 
     // KT-60778 K2: implement MISSING_DEPENDENCY_CLASS(_SUPERCLASS) errors
-    fun testIncompleteHierarchyWithExtendedCompilerChecks() = muteForK2 {
+    fun testIncompleteHierarchyWithExtendedCompilerChecks() {
         doTestBrokenLibrary(
             "library",
             "test/Super.class",
@@ -191,18 +187,15 @@ abstract class AbstractCompileKotlinAgainstCustomBinariesTest : AbstractKotlinCo
         )
     }
 
-    // KT-60778 K2: implement MISSING_DEPENDENCY_CLASS(_SUPERCLASS) errors
-    fun testIncompleteHierarchyErrorPositions() = muteForK2 {
+    fun testIncompleteHierarchyErrorPositions() {
         doTestBrokenLibrary("library", "test/Super.class")
     }
 
-    // KT-60778 K2: implement MISSING_DEPENDENCY_CLASS(_SUPERCLASS) errors
-    fun testIncompleteHierarchyOfEnclosingClass() = muteForK2 {
+    fun testIncompleteHierarchyOfEnclosingClass() {
         doTestBrokenLibrary("library", "test/Super.class")
     }
 
-    // KT-60778 K2: implement MISSING_DEPENDENCY_CLASS(_SUPERCLASS) errors
-    fun testMissingDependencySimple() = muteForK2 {
+    fun testMissingDependencySimple() {
         doTestBrokenLibrary("library", "a/A.class")
     }
 
@@ -210,13 +203,11 @@ abstract class AbstractCompileKotlinAgainstCustomBinariesTest : AbstractKotlinCo
         doTestBrokenLibrary("library", "my/Some.class", additionalOptions = listOf("-Xuse-javac", "-Xcompile-java"))
     }
 
-    // KT-60778 K2: implement MISSING_DEPENDENCY_CLASS(_SUPERCLASS) errors
-    fun testComputeSupertypeWithMissingDependency() = muteForK2 {
+    fun testComputeSupertypeWithMissingDependency() {
         doTestBrokenLibrary("library", "a/A.class")
     }
 
-    // KT-60778 K2: implement MISSING_DEPENDENCY_CLASS(_SUPERCLASS) errors
-    fun testMissingDependencyDifferentCases() = muteForK2 {
+    fun testMissingDependencyDifferentCases() {
         doTestBrokenLibrary("library", "a/A.class")
     }
 
@@ -224,8 +215,7 @@ abstract class AbstractCompileKotlinAgainstCustomBinariesTest : AbstractKotlinCo
         doTestBrokenLibrary("library", "a/A\$Anno.class")
     }
 
-    // KT-60778 K2: implement MISSING_DEPENDENCY_CLASS(_SUPERCLASS) errors
-    fun testMissingDependencyConflictingLibraries() = muteForK2 {
+    fun testMissingDependencyConflictingLibraries() {
         val library1 = copyJarFileWithoutEntry(
             compileLibrary("library1"),
             "a/A.class", "a/A\$Inner.class", "a/AA.class", "a/AA\$Inner.class",
@@ -239,13 +229,11 @@ abstract class AbstractCompileKotlinAgainstCustomBinariesTest : AbstractKotlinCo
         compileKotlin("source.kt", tmpdir, listOf(library1, library2))
     }
 
-    // KT-60778 K2: implement MISSING_DEPENDENCY_CLASS(_SUPERCLASS) errors
-    fun testMissingDependencyJava() = muteForK2 {
+    fun testMissingDependencyJava() {
         doTestBrokenLibrary("library", "test/Bar.class")
     }
 
-    // KT-60778 K2: implement MISSING_DEPENDENCY_CLASS(_SUPERCLASS) errors
-    fun testMissingDependencyJavaConflictingLibraries() = muteForK2 {
+    fun testMissingDependencyJavaConflictingLibraries() {
         val library1 = copyJarFileWithoutEntry(compileLibrary("library1"), "test/A.class", "test/A\$Inner.class")
         val library2 = copyJarFileWithoutEntry(compileLibrary("library2"), "test/A.class", "test/A\$Inner.class")
         compileKotlin("source.kt", tmpdir, listOf(library1, library2))
@@ -399,8 +387,12 @@ abstract class AbstractCompileKotlinAgainstCustomBinariesTest : AbstractKotlinCo
             val moduleFile = File(tmpdir.absolutePath, "META-INF/main.kotlin_module").readBytes()
             val versionNumber = ModuleMapping.readVersionNumber(DataInputStream(ByteArrayInputStream(moduleFile)))!!
             val moduleVersion = JvmMetadataVersion(*versionNumber)
-            assertEquals("Actual version: $moduleVersion", expectedMajor, moduleVersion.major)
-            assertEquals("Actual version: $moduleVersion", expectedMinor, moduleVersion.minor)
+            if (languageVersion == LanguageVersion.KOTLIN_2_0) {
+                assertEquals("Actual version: $moduleVersion", JvmMetadataVersion(1, 9, 9999), moduleVersion)
+            } else {
+                assertEquals("Actual version: $moduleVersion", expectedMajor, moduleVersion.major)
+                assertEquals("Actual version: $moduleVersion", expectedMinor, moduleVersion.minor)
+            }
         }
     }
 
@@ -706,29 +698,46 @@ abstract class AbstractCompileKotlinAgainstCustomBinariesTest : AbstractKotlinCo
         assertEquals("Output:\n$output", ExitCode.COMPILATION_ERROR, exitCode)
     }
 
-    fun testAnonymousObjectTypeMetadata() {
+    fun testAnonymousObjectTypeMetadata() = doTestAnonymousObjectTypeMetadata()
+
+    fun testAnonymousObjectTypeMetadataKlib() = doTestAnonymousObjectTypeMetadata(listOf("-Xmetadata-klib"))
+
+    /**
+     * This test does exactly the same as [testAnonymousObjectTypeMetadataKlib] but using the old (now deprecated)
+     * CLI argument `-Xexpect-actual-linker` instead of its successor `-Xmetadata-klib`.
+     *
+     * The test is needed only to check that the old CLI argument still works as needed.
+     */
+    fun testAnonymousObjectTypeMetadataKlibWithOldCLIKey() = doTestAnonymousObjectTypeMetadata(listOf("-Xexpect-actual-linker")) { output ->
+        output.lines().filterNot { "argument -Xexpect-actual-linker is deprecated" in it }.joinToString("\n")
+    }
+
+    fun testConstEvaluationWithDifferentLV() {
+        val library = compileJsLibrary("library", additionalOptions = listOf("-language-version", "1.9"))
+        compileKotlin(
+            "src", File(tmpdir, "usage.js"), emptyList(), K2JSCompiler(),
+            additionalOptions = listOf("-Xinclude=${library.absolutePath}", "-Xir-produce-js"),
+        )
+    }
+
+    private fun doTestAnonymousObjectTypeMetadata(
+        extraCommandLineArguments: List<String> = emptyList(),
+        filterOutput: (String) -> String = { output -> output }
+    ) {
         val library = compileCommonLibrary(
             libraryName = "library",
+            additionalOptions = extraCommandLineArguments,
+            checkKotlinOutput = { output ->
+                assertEquals(normalizeOutput("" to ExitCode.OK), filterOutput(output))
+            }
         )
+
         compileKotlin(
             "anonymousObjectTypeMetadata.kt",
             tmpdir,
             listOf(library),
             K2MetadataCompiler(),
-        )
-    }
-
-    fun testAnonymousObjectTypeMetadataKlib() {
-        val klibLibrary = compileCommonLibrary(
-            libraryName = "library",
-            listOf("-Xmetadata-klib"),
-        )
-        compileKotlin(
-            "anonymousObjectTypeMetadata.kt",
-            tmpdir,
-            listOf(klibLibrary),
-            K2MetadataCompiler(),
-            listOf("-Xmetadata-klib")
+            additionalOptions = extraCommandLineArguments
         )
     }
 

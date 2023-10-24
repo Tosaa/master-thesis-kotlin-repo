@@ -9,11 +9,12 @@ import org.gradle.testkit.runner.BuildResult
 import org.gradle.util.GradleVersion
 import org.jetbrains.kotlin.gradle.internals.asFinishLogMessage
 import org.jetbrains.kotlin.gradle.plugin.diagnostics.KotlinToolingDiagnostics
-import org.jetbrains.kotlin.gradle.testbase.*
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompilerExecutionStrategy
 import org.jetbrains.kotlin.gradle.tasks.USING_JVM_INCREMENTAL_COMPILATION_MESSAGE
-import org.junit.jupiter.api.Disabled
+import org.jetbrains.kotlin.gradle.testbase.*
 import org.junit.jupiter.api.DisplayName
+import kotlin.io.path.deleteExisting
+import kotlin.io.path.writeText
 
 @DisplayName("JVM compilation via the Build Tools API")
 @JvmGradlePluginTests
@@ -57,6 +58,35 @@ class BuildToolsApiJvmCompilationIT : KGPBaseTest() {
     }
 
     @GradleTest
+    @DisplayName("Gradle side outputs backup works")
+    fun outputsBackupWorks(gradleVersion: GradleVersion) {
+        project(
+            "simpleProject", gradleVersion, buildOptions = defaultBuildOptions.copy(
+                usePreciseOutputsBackup = false,
+                keepIncrementalCompilationCachesInMemory = false,
+            )
+        ) {
+            build("compileKotlin") {
+                assertTasksExecuted(":compileKotlin")
+            }
+            val newBrokenSrc = kotlinSourcesDir().resolve("broken.kt")
+            newBrokenSrc.writeText(
+                //language=kt
+                """
+                broken code
+                """.trimIndent()
+            )
+            buildAndFail("compileKotlin") {
+                assertTasksFailed(":compileKotlin")
+            }
+            newBrokenSrc.deleteExisting()
+            build("compileKotlin") {
+                assertTasksUpToDate(":compileKotlin")
+            }
+        }
+    }
+
+    @GradleTest
     @DisplayName("Simple project non-incremental in-process compilation")
     fun compileJvmInProcessNonIncremental(gradleVersion: GradleVersion) = testSimpleProject(
         gradleVersion, defaultBuildOptions.copy(
@@ -69,12 +99,11 @@ class BuildToolsApiJvmCompilationIT : KGPBaseTest() {
     }
 
     @GradleTest
-    @Disabled
     @DisplayName("Simple project incremental in-process compilation")
     fun compileJvmInProcessIncremental(gradleVersion: GradleVersion) = testSimpleProject(
         gradleVersion, defaultBuildOptions.copy(
             compilerExecutionStrategy = KotlinCompilerExecutionStrategy.IN_PROCESS,
-            incremental = false,
+            incremental = true,
         )
     ) {
         assertOutputContains(KotlinCompilerExecutionStrategy.IN_PROCESS.asFinishLogMessage)

@@ -3,6 +3,9 @@
  * Use of this source code is governed by the Apache 2.0 license that can be found in the license/LICENSE.txt file.
  */
 
+// This file was generated automatically. See compiler/fir/tree/tree-generator/Readme.md.
+// DO NOT MODIFY IT MANUALLY.
+
 package org.jetbrains.kotlin.fir
 
 import org.jetbrains.kotlin.KtSourceElement
@@ -14,18 +17,14 @@ import org.jetbrains.kotlin.fir.symbols.impl.FirFileSymbol
 import org.jetbrains.kotlin.fir.visitors.*
 import org.jetbrains.kotlin.fir.declarations.ResolveStateAccess
 
-/*
- * This file was generated automatically
- * DO NOT MODIFY IT MANUALLY
- */
-
 abstract class FirFileAnnotationsContainer : FirElementWithResolveState(), FirAnnotationContainer {
     abstract override val source: KtSourceElement?
     abstract override val moduleData: FirModuleData
     abstract override val annotations: List<FirAnnotation>
     abstract val containingFileSymbol: FirFileSymbol
 
-    override fun <R, D> accept(visitor: FirVisitor<R, D>, data: D): R = visitor.visitFileAnnotationsContainer(this, data)
+    override fun <R, D> accept(visitor: FirVisitor<R, D>, data: D): R =
+        visitor.visitFileAnnotationsContainer(this, data)
 
     @Suppress("UNCHECKED_CAST")
     override fun <E : FirElement, D> transform(transformer: FirTransformer<D>, data: D): E =

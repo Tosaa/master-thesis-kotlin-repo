@@ -56,7 +56,11 @@ fun generateJUnit5CompilerTests(args: Array<String>, mainClassName: String?) {
             }
 
             testClass<AbstractForeignAnnotationsCompiledJavaTest> {
-                model("diagnostics/foreignAnnotationsTests/tests", excludedPattern = excludedCustomTestdataPattern)
+                model(
+                    "diagnostics/foreignAnnotationsTests/tests",
+                    excludedPattern = excludedCustomTestdataPattern,
+                    excludeDirs = listOf("externalAnnotations"),
+                )
                 model("diagnostics/foreignAnnotationsTests/java8Tests", excludedPattern = excludedCustomTestdataPattern)
                 model("diagnostics/foreignAnnotationsTests/java11Tests", excludedPattern = excludedCustomTestdataPattern)
             }
@@ -121,6 +125,10 @@ fun generateJUnit5CompilerTests(args: Array<String>, mainClassName: String?) {
 
             testClass<AbstractClassicJvmIrTextTest> {
                 model("ir/irText")
+            }
+
+            testClass<AbstractClassicJvmIrSourceRangesTest> {
+                model("ir/sourceRanges")
             }
 
             testClass<AbstractBytecodeTextTest> {
@@ -238,7 +246,11 @@ fun generateJUnit5CompilerTests(args: Array<String>, mainClassName: String?) {
             testClass<AbstractFirPsiForeignAnnotationsCompiledJavaTest>(
                 suiteTestClassName = "FirPsiOldFrontendForeignAnnotationsCompiledJavaTestGenerated"
             ) {
-                model("diagnostics/foreignAnnotationsTests/tests", excludedPattern = excludedCustomTestdataPattern)
+                model(
+                    "diagnostics/foreignAnnotationsTests/tests",
+                    excludedPattern = excludedCustomTestdataPattern,
+                    excludeDirs = listOf("externalAnnotations"),
+                )
                 model("diagnostics/foreignAnnotationsTests/java8Tests", excludedPattern = excludedCustomTestdataPattern)
                 model("diagnostics/foreignAnnotationsTests/java11Tests", excludedPattern = excludedCustomTestdataPattern)
             }
@@ -373,6 +385,14 @@ fun generateJUnit5CompilerTests(args: Array<String>, mainClassName: String?) {
 
             testClass<AbstractFirPsiJvmIrTextTest> {
                 model("ir/irText")
+            }
+
+            testClass<AbstractFirLightTreeJvmIrSourceRangesTest> {
+                model("ir/sourceRanges")
+            }
+
+            testClass<AbstractFirPsiJvmIrSourceRangesTest> {
+                model("ir/sourceRanges")
             }
 
             testClass<AbstractFirLightTreeBytecodeTextTest> {

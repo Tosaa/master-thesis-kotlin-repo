@@ -34,19 +34,16 @@
 package org.jetbrains.kotlin.codegen.optimization.temporaryVals
 
 import org.jetbrains.kotlin.codegen.optimization.common.FastAnalyzer
-import org.jetbrains.kotlin.codegen.optimization.common.FastMethodAnalyzer
 import org.jetbrains.org.objectweb.asm.Opcodes
-import org.jetbrains.org.objectweb.asm.Opcodes.API_VERSION
-import org.jetbrains.org.objectweb.asm.tree.*
+import org.jetbrains.org.objectweb.asm.tree.AbstractInsnNode
+import org.jetbrains.org.objectweb.asm.tree.IincInsnNode
+import org.jetbrains.org.objectweb.asm.tree.MethodNode
+import org.jetbrains.org.objectweb.asm.tree.VarInsnNode
 import org.jetbrains.org.objectweb.asm.tree.analysis.Frame
 import org.jetbrains.org.objectweb.asm.tree.analysis.Interpreter
 import org.jetbrains.org.objectweb.asm.tree.analysis.Value
 
-interface StoreLoadValue : Value
-
-abstract class StoreLoadInterpreter<V : StoreLoadValue> : Interpreter<V>(API_VERSION)
-
-class StoreLoadFrame<V : StoreLoadValue>(val maxLocals: Int) : Frame<V>(maxLocals, 0) {
+class StoreLoadFrame<V : Value>(val maxLocals: Int) : Frame<V>(maxLocals, 0) {
     override fun execute(insn: AbstractInsnNode, interpreter: Interpreter<V>) {
         when (insn.opcode) {
             in Opcodes.ISTORE..Opcodes.ASTORE -> {
@@ -65,77 +62,15 @@ class StoreLoadFrame<V : StoreLoadValue>(val maxLocals: Int) : Frame<V>(maxLocal
     }
 }
 
-class FastStoreLoadAnalyzer<V : StoreLoadValue>(
+class FastStoreLoadAnalyzer<V : Value>(
     owner: String,
     method: MethodNode,
-    interpreter: StoreLoadInterpreter<V>
-) : FastAnalyzer<V, StoreLoadInterpreter<V>, StoreLoadFrame<V>>(owner, method, interpreter) {
-    private val isMergeNode = FastMethodAnalyzer.findMergeNodes(method)
-
-    override fun analyzeInstruction(
-        insnNode: AbstractInsnNode,
-        insnIndex: Int,
-        insnType: Int,
-        insnOpcode: Int,
-        currentlyAnalyzing: StoreLoadFrame<V>,
-        current: StoreLoadFrame<V>,
-        handler: StoreLoadFrame<V>,
-    ) {
-        if (insnType == AbstractInsnNode.LABEL || insnType == AbstractInsnNode.LINE || insnType == AbstractInsnNode.FRAME) {
-            mergeControlFlowEdge(insnIndex + 1, currentlyAnalyzing)
-        } else {
-            current.init(currentlyAnalyzing).execute(insnNode, interpreter)
-            visitMeaningfulInstruction(insnNode, insnType, insnOpcode, current, insnIndex)
-        }
-
-        handlers[insnIndex]?.forEach { tcb ->
-            val jump = tcb.handler.indexOf()
-            handler.init(currentlyAnalyzing)
-            mergeControlFlowEdge(jump, handler)
-        }
-    }
-
-    override fun newFrame(nLocals: Int, nStack: Int): StoreLoadFrame<V> = StoreLoadFrame<V>(nLocals)
-
-    override fun visitOpInsn(insnNode: AbstractInsnNode, current: StoreLoadFrame<V>, insn: Int) {
-        mergeControlFlowEdge(insn + 1, current)
-    }
-
-    override fun visitTableSwitchInsnNode(insnNode: TableSwitchInsnNode, current: StoreLoadFrame<V>) {
-        mergeControlFlowEdge(insnNode.dflt.indexOf(), current)
-        for (label in insnNode.labels) {
-            mergeControlFlowEdge(label.indexOf(), current)
-        }
-    }
-
-    override fun visitLookupSwitchInsnNode(insnNode: LookupSwitchInsnNode, current: StoreLoadFrame<V>) {
-        mergeControlFlowEdge(insnNode.dflt.indexOf(), current)
-        for (label in insnNode.labels) {
-            mergeControlFlowEdge(label.indexOf(), current)
-        }
-    }
-
-    override fun visitJumpInsnNode(insnNode: JumpInsnNode, current: StoreLoadFrame<V>, insn: Int, insnOpcode: Int) {
-        if (insnOpcode != Opcodes.GOTO) {
-            mergeControlFlowEdge(insn + 1, current)
-        }
-        mergeControlFlowEdge(insnNode.label.indexOf(), current)
-    }
-
-    override fun mergeControlFlowEdge(dest: Int, frame: StoreLoadFrame<V>, canReuse: Boolean) {
-        val oldFrame = getFrame(dest)
-        val changes = when {
-            oldFrame == null -> {
-                setFrame(dest, newFrame(frame.maxLocals, 0).apply { init(frame) })
-                true
-            }
-            !isMergeNode[dest] -> {
-                oldFrame.init(frame)
-                true
-            }
-            else ->
-                oldFrame.merge(frame, interpreter)
-        }
-        updateQueue(changes, dest)
-    }
-}
+    interpreter: Interpreter<V>,
+    newFrame: (Int, Int) -> StoreLoadFrame<V> = { nLocals, _ -> StoreLoadFrame(nLocals) }
+) : FastAnalyzer<V, StoreLoadFrame<V>>(
+    owner, method, interpreter,
+    pruneExceptionEdges = false,
+    useFastComputeExceptionHandlers = false,
+    useFastMergeControlFlowEdge = false,
+    newFrame
+)

@@ -102,11 +102,11 @@ public abstract class AbstractCliTest extends TestCaseWithTmpdir {
                 .replace(org.jetbrains.kotlin.konan.file.File.Companion.getUserDir().getAbsolutePath(), "$USER_DIR$")
                 .replace(tmpDirAbsoluteDir, "$TMP_DIR$")
                 .replaceAll("info: executable production duration: \\d+ms", "info: executable production duration: [time]")
+                .replace(KotlinCompilerVersion.VERSION, "$VERSION$")
                 .replace(" " + JvmMetadataVersion.INSTANCE, " $ABI_VERSION$")
                 .replace(" " + JsMetadataVersion.INSTANCE, " $ABI_VERSION$")
                 .replace(" " + JvmMetadataVersion.INSTANCE_NEXT, " $ABI_VERSION_NEXT$")
                 .replace("\\", "/")
-                .replace(KotlinCompilerVersion.VERSION, "$VERSION$")
                 .replace("\n" + Usage.BAT_DELIMITER_CHARACTERS_NOTE + "\n", "")
                 .replaceAll("log4j:WARN.*\n", "");
 
@@ -299,7 +299,7 @@ public abstract class AbstractCliTest extends TestCaseWithTmpdir {
                         KtTestUtil.getJdk17Home().getPath()
                 ).replace(
                         "$STDLIB_JS$",
-                        PathUtil.getKotlinPathsForCompiler().getJsStdLibJarPath().getAbsolutePath()
+                        PathUtil.getKotlinPathsForCompiler().getJsStdLibKlibPath().getAbsolutePath()
                 );
     }
 

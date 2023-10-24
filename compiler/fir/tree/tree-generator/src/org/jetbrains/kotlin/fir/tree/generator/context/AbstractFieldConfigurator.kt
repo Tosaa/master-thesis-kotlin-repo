@@ -6,10 +6,8 @@
 package org.jetbrains.kotlin.fir.tree.generator.context
 
 import org.jetbrains.kotlin.fir.tree.generator.model.*
-import org.jetbrains.kotlin.generators.tree.ImplementationKind
-import org.jetbrains.kotlin.generators.tree.Importable
-import org.jetbrains.kotlin.generators.tree.SimpleTypeArgument
-import org.jetbrains.kotlin.generators.tree.TypeArgumentWithMultipleUpperBounds
+import org.jetbrains.kotlin.generators.tree.*
+import org.jetbrains.kotlin.types.Variance
 
 abstract class AbstractFieldConfigurator<T : AbstractFirTreeBuilder>(private val builder: T) {
     inner class ConfigureContext(val element: Element) {
@@ -30,39 +28,31 @@ abstract class AbstractFieldConfigurator<T : AbstractFirTreeBuilder>(private val
             }
         }
 
-        fun withArg(name: String, vararg upperBounds: String) {
-            withArg(name, upperBounds.map { Type(null, it) })
+        fun withArg(name: String, vararg upperBounds: TypeRef): TypeVariable = withArg(name, upperBounds.toList())
+
+        fun withArg(name: String, upperBounds: List<TypeRef>, variance: Variance = Variance.INVARIANT): TypeVariable {
+            return TypeVariable(name, upperBounds, variance).also(element.params::add)
         }
 
-        fun withArg(name: String, upperBound: Importable, vararg upperBounds: Importable) {
-            val allUpperBounds = mutableListOf(upperBound).apply { this += upperBounds }
-            withArg(name, allUpperBounds)
+        fun parentArgs(parent: Element, vararg arguments: Pair<String, TypeRef>) {
+            parentArgs(parent, listOf(*arguments))
         }
 
-        private fun withArg(name: String, upperBounds: List<Importable>) {
-            element.typeArguments += when (upperBounds.size) {
-                in 0..1 -> SimpleTypeArgument(name, upperBounds.firstOrNull())
-                else -> TypeArgumentWithMultipleUpperBounds(name, upperBounds.toList())
-            }
+        private fun parentArgs(parent: Element, arguments: List<Pair<String, TypeRef>>) {
+            parentArgs(parent, arguments.map { (name, arg) -> NamedTypeParameterRef(name) to arg })
         }
 
-        fun parentArg(parent: Element, argument: String, type: Importable) {
-            parentArg(parent, Type(null, argument), type)
-        }
-
-        fun parentArg(parent: Element, argument: Importable, type: Importable) {
-            require(parent in element.parents) {
+        @JvmName("parentArgs2")
+        private fun parentArgs(parent: Element, arguments: List<Pair<NamedTypeParameterRef, TypeRef>>) {
+            val parentIndex = element.elementParents.indexOfFirst { it.element == parent }
+            require(parentIndex >= 0) {
                 "$parent is not parent of $element"
             }
-            val argMap = element.parentsArguments.getOrPut(parent) { mutableMapOf() }
-            require(argument !in argMap) {
-                "Argument $argument already defined for parent $parent of $element"
+            val parentRef = element.elementParents[parentIndex]
+            require(parentRef.args.isEmpty()) {
+                "Parent $parent of element $element already has type arguments: $parentRef"
             }
-            argMap[argument] = type
-        }
-
-        fun Type.withArgs(vararg args: String): Pair<Type, List<Importable>> {
-            return this to args.map { Type(null, it) }
+            element.elementParents[parentIndex] = parentRef.copy(arguments.toMap())
         }
 
         fun needTransformOtherChildren() {

@@ -5,36 +5,24 @@
 
 package org.jetbrains.kotlin.fir.tree.generator.printer
 
-import org.jetbrains.kotlin.fir.tree.generator.context.AbstractFirTreeBuilder
 import org.jetbrains.kotlin.fir.tree.generator.model.Element
 import org.jetbrains.kotlin.fir.tree.generator.model.Field
-import org.jetbrains.kotlin.generators.tree.ImplementationKind
-import org.jetbrains.kotlin.generators.tree.Importable
-import org.jetbrains.kotlin.fir.tree.generator.pureAbstractElementType
 import org.jetbrains.kotlin.fir.tree.generator.util.get
-import org.jetbrains.kotlin.generators.tree.typeWithArguments
+import org.jetbrains.kotlin.generators.tree.*
+import org.jetbrains.kotlin.generators.tree.printer.*
 import org.jetbrains.kotlin.utils.SmartPrinter
 import org.jetbrains.kotlin.utils.withIndent
 import java.io.File
 
-fun Element.generateCode(generationPath: File): GeneratedFile {
-    val dir = generationPath.resolve(packageName.replace(".", "/"))
-    val file = File(dir, "$type.kt")
-    val stringBuilder = StringBuilder()
-    SmartPrinter(stringBuilder).apply {
-        printCopyright()
-        println("package $packageName")
-        println()
+fun Element.generateCode(generationPath: File): GeneratedFile =
+    printGeneratedType(generationPath, TREE_GENERATOR_README, packageName, type) {
         val imports = collectImports()
         imports.forEach { println("import $it") }
         if (imports.isNotEmpty()) {
             println()
         }
-        printGeneratedMessage()
         printElement(this@generateCode)
     }
-    return GeneratedFile(file, stringBuilder.toString())
-}
 
 fun SmartPrinter.printElement(element: Element) {
     with(element) {
@@ -46,33 +34,19 @@ fun SmartPrinter.printElement(element: Element) {
         }
 
         fun override() {
-            if (this != AbstractFirTreeBuilder.baseFirElement) {
+            if (!isRootElement) {
                 print("override ")
             }
         }
 
         print("${kind!!.title} $type")
-        if (typeArguments.isNotEmpty()) {
-            print(typeArguments.joinToString(", ", "<", ">") { it.toString() })
-        }
-        val needPureAbstractElement = !isInterface && !allParents.any { it.kind == ImplementationKind.AbstractClass || it.kind == ImplementationKind.SealedClass }
-
-        if (parents.isNotEmpty() || needPureAbstractElement) {
-            print(" : ")
-            if (needPureAbstractElement) {
-                print("${pureAbstractElementType.type}()")
-                if (parents.isNotEmpty()) {
-                    print(", ")
-                }
-            }
+        print(typeParameters())
+        val parentRefs = element.parentRefs
+        if (parentRefs.isNotEmpty()) {
             print(
-                parents.joinToString(", ") {
-                    var result = it.type
-                    parentsArguments[it]?.let { arguments ->
-                        result += arguments.values.joinToString(", ", "<", ">") { it.typeWithArguments }
-                    }
-                    result + it.kind.braces()
-                },
+                parentRefs.sortedBy { it.typeKind }.joinToString(prefix = " : ") { parent ->
+                    parent.typeWithArguments + parent.inheritanceClauseParenthesis()
+                }
             )
         }
         print(multipleUpperBoundsList())
@@ -86,22 +60,29 @@ fun SmartPrinter.printElement(element: Element) {
                     }
                 }
             }
-            if (allFields.isNotEmpty()) {
+
+            if (hasAcceptMethod) {
+                if (allFields.isNotEmpty()) {
+                    println()
+                }
+                override()
+                println("fun <R, D> accept(visitor: FirVisitor<R, D>, data: D): R =")
+                withIndent {
+                    println("visitor.visit${element.name}(this, data)")
+                }
+            }
+
+            if (hasTransformMethod) {
                 println()
+                println("@Suppress(\"UNCHECKED_CAST\")")
+                override()
+                println("fun <E : FirElement, D> transform(transformer: FirTransformer<D>, data: D): E =")
+                withIndent {
+                    println("transformer.transform$name(this, data) as E")
+                }
             }
 
-            override()
-            println("fun <R, D> accept(visitor: FirVisitor<R, D>, data: D): R = visitor.visit$name(this, data)")
-
-            println()
-            println("@Suppress(\"UNCHECKED_CAST\")")
-            override()
-            println("fun <E : FirElement, D> transform(transformer: FirTransformer<D>, data: D): E =")
-            withIndent {
-                println("transformer.transform$name(this, data) as E")
-            }
-
-            fun Field.replaceDeclaration(override: Boolean, overridenType: Importable? = null, forceNullable: Boolean = false) {
+            fun Field.replaceDeclaration(override: Boolean, overridenType: TypeRefWithNullability? = null, forceNullable: Boolean = false) {
                 println()
                 if (name == "source") {
                     println("@FirImplementationDetail")
@@ -132,22 +113,28 @@ fun SmartPrinter.printElement(element: Element) {
             if (needTransformOtherChildren) {
                 println()
                 abstract()
-                if (element.parents.any { it.needTransformOtherChildren }) {
+                if (element.elementParents.any { it.element.needTransformOtherChildren }) {
                     print("override ")
                 }
                 println(transformFunctionDeclaration("OtherChildren", typeWithArguments))
             }
 
-            if (element == AbstractFirTreeBuilder.baseFirElement) {
-                require(isInterface)
+            if (element.isRootElement) {
+                require(isInterface) {
+                    "$element must be an interface"
+                }
                 println()
                 println("fun accept(visitor: FirVisitorVoid) = accept(visitor, null)")
-                println()
-                println("fun <R, D> acceptChildren(visitor: FirVisitor<R, D>, data: D)")
+                if (element.hasAcceptChildrenMethod) {
+                    println()
+                    println("fun <R, D> acceptChildren(visitor: FirVisitor<R, D>, data: D)")
+                }
                 println()
                 println("fun acceptChildren(visitor: FirVisitorVoid) = acceptChildren(visitor, null)")
-                println()
-                println("fun <D> transformChildren(transformer: FirTransformer<D>, data: D): FirElement")
+                if (element.hasTransformChildrenMethod) {
+                    println()
+                    println("fun <D> transformChildren(transformer: FirTransformer<D>, data: D): FirElement")
+                }
             }
         }
         println("}")
