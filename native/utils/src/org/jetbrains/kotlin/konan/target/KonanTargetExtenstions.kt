@@ -51,6 +51,7 @@ fun KonanTarget.supportsMimallocAllocator(): Boolean =
         is KonanTarget.MACOS_X64 -> true
         is KonanTarget.MACOS_ARM64 -> true
         is KonanTarget.LINUX_ARM64 -> true
+        is KonanTarget.LINUX_RISCV64 -> true // Todo: figure out what minimallocAllocator is
         is KonanTarget.LINUX_ARM32_HFP -> true
         is KonanTarget.ANDROID_X64 -> true
         is KonanTarget.ANDROID_ARM64 -> true

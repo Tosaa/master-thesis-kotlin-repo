@@ -50,6 +50,7 @@ open class HostManager(
         LINUX_X64,
         LINUX_ARM32_HFP,
         LINUX_ARM64,
+        LINUX_RISCV64,
         LINUX_MIPS32,
         LINUX_MIPSEL32,
         MINGW_X86,
