@@ -87,7 +87,10 @@ abstract class KonanPropertiesLoader(
         = properties.hostTargetList(key, target, host)
 
     override fun absolute(value: String?): String =
-            dependencyProcessor!!.resolve(value!!).absolutePath
+        dependencyProcessor!!.resolve(value!!).absolutePath.also {
+            println("Konan.Properties.absolute($value) = $it")
+        }
+
     private val dependencyProcessor  by lazy {
         dependenciesRoot?.let {
             DependencyProcessor(

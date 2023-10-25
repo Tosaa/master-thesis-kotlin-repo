@@ -116,13 +116,13 @@ class DependencyProcessor(
 
     constructor(dependenciesRoot: File,
                 properties: KonanPropertiesLoader,
-                dependenciesUrl: String = properties.dependenciesUrl,
+                dependenciesUrl: String = properties.dependenciesUrl.also { println("DependencyProcessor.constructor(): properties.dependenciesUrl = $it") },
                 keepUnstable:Boolean = true,
                 archiveType: ArchiveType = ArchiveType.systemDefault,
                 customProgressCallback: ProgressCallback? = null) : this(
             dependenciesRoot,
             properties.properties,
-            properties.dependencies,
+            properties.dependencies.also { println("DependencyProcessor.constructor(): properties.dependencies = ${it.joinToString()}") },
             dependenciesUrl,
             keepUnstable = keepUnstable,
             archiveType = archiveType,
@@ -137,7 +137,7 @@ class DependencyProcessor(
                 customProgressCallback: ProgressCallback? = null ) : this(
             dependenciesRoot,
             dependenciesUrl,
-            dependencyToCandidates = properties.findCandidates(dependencies),
+            dependencyToCandidates = properties.findCandidates(dependencies).also { println("DependencyProcessor.constructor(): properties.findCandidates = $it") },
             airplaneMode = properties.airplaneMode,
             maxAttempts = properties.downloadingAttempts,
             attemptIntervalMs = properties.downloadingAttemptIntervalMs,
@@ -242,6 +242,7 @@ class DependencyProcessor(
 
     private fun resolveDependency(dependency: String): File {
         val candidate = resolvedDependencies[dependency]
+        println(resolvedDependencies.entries.joinToString("\n"))
         return when (candidate) {
             is DependencySource.Local -> candidate.path
             is DependencySource.Remote -> File(dependenciesDirectory, dependency)
@@ -267,8 +268,9 @@ class DependencyProcessor(
     private fun resolveRelative(relative: String): File {
         val path = Paths.get(relative)
         if (path.isAbsolute) error("not a relative path: $relative")
-
+        println("DependencyProcessor.resolveRelative($relative) path = $path")
         val dependency = path.first().toString()
+        println("DependencyProcessor.resolveRelative($relative) dependency = $dependency")
         return resolveDependency(dependency).let {
             if (path.nameCount > 1) {
                 it.toPath().resolve(path.subpath(1, path.nameCount)).toFile()

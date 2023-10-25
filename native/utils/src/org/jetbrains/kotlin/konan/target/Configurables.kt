@@ -57,7 +57,7 @@ interface Configurables : TargetableExternalStorage, RelocationModeFlags {
                 ?.let(TargetTriple.Companion::fromString)
                 ?: error("quadruple for $target is not set.")
 
-    val llvmHome get() = hostString("llvmHome")
+    val llvmHome get() = hostString("llvmHome").also { println("load llvmHome = $it") }
     val llvmVersion get() = hostString("llvmVersion")
     val libffiDir get() = hostString("libffiDir")
 
@@ -70,10 +70,10 @@ interface Configurables : TargetableExternalStorage, RelocationModeFlags {
     val mimallocLinkerDependencies get() = targetList("mimallocLinkerDependencies")
     val linkerNoDebugFlags get() = targetList("linkerNoDebugFlags")
     val linkerDynamicFlags get() = targetList("linkerDynamicFlags")
-    val targetSysRoot get() = targetString("targetSysRoot")
+    val targetSysRoot get() = targetString("targetSysRoot").also { println("load targetSysRoot = $it") }
 
     // Notice: these ones are host-target.
-    val targetToolchain get() = hostTargetString("targetToolchain")
+    val targetToolchain get() = hostTargetString("targetToolchain").also { println("load targetToolchain = $it") }
 
     val absoluteTargetSysRoot get() = absolute(targetSysRoot)
     val absoluteTargetToolchain get() = absolute(targetToolchain)
@@ -116,15 +116,15 @@ interface MingwConfigurables : Configurables, ClangFlags {
 }
 
 interface GccConfigurables : Configurables, ClangFlags {
-    val gccToolchain get() = targetString("gccToolchain")
+    val gccToolchain get() = targetString("gccToolchain").also { println("load gccToolchain = $it") }
     val absoluteGccToolchain get() = absolute(gccToolchain)
 
-    val libGcc get() = targetString("libGcc")!!
-    val dynamicLinker get() = targetString("dynamicLinker")!!
+    val libGcc get() = targetString("libGcc")!!.also { println("load libGcc = $it") }
+    val dynamicLinker get() = targetString("dynamicLinker")!!.also { println("load dynamicLinker = $it") }
     val abiSpecificLibraries get() = targetList("abiSpecificLibraries")
-    val crtFilesLocation get() = targetString("crtFilesLocation")!!
+    val crtFilesLocation get() = targetString("crtFilesLocation")!!.also { println("load crtFilesLocation = $it") }
 
-    val linker get() = hostTargetString("linker")
+    val linker get() = hostTargetString("linker").also { println("load linker = $it") }
     val linkerHostSpecificFlags get() = hostTargetList("linkerHostSpecificFlags")
     val absoluteLinker get() = absolute(linker)
 

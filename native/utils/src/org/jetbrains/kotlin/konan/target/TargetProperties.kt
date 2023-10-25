@@ -25,13 +25,19 @@ fun Properties.hostList(name: String, host: KonanTarget): List<String>
     = this.resolvablePropertyList(name, host.name)
 
 fun Properties.targetString(name: String, target: KonanTarget): String?
-    = this.resolvablePropertyString(name, target.name)
+    = this.resolvablePropertyString(name, target.name).also {
+        println("target = ${target.name}")
+        println("$name = $it")
+        }
 
 fun Properties.targetList(name: String, target: KonanTarget): List<String>
     = this.resolvablePropertyList(name, target.name)
 
 fun Properties.hostTargetString(name: String, target: KonanTarget, host: KonanTarget): String?
-    = this.resolvablePropertyString(name, hostTargetSuffix(host, target))
+    = this.resolvablePropertyString(name, hostTargetSuffix(host, target)).also {
+        println("hostTargetSuffix = " + hostTargetSuffix(host, target))
+        println("$name = $it")
+        }
 
 fun Properties.hostTargetList(name: String, target: KonanTarget, host: KonanTarget): List<String>
     = this.resolvablePropertyList(name, hostTargetSuffix(host, target))
