@@ -504,10 +504,17 @@ interface KotlinTargetContainerWithPresetFunctions : KotlinTargetsContainerWithP
     // Added to support riscV
     fun linuxRiscV64(
         name: String = "linuxRiscV64",
-        configure: KotlinNativeTarget.() -> Unit = { },
-    ): KotlinNativeTarget = object : KotlinNativeTarget() {
+        configure: KotlinNativeTarget.() -> Unit = { }
+    ): KotlinNativeTarget =
+        configureOrCreate(
+            name,
+            @Suppress("DEPRECATION")
+            presets.getByName("linuxRiscV64") as KotlinNativeTargetPreset,
+            configure
+        )
+    /* object : KotlinNativeTarget() {
 
-    }
+    }*/
 
     fun linuxRiscV64() = linuxRiscV64("linuxRiscV64") { }
     fun linuxRiscV64(name: String) = linuxRiscV64(name) { }

@@ -193,7 +193,7 @@ internal constructor(
         when (architecture) {
             Architecture.X64 -> AppleArchitecture.X64
             Architecture.X86 -> AppleArchitecture.X86
-            Architecture.ARM64 -> if (this == WATCHOS_ARM64) AppleArchitecture.ARM64_32 else AppleArchitecture.ARM64
+            Architecture.RISCV64, Architecture.ARM64 -> if (this == WATCHOS_ARM64) AppleArchitecture.ARM64_32 else AppleArchitecture.ARM64
             Architecture.ARM32 -> AppleArchitecture.ARM32
             Architecture.MIPS32,
             Architecture.MIPSEL32,
