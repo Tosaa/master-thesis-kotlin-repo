@@ -36,7 +36,6 @@ import org.jetbrains.kotlin.konan.file.File
 import org.jetbrains.kotlin.konan.library.KonanLibrary
 import org.jetbrains.kotlin.konan.library.resolverByName
 import org.jetbrains.kotlin.konan.target.Distribution
-import org.jetbrains.kotlin.konan.target.PlatformManager
 import org.jetbrains.kotlin.konan.util.DependencyDirectories
 import org.jetbrains.kotlin.konan.util.KonanHomeProvider
 import org.jetbrains.kotlin.library.*
@@ -51,21 +50,44 @@ import org.jetbrains.kotlin.util.Logger
 import org.jetbrains.kotlin.util.removeSuffixIfPresent
 import kotlin.system.exitProcess
 
-internal val KlibFactories = KlibMetadataFactories(::KonanBuiltIns, DynamicTypeDeserializer)
+private val KlibFactories = KlibMetadataFactories(::KonanBuiltIns, DynamicTypeDeserializer)
 
 fun printUsage() {
-    println("Usage: klib <command> <library> <options>")
-    println("where the commands are:")
-    println("\tinfo\tgeneral information about the library")
-    println("\tinstall\tinstall the library to the local repository")
-    println("\tdump-ir\tprint out the intermediate representation (IR) for the library (to be used for debugging purposes only)")
-    println("\tcontents\tlist contents of the library")
-    println("\tsignatures\tlist of ID signatures in the library")
-    println("\tremove\tremove the library from the local repository")
-    println("and the options are:")
-    println("\t-repository <path>\twork with the specified repository")
-    println("\t-target <name>\tinspect specifics of the given target")
-    println("\t-print-signatures [true|false]\tprint ID signature for every declaration (only for \"contents\" and \"dump-ir\" commands)")
+    println(
+            """
+            Usage: klib <command> <library> [<option>]
+
+            where the commands are:
+               info                      General information about the library
+               install                   [DEPRECATED] Local KLIB repositories to be dropped soon. See https://youtrack.jetbrains.com/issue/KT-61098
+                                           Install the library to the local repository.
+               remove                    [DEPRECATED] Local KLIB repositories to be dropped soon. See https://youtrack.jetbrains.com/issue/KT-61098
+                                           Remove the library from the local repository.
+               dump-ir                   Dump the intermediate representation (IR) of all declarations in the library. The output of this
+                                           command is intended to be used for debugging purposes only.
+               dump-ir-signatures        Dump IR signatures of all public declarations in the library and all public declarations consumed
+                                           by this library (as two separate lists). This command relies purely on the data in IR.
+               dump-metadata-signatures  Dump IR signatures of all public declarations in the library. Note, that this command renders
+                                           the signatures based on the library metadata. This is different from "dump-ir-signatures",
+                                           which renders signatures based on the IR. On practice, in most cases there is no difference
+                                           between output of these two commands. However, if IR transforming compiler plugins
+                                           (such as Compose) were used during compilation of the library, there would be different
+                                           signatures for patched declarations.
+               signatures                [DEPRECATED] Renamed to "dump-metadata-signatures". Please, use new command name.
+               dump-metadata             Dump the metadata of all public declarations in the library in the form of Kotlin-alike code.
+                                           The output of this command is intended to be used for debugging purposes only.
+               contents                  [DEPRECATED] Renamed to "dump-metadata". Please, use new command name.
+
+            and the options are:
+               -repository <path>        [DEPRECATED] Local KLIB repositories to be dropped soon. See https://youtrack.jetbrains.com/issue/KT-61098
+                                           Work with the specified repository.
+               -signature-version {${KotlinIrSignatureVersion.CURRENTLY_SUPPORTED_VERSIONS.joinToString("|") { it.number.toString() }}}
+                                         Render IR signatures of a specific version. By default, the most up-to-date signature version
+                                           that is supported in the library is used.
+               -print-signatures {true|false}
+                                         Print IR signature for every declaration. Applicable only to "dump-metadata" and "dump-ir" commands.
+            """.trimIndent()
+    )
 }
 
 private fun parseArgs(args: Array<String>): Map<String, List<String>> {
@@ -95,21 +117,37 @@ class Command(args: Array<String>) {
 
     val verb = args[0]
     val library = args[1]
-    val options = parseArgs(args.drop(2).toTypedArray())
+    val options: Map<String, List<String>> = parseArgs(args.drop(2).toTypedArray())
 }
 
-fun warn(text: String) {
+private fun Command.parseSignatureVersion(): KotlinIrSignatureVersion? {
+    val rawSignatureVersion = options["-signature-version"]?.last() ?: return null
+    val signatureVersion = rawSignatureVersion.toIntOrNull()?.let(::KotlinIrSignatureVersion)
+            ?: logError("Invalid signature version: $rawSignatureVersion")
+
+    if (signatureVersion !in KotlinIrSignatureVersion.CURRENTLY_SUPPORTED_VERSIONS)
+        logError("Unsupported signature version: ${signatureVersion.number}")
+
+    return signatureVersion
+}
+
+internal fun logWarning(text: String) {
     println("warning: $text")
 }
 
-fun error(text: String): Nothing {
-    kotlin.error("error: $text")
+internal fun logError(text: String, withStacktrace: Boolean = false): Nothing {
+    if (withStacktrace)
+        error("error: $text")
+    else {
+        System.err.println("error: $text")
+        exitProcess(1)
+    }
 }
 
 object KlibToolLogger : Logger, IrMessageLogger {
-    override fun warning(message: String) = warn(message)
-    override fun error(message: String) = warn(message)
-    override fun fatal(message: String) = org.jetbrains.kotlin.cli.klib.error(message)
+    override fun warning(message: String) = logWarning(message)
+    override fun error(message: String) = logWarning(message)
+    override fun fatal(message: String) = logError(message, withStacktrace = true)
     override fun log(message: String) = println(message)
     override fun report(severity: IrMessageLogger.Severity, message: String, location: IrMessageLogger.Location?) {
         when (severity) {
@@ -134,7 +172,7 @@ open class ModuleDeserializer(val library: ByteArray) {
 
 }
 
-class Library(val libraryNameOrPath: String, val requestedRepository: String?, val target: String) {
+class Library(val libraryNameOrPath: String, val requestedRepository: String?) {
 
     val repository = requestedRepository?.File() ?: defaultRepository
     fun info() {
@@ -160,8 +198,10 @@ class Library(val libraryNameOrPath: String, val requestedRepository: String?, v
     }
 
     fun install() {
+        logWarning("Local KLIB repositories to be dropped soon. See https://youtrack.jetbrains.com/issue/KT-61098")
+
         if (!repository.exists) {
-            warn("Repository does not exist: $repository. Creating.")
+            logWarning("Repository does not exist: $repository. Creating...")
             repository.mkdirs()
         }
 
@@ -176,11 +216,13 @@ class Library(val libraryNameOrPath: String, val requestedRepository: String?, v
     }
 
     fun remove(blind: Boolean = false) {
-        if (!repository.exists) error("Repository does not exist: $repository")
+        logWarning("Local KLIB repositories to be dropped soon. See https://youtrack.jetbrains.com/issue/KT-61098")
+
+        if (!repository.exists) logError("Repository does not exist: $repository")
 
         val library = try {
             val library = libraryInRepo(repository, libraryNameOrPath)
-            if (blind) warn("Removing The previously installed $libraryNameOrPath from $repository.")
+            if (blind) logWarning("Removing The previously installed $libraryNameOrPath from $repository")
             library
 
         } catch (e: Throwable) {
@@ -206,7 +248,11 @@ class Library(val libraryNameOrPath: String, val requestedRepository: String?, v
             get() = TODO("Not needed for ir dumping")
 
         override fun createModuleDeserializer(moduleDescriptor: ModuleDescriptor, klib: KotlinLibrary?, strategyResolver: (String) -> DeserializationStrategy): IrModuleDeserializer {
-            return KlibToolModuleDeserializer(moduleDescriptor, klib ?: error("Expecting kotlin library for $moduleDescriptor"), strategyResolver)
+            return KlibToolModuleDeserializer(
+                    module = moduleDescriptor,
+                    klib = klib ?: error("Expecting kotlin library for $moduleDescriptor"),
+                    strategyResolver = strategyResolver
+            )
         }
 
         override fun isBuiltInModule(moduleDescriptor: ModuleDescriptor): Boolean {
@@ -227,38 +273,81 @@ class Library(val libraryNameOrPath: String, val requestedRepository: String?, v
     }
 
     @OptIn(ObsoleteDescriptorBasedAPI::class)
-    fun ir(output: Appendable, printSignatures: Boolean) {
+    fun dumpIr(output: Appendable, printSignatures: Boolean, signatureVersion: KotlinIrSignatureVersion?) {
         val module = loadModule()
-        if (module.kotlinLibrary.isInterop) error("Deserializing IR from IR-less libraries is not supported yet")
+        val library = module.kotlinLibrary
+        checkLibraryHasIr(library)
+
+        if (signatureVersion != null && signatureVersion != KotlinIrSignatureVersion.V2) {
+            // TODO: support passing any signature version through `DumpIrTreeOptions`, KT-62828
+            logWarning("using a non-default signature version in \"dump-ir\" is not supported yet")
+        }
+
         val versionSpec = LanguageVersionSettingsImpl(currentLanguageVersion, currentApiVersion)
         val idSignaturer = KonanIdSignaturer(KonanManglerDesc)
         val symbolTable = SymbolTable(idSignaturer, IrFactoryImpl)
         val typeTranslator = TypeTranslatorImpl(symbolTable, versionSpec, module)
         val irBuiltIns = IrBuiltInsOverDescriptors(module.builtIns, typeTranslator, symbolTable)
+
         val linker = KlibToolLinker(module, irBuiltIns, symbolTable)
         module.allDependencyModules.forEach {
             linker.deserializeOnlyHeaderModule(it, it.kotlinLibrary)
             linker.resolveModuleDeserializer(it, null).init()
         }
-        val irFragment = linker.deserializeFullModule(module, module.kotlinLibrary)
+        val irFragment = linker.deserializeFullModule(module, library)
         linker.resolveModuleDeserializer(module, null).init()
         linker.modulesWithReachableTopLevels.forEach(IrModuleDeserializer::deserializeReachableDeclarations)
+
         output.append(irFragment.dump(DumpIrTreeOptions(printSignatures = printSignatures)))
     }
 
-    fun contents(output: Appendable, printSignatures: Boolean) {
+    fun contents(output: Appendable, printSignatures: Boolean, signatureVersion: KotlinIrSignatureVersion?) {
+        logWarning("\"contents\" has been renamed to \"dump-metadata\". Please, use new command name.")
+        dumpMetadata(output, printSignatures, signatureVersion)
+    }
+
+    fun dumpMetadata(output: Appendable, printSignatures: Boolean, signatureVersion: KotlinIrSignatureVersion?) {
         val module = loadModule()
-        val signatureRenderer = if (printSignatures) DefaultKlibSignatureRenderer("// ID signature: ") else KlibSignatureRenderer.NO_SIGNATURE
+        val signatureRenderer = if (printSignatures)
+            DefaultKlibSignatureRenderer(signatureVersion, "// Signature: ")
+        else
+            KlibSignatureRenderer.NO_SIGNATURE
         val printer = DeclarationPrinter(output, DefaultDeclarationHeaderRenderer, signatureRenderer)
 
         printer.print(module)
     }
 
-    fun signatures(output: Appendable) {
+    fun signatures(output: Appendable, signatureVersion: KotlinIrSignatureVersion?) {
+        logWarning("\"signatures\" has been renamed to \"dump-metadata-signatures\". Please, use new command name.")
+        dumpMetadataSignatures(output, signatureVersion)
+    }
+
+    fun dumpMetadataSignatures(output: Appendable, signatureVersion: KotlinIrSignatureVersion?) {
         val module = loadModule()
-        val printer = SignaturePrinter(output, DefaultKlibSignatureRenderer())
+        // Don't call `checkSupportedInLibrary()` - the signatures are anyway generated on the fly.
+        val printer = SignaturePrinter(output, DefaultKlibSignatureRenderer(signatureVersion))
 
         printer.print(module)
+    }
+
+    fun dumpIrSignatures(output: Appendable, signatureVersion: KotlinIrSignatureVersion?) {
+        val library = libraryInCurrentDir(libraryNameOrPath)
+        checkLibraryHasIr(library)
+        signatureVersion?.checkSupportedInLibrary(library)
+
+        val signatures = IrSignaturesExtractor(library).extract()
+        IrSignaturesRenderer(output, signatureVersion).render(signatures)
+    }
+
+    private fun checkLibraryHasIr(library: KotlinLibrary) {
+        if (!library.hasIr) logError("Library ${library.libraryFile} is an IR-less library")
+    }
+
+    private fun KotlinIrSignatureVersion.checkSupportedInLibrary(library: KotlinLibrary) {
+        val supportedSignatureVersions = library.versions.irSignatureVersions
+        if (this !in supportedSignatureVersions)
+            logError("Signature version ${this.number} is not supported in library ${library.libraryFile}." +
+                    " Supported versions: ${supportedSignatureVersions.joinToString { it.number.toString() }}")
     }
 
     private fun loadModule(): ModuleDescriptor {
@@ -302,22 +391,23 @@ fun libraryInRepoOrCurrentDir(repository: File, name: String) =
 fun main(args: Array<String>) {
     val command = Command(args)
 
-    val targetManager = PlatformManager(KonanHomeProvider.determineKonanHome())
-            .targetManager(command.options["-target"]?.last())
-    val target = targetManager.targetName
-
     val repository = command.options["-repository"]?.last()
     val printSignatures = command.options["-print-signatures"]?.last()?.toBoolean() == true
 
-    val library = Library(command.library, repository, target)
+    val signatureVersion = command.parseSignatureVersion()
+
+    val library = Library(command.library, repository)
 
     when (command.verb) {
-        "dump-ir" -> library.ir(System.out, printSignatures)
-        "contents" -> library.contents(System.out, printSignatures)
-        "signatures" -> library.signatures(System.out)
+        "dump-ir" -> library.dumpIr(System.out, printSignatures, signatureVersion)
+        "dump-ir-signatures" -> library.dumpIrSignatures(System.out, signatureVersion)
+        "dump-metadata" -> library.dumpMetadata(System.out, printSignatures, signatureVersion)
+        "dump-metadata-signatures" -> library.dumpMetadataSignatures(System.out, signatureVersion)
+        "contents" -> library.contents(System.out, printSignatures, signatureVersion)
+        "signatures" -> library.signatures(System.out, signatureVersion)
         "info" -> library.info()
         "install" -> library.install()
         "remove" -> library.remove()
-        else -> error("Unknown command ${command.verb}.")
+        else -> logError("Unknown command: ${command.verb}")
     }
 }

@@ -14,6 +14,8 @@ abstract class AbstractField {
     val nullable: Boolean
         get() = typeRef.nullable
 
+    var kDoc: String? = null
+
     abstract val isVolatile: Boolean
 
     abstract val isFinal: Boolean
@@ -24,7 +26,7 @@ abstract class AbstractField {
 
     open val arbitraryImportables: MutableList<Importable> = mutableListOf()
 
-    open var optInAnnotation: ArbitraryImportable? = null
+    open var optInAnnotation: ClassRef<*>? = null
 
     abstract val isMutable: Boolean
     open val withGetter: Boolean get() = false

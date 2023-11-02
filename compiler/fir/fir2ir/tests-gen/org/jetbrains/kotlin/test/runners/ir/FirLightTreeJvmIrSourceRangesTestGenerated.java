@@ -85,6 +85,12 @@ public class FirLightTreeJvmIrSourceRangesTestGenerated extends AbstractFirLight
         runTest("compiler/testData/ir/sourceRanges/postfixIncrementDecrement.kt");
     }
 
+    @Test
+    @TestMetadata("this.kt")
+    public void testThis() throws Exception {
+        runTest("compiler/testData/ir/sourceRanges/this.kt");
+    }
+
     @Nested
     @TestMetadata("compiler/testData/ir/sourceRanges/declarations")
     @TestDataPath("$PROJECT_ROOT")
@@ -122,6 +128,12 @@ public class FirLightTreeJvmIrSourceRangesTestGenerated extends AbstractFirLight
         @TestMetadata("fakeOverrides.kt")
         public void testFakeOverrides() throws Exception {
             runTest("compiler/testData/ir/sourceRanges/declarations/fakeOverrides.kt");
+        }
+
+        @Test
+        @TestMetadata("fakeOverrides2.kt")
+        public void testFakeOverrides2() throws Exception {
+            runTest("compiler/testData/ir/sourceRanges/declarations/fakeOverrides2.kt");
         }
 
         @Test

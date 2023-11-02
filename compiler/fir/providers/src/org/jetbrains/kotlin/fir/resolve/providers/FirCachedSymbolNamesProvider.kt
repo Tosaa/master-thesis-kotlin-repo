@@ -13,12 +13,13 @@ import org.jetbrains.kotlin.fir.resolve.providers.impl.FirSyntheticFunctionInter
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.Name
+import org.jetbrains.kotlin.utils.flatMapToNullableSet
 
 /**
  * A [FirSymbolNamesProvider] that caches all name sets.
  */
 abstract class FirCachedSymbolNamesProvider(protected val session: FirSession) : FirSymbolNamesProvider() {
-    abstract fun computeTopLevelClassifierNames(packageFqName: FqName): Set<String>?
+    abstract fun computeTopLevelClassifierNames(packageFqName: FqName): Set<Name>?
     abstract fun computePackageNamesWithTopLevelCallables(): Set<String>?
     abstract fun computeTopLevelCallableNames(packageFqName: FqName): Set<Name>?
 
@@ -32,7 +33,7 @@ abstract class FirCachedSymbolNamesProvider(protected val session: FirSession) :
     private val topLevelCallableNamesByPackage =
         session.firCachesFactory.createCache(::computeTopLevelCallableNames)
 
-    override fun getTopLevelClassifierNamesInPackage(packageFqName: FqName): Set<String>? =
+    override fun getTopLevelClassifierNamesInPackage(packageFqName: FqName): Set<Name>? =
         topLevelClassifierNamesByPackage.getValue(packageFqName)
 
     override fun getPackageNamesWithTopLevelCallables(): Set<String>? = topLevelCallablePackageNames
@@ -49,7 +50,7 @@ class FirDelegatingCachedSymbolNamesProvider(
     session: FirSession,
     private val delegate: FirSymbolNamesProvider,
 ) : FirCachedSymbolNamesProvider(session) {
-    override fun computeTopLevelClassifierNames(packageFqName: FqName): Set<String>? =
+    override fun computeTopLevelClassifierNames(packageFqName: FqName): Set<Name>? =
         delegate.getTopLevelClassifierNamesInPackage(packageFqName)
 
     override fun computePackageNamesWithTopLevelCallables(): Set<String>? =
@@ -68,7 +69,7 @@ open class FirCompositeCachedSymbolNamesProvider(
     session: FirSession,
     val providers: List<FirSymbolNamesProvider>,
 ) : FirCachedSymbolNamesProvider(session) {
-    override fun computeTopLevelClassifierNames(packageFqName: FqName): Set<String>? =
+    override fun computeTopLevelClassifierNames(packageFqName: FqName): Set<Name>? =
         providers.flatMapToNullableSet { it.getTopLevelClassifierNamesInPackage(packageFqName) }
 
     override fun computePackageNamesWithTopLevelCallables(): Set<String>? =
@@ -102,9 +103,3 @@ open class FirCompositeCachedSymbolNamesProvider(
             create(session, providers.map { it.symbolNamesProvider })
     }
 }
-
-/**
- * Works almost as regular flatMap, but returns a set and returns null if any lambda call returned null
- */
-inline fun <T, R> Iterable<T>.flatMapToNullableSet(transform: (T) -> Iterable<R>?): Set<R>? =
-    flatMapTo(mutableSetOf()) { transform(it) ?: return null }

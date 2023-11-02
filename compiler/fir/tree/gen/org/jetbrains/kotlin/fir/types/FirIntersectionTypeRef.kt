@@ -11,8 +11,12 @@ package org.jetbrains.kotlin.fir.types
 import org.jetbrains.kotlin.KtSourceElement
 import org.jetbrains.kotlin.fir.FirElement
 import org.jetbrains.kotlin.fir.expressions.FirAnnotation
-import org.jetbrains.kotlin.fir.visitors.*
+import org.jetbrains.kotlin.fir.visitors.FirTransformer
+import org.jetbrains.kotlin.fir.visitors.FirVisitor
 
+/**
+ * Generated from: [org.jetbrains.kotlin.fir.tree.generator.FirTreeBuilder.intersectionTypeRef]
+ */
 abstract class FirIntersectionTypeRef : FirTypeRefWithNullability() {
     abstract override val source: KtSourceElement?
     abstract override val annotations: List<FirAnnotation>

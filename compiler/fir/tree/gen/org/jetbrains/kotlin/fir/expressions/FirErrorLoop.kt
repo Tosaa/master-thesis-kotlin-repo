@@ -13,8 +13,12 @@ import org.jetbrains.kotlin.fir.FirElement
 import org.jetbrains.kotlin.fir.FirLabel
 import org.jetbrains.kotlin.fir.diagnostics.ConeDiagnostic
 import org.jetbrains.kotlin.fir.diagnostics.FirDiagnosticHolder
-import org.jetbrains.kotlin.fir.visitors.*
+import org.jetbrains.kotlin.fir.visitors.FirTransformer
+import org.jetbrains.kotlin.fir.visitors.FirVisitor
 
+/**
+ * Generated from: [org.jetbrains.kotlin.fir.tree.generator.FirTreeBuilder.errorLoop]
+ */
 abstract class FirErrorLoop : FirLoop(), FirDiagnosticHolder {
     abstract override val source: KtSourceElement?
     abstract override val annotations: List<FirAnnotation>

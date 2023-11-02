@@ -18,9 +18,12 @@ import org.jetbrains.kotlin.fir.references.FirControlFlowGraphReference
 import org.jetbrains.kotlin.fir.scopes.FirScopeProvider
 import org.jetbrains.kotlin.fir.symbols.impl.FirClassSymbol
 import org.jetbrains.kotlin.fir.types.FirTypeRef
-import org.jetbrains.kotlin.fir.visitors.*
-import org.jetbrains.kotlin.fir.declarations.ResolveStateAccess
+import org.jetbrains.kotlin.fir.visitors.FirTransformer
+import org.jetbrains.kotlin.fir.visitors.FirVisitor
 
+/**
+ * Generated from: [org.jetbrains.kotlin.fir.tree.generator.FirTreeBuilder.klass]
+ */
 sealed class FirClass : FirClassLikeDeclaration(), FirStatement, FirTypeParameterRefsOwner, FirControlFlowGraphOwner {
     abstract override val source: KtSourceElement?
     abstract override val moduleData: FirModuleData

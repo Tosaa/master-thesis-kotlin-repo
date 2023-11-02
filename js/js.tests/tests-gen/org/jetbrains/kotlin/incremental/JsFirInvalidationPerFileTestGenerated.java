@@ -62,6 +62,12 @@ public class JsFirInvalidationPerFileTestGenerated extends AbstractJsFirInvalida
     }
 
     @Test
+    @TestMetadata("companionConstVal")
+    public void testCompanionConstVal() throws Exception {
+        runTest("js/js.translator/testData/incremental/invalidation/companionConstVal/");
+    }
+
+    @Test
     @TestMetadata("companionFunction")
     public void testCompanionFunction() throws Exception {
         runTest("js/js.translator/testData/incremental/invalidation/companionFunction/");
@@ -308,9 +314,21 @@ public class JsFirInvalidationPerFileTestGenerated extends AbstractJsFirInvalida
     }
 
     @Test
+    @TestMetadata("jsCodeWithConstStringFromOtherModule")
+    public void testJsCodeWithConstStringFromOtherModule() throws Exception {
+        runTest("js/js.translator/testData/incremental/invalidation/jsCodeWithConstStringFromOtherModule/");
+    }
+
+    @Test
     @TestMetadata("jsExport")
     public void testJsExport() throws Exception {
         runTest("js/js.translator/testData/incremental/invalidation/jsExport/");
+    }
+
+    @Test
+    @TestMetadata("jsExportReexport")
+    public void testJsExportReexport() throws Exception {
+        runTest("js/js.translator/testData/incremental/invalidation/jsExportReexport/");
     }
 
     @Test
@@ -389,6 +407,18 @@ public class JsFirInvalidationPerFileTestGenerated extends AbstractJsFirInvalida
     @TestMetadata("moveInlineFunctionBetweenModules")
     public void testMoveInlineFunctionBetweenModules() throws Exception {
         runTest("js/js.translator/testData/incremental/invalidation/moveInlineFunctionBetweenModules/");
+    }
+
+    @Test
+    @TestMetadata("multiPlatformClashFileNames")
+    public void testMultiPlatformClashFileNames() throws Exception {
+        runTest("js/js.translator/testData/incremental/invalidation/multiPlatformClashFileNames/");
+    }
+
+    @Test
+    @TestMetadata("multiPlatformSimple")
+    public void testMultiPlatformSimple() throws Exception {
+        runTest("js/js.translator/testData/incremental/invalidation/multiPlatformSimple/");
     }
 
     @Test

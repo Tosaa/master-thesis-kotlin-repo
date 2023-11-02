@@ -24,6 +24,7 @@ import org.jetbrains.kotlin.config.LanguageFeature.ProhibitInlineModifierOnPrima
 import org.jetbrains.kotlin.config.LanguageFeature.ProhibitInvisibleAbstractMethodsInSuperclasses
 import org.jetbrains.kotlin.config.LanguageFeature.ProhibitNonReifiedArraysAsReifiedTypeArguments
 import org.jetbrains.kotlin.config.LanguageFeature.ProhibitScriptTopLevelInnerClasses
+import org.jetbrains.kotlin.config.LanguageFeature.ProhibitSingleNamedFunctionAsExpression
 import org.jetbrains.kotlin.config.LanguageFeature.ProhibitUseSiteTargetAnnotationsOnSuperTypes
 import org.jetbrains.kotlin.config.LanguageFeature.RestrictRetentionForExpressionAnnotations
 import org.jetbrains.kotlin.config.LanguageFeature.RestrictionOfValReassignmentViaBackingField
@@ -90,7 +91,6 @@ import org.jetbrains.kotlin.psi.KtNamedDeclaration
 import org.jetbrains.kotlin.psi.KtNamedFunction
 import org.jetbrains.kotlin.psi.KtObjectDeclaration
 import org.jetbrains.kotlin.psi.KtParameter
-import org.jetbrains.kotlin.psi.KtPrimaryConstructor
 import org.jetbrains.kotlin.psi.KtProperty
 import org.jetbrains.kotlin.psi.KtPropertyAccessor
 import org.jetbrains.kotlin.psi.KtReturnExpression
@@ -244,10 +244,9 @@ object FirErrors {
     val SUPERTYPE_NOT_INITIALIZED by error0<KtTypeReference>()
     val SUPERTYPE_INITIALIZED_WITHOUT_PRIMARY_CONSTRUCTOR by error0<PsiElement>()
     val DELEGATION_SUPER_CALL_IN_ENUM_CONSTRUCTOR by error0<PsiElement>()
-    val PRIMARY_CONSTRUCTOR_REQUIRED_FOR_DATA_CLASS by error0<KtNamedDeclaration>(SourceElementPositioningStrategies.DECLARATION_NAME)
     val EXPLICIT_DELEGATION_CALL_REQUIRED by error0<PsiElement>(SourceElementPositioningStrategies.SECONDARY_CONSTRUCTOR_DELEGATION_CALL)
     val SEALED_CLASS_CONSTRUCTOR_CALL by error0<PsiElement>()
-    val DATA_CLASS_WITHOUT_PARAMETERS by error0<KtPrimaryConstructor>()
+    val DATA_CLASS_WITHOUT_PARAMETERS by error0<KtNamedDeclaration>(SourceElementPositioningStrategies.DECLARATION_NAME)
     val DATA_CLASS_VARARG_PARAMETER by error0<KtParameter>()
     val DATA_CLASS_NOT_PROPERTY_PARAMETER by error0<KtParameter>()
 
@@ -332,7 +331,7 @@ object FirErrors {
     val EXPOSED_TYPE_PARAMETER_BOUND by error3<KtTypeReference, EffectiveVisibility, FirBasedSymbol<*>, EffectiveVisibility>()
 
     // Modifiers
-    val INAPPLICABLE_INFIX_MODIFIER by error0<PsiElement>()
+    val INAPPLICABLE_INFIX_MODIFIER by error0<PsiElement>(SourceElementPositioningStrategies.INFIX_MODIFIER)
     val REPEATED_MODIFIER by error1<PsiElement, KtModifierKeywordToken>()
     val REDUNDANT_MODIFIER by warning2<PsiElement, KtModifierKeywordToken, KtModifierKeywordToken>()
     val DEPRECATED_MODIFIER by warning2<PsiElement, KtModifierKeywordToken, KtModifierKeywordToken>()
@@ -343,6 +342,7 @@ object FirErrors {
     val REDUNDANT_OPEN_IN_INTERFACE by warning0<KtModifierListOwner>(SourceElementPositioningStrategies.OPEN_MODIFIER)
     val WRONG_MODIFIER_TARGET by error2<PsiElement, KtModifierKeywordToken, String>()
     val OPERATOR_MODIFIER_REQUIRED by error2<PsiElement, FirNamedFunctionSymbol, String>()
+    val OPERATOR_CALL_ON_CONSTRUCTOR by error1<PsiElement, String>()
     val INFIX_MODIFIER_REQUIRED by error1<PsiElement, FirNamedFunctionSymbol>()
     val WRONG_MODIFIER_CONTAINING_DECLARATION by error2<PsiElement, KtModifierKeywordToken, String>()
     val DEPRECATED_MODIFIER_CONTAINING_DECLARATION by warning2<PsiElement, KtModifierKeywordToken, String>()
@@ -465,7 +465,9 @@ object FirErrors {
     val ABBREVIATED_NOTHING_PROPERTY_TYPE by error0<PsiElement>(SourceElementPositioningStrategies.NAME_IDENTIFIER)
     val CYCLIC_GENERIC_UPPER_BOUND by error0<PsiElement>()
     val FINITE_BOUNDS_VIOLATION by error0<PsiElement>()
-    val FINITE_BOUNDS_VIOLATION_IN_JAVA by error1<PsiElement, List<FirBasedSymbol<*>>>()
+    val FINITE_BOUNDS_VIOLATION_IN_JAVA by warning1<PsiElement, List<FirBasedSymbol<*>>>()
+    val EXPANSIVE_INHERITANCE by error0<PsiElement>()
+    val EXPANSIVE_INHERITANCE_IN_JAVA by warning1<PsiElement, List<FirBasedSymbol<*>>>()
     val DEPRECATED_TYPE_PARAMETER_SYNTAX by error0<KtDeclaration>(SourceElementPositioningStrategies.TYPE_PARAMETERS_LIST)
     val MISPLACED_TYPE_PARAMETER_CONSTRAINTS by warning0<KtTypeParameter>()
     val DYNAMIC_SUPERTYPE by error0<KtTypeReference>()
@@ -550,6 +552,7 @@ object FirErrors {
     val NON_MEMBER_FUNCTION_NO_BODY by error1<KtFunction, FirCallableSymbol<*>>(SourceElementPositioningStrategies.DECLARATION_SIGNATURE)
     val FUNCTION_DECLARATION_WITH_NO_NAME by error0<KtFunction>(SourceElementPositioningStrategies.DECLARATION_SIGNATURE)
     val ANONYMOUS_FUNCTION_WITH_NAME by error0<KtFunction>()
+    val SINGLE_ANONYMOUS_FUNCTION_WITH_NAME by deprecationError0<KtFunction>(ProhibitSingleNamedFunctionAsExpression)
     val ANONYMOUS_FUNCTION_PARAMETER_WITH_DEFAULT_VALUE by error0<KtParameter>(SourceElementPositioningStrategies.PARAMETER_DEFAULT_VALUE)
     val USELESS_VARARG_ON_PARAMETER by warning0<KtParameter>()
     val MULTIPLE_VARARG_PARAMETERS by error0<KtParameter>(SourceElementPositioningStrategies.PARAMETER_VARARG_MODIFIER)
@@ -762,7 +765,7 @@ object FirErrors {
     val UNDERSCORE_IS_RESERVED by error0<PsiElement>(SourceElementPositioningStrategies.NAME_IDENTIFIER)
     val UNDERSCORE_USAGE_WITHOUT_BACKTICKS by error0<PsiElement>(SourceElementPositioningStrategies.NAME_IDENTIFIER)
     val RESOLVED_TO_UNDERSCORE_NAMED_CATCH_PARAMETER by warning0<KtNameReferenceExpression>()
-    val INVALID_CHARACTERS by error1<KtNamedDeclaration, String>(SourceElementPositioningStrategies.NAME_IDENTIFIER)
+    val INVALID_CHARACTERS by error1<PsiElement, String>(SourceElementPositioningStrategies.NAME_IDENTIFIER)
     val DANGEROUS_CHARACTERS by warning1<KtNamedDeclaration, String>(SourceElementPositioningStrategies.NAME_IDENTIFIER)
     val EQUALITY_NOT_APPLICABLE by error3<KtBinaryExpression, String, ConeKotlinType, ConeKotlinType>()
     val EQUALITY_NOT_APPLICABLE_WARNING by warning3<KtBinaryExpression, String, ConeKotlinType, ConeKotlinType>()
@@ -864,6 +867,7 @@ object FirErrors {
     // Compatibility issues
     val INCOMPATIBLE_CLASS by error2<PsiElement, String, IncompatibleVersionErrorData<*>>()
     val PRE_RELEASE_CLASS by error1<PsiElement, String>()
+    val IR_WITH_UNSTABLE_ABI_COMPILED_CLASS by error1<PsiElement, String>()
 
     init {
         RootDiagnosticRendererFactory.registerFactory(FirErrorsDefaultMessages)

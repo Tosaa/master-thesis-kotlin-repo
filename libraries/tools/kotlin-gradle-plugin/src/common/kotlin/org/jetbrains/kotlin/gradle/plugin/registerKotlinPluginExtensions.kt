@@ -6,6 +6,12 @@
 package org.jetbrains.kotlin.gradle.plugin
 
 import org.gradle.api.Project
+import org.jetbrains.kotlin.gradle.artifacts.*
+import org.jetbrains.kotlin.gradle.artifacts.KotlinJsKlibArtifact
+import org.jetbrains.kotlin.gradle.artifacts.KotlinJvmJarArtifact
+import org.jetbrains.kotlin.gradle.artifacts.KotlinNativeHostSpecificMetadataArtifact
+import org.jetbrains.kotlin.gradle.artifacts.KotlinNativeKlibArtifact
+import org.jetbrains.kotlin.gradle.artifacts.KotlinTargetArtifact
 import org.jetbrains.kotlin.gradle.dsl.*
 import org.jetbrains.kotlin.gradle.dsl.AndroidMainSourceSetConventionsChecker
 import org.jetbrains.kotlin.gradle.dsl.IosSourceSetConventionChecker
@@ -20,6 +26,7 @@ import org.jetbrains.kotlin.gradle.plugin.diagnostics.checkers.CommonMainOrTestW
 import org.jetbrains.kotlin.gradle.plugin.diagnostics.checkers.DeprecatedKotlinNativeTargetsChecker
 import org.jetbrains.kotlin.gradle.plugin.diagnostics.checkers.DisabledCinteropCommonizationInHmppProjectChecker
 import org.jetbrains.kotlin.gradle.plugin.diagnostics.checkers.DisabledNativeTargetsChecker
+import org.jetbrains.kotlin.gradle.plugin.diagnostics.checkers.DuplicateSourceSetChecker
 import org.jetbrains.kotlin.gradle.plugin.diagnostics.checkers.ExperimentalK2UsageChecker
 import org.jetbrains.kotlin.gradle.plugin.diagnostics.checkers.InternalGradlePropertiesUsageChecker
 import org.jetbrains.kotlin.gradle.plugin.diagnostics.checkers.JsEnvironmentChecker
@@ -39,11 +46,21 @@ import org.jetbrains.kotlin.gradle.plugin.mpp.MultiplatformPublishingSetupAction
 import org.jetbrains.kotlin.gradle.plugin.mpp.SyncLanguageSettingsWithKotlinExtensionSetupAction
 import org.jetbrains.kotlin.gradle.plugin.mpp.UserDefinedAttributesSetupAction
 import org.jetbrains.kotlin.gradle.plugin.mpp.apple.AddBuildListenerForXCodeSetupAction
+import org.jetbrains.kotlin.gradle.plugin.mpp.compilationImpl.*
+import org.jetbrains.kotlin.gradle.plugin.mpp.compilationImpl.KotlinCompilationProcessorSideEffect
+import org.jetbrains.kotlin.gradle.plugin.mpp.compilationImpl.KotlinCompilationSideEffect
+import org.jetbrains.kotlin.gradle.plugin.mpp.compilationImpl.KotlinCreateResourcesTaskSideEffect
+import org.jetbrains.kotlin.gradle.plugin.mpp.compilationImpl.KotlinCreateSourcesJarTaskSideEffect
 import org.jetbrains.kotlin.gradle.plugin.mpp.internal.DeprecatedMppGradlePropertiesMigrationSetupAction
 import org.jetbrains.kotlin.gradle.plugin.sources.KotlinMultiplatformSourceSetSetupAction
 import org.jetbrains.kotlin.gradle.plugin.sources.LanguageSettingsSetupAction
 import org.jetbrains.kotlin.gradle.plugin.statistics.MultiplatformBuildStatsReportSetupAction
 import org.jetbrains.kotlin.gradle.scripting.internal.ScriptingGradleSubpluginSetupAction
+import org.jetbrains.kotlin.gradle.targets.CreateArtifactsSideEffect
+import org.jetbrains.kotlin.gradle.targets.CreateDefaultCompilationsSideEffect
+import org.jetbrains.kotlin.gradle.targets.CreateTargetConfigurationsSideEffect
+import org.jetbrains.kotlin.gradle.targets.KotlinTargetSideEffect
+import org.jetbrains.kotlin.gradle.targets.NativeForwardImplementationToApiElementsSideEffect
 import org.jetbrains.kotlin.gradle.targets.js.npm.AddNpmDependencyExtensionProjectSetupAction
 import org.jetbrains.kotlin.gradle.targets.metadata.KotlinMetadataTargetSetupAction
 import org.jetbrains.kotlin.gradle.targets.native.CreateFatFrameworksSetupAction
@@ -87,6 +104,31 @@ internal fun Project.registerKotlinPluginExtensions() {
         }
     }
 
+    KotlinTargetSideEffect.extensionPoint.apply {
+        register(project, CreateDefaultCompilationsSideEffect)
+        register(project, CreateTargetConfigurationsSideEffect)
+        register(project, NativeForwardImplementationToApiElementsSideEffect)
+        register(project, CreateArtifactsSideEffect)
+    }
+
+    KotlinCompilationSideEffect.extensionPoint.apply {
+        register(project, KotlinCreateSourcesJarTaskSideEffect)
+        register(project, KotlinCreateResourcesTaskSideEffect)
+        register(project, KotlinCreateLifecycleTasksSideEffect)
+        register(project, KotlinCreateNativeCompileTasksSideEffect)
+        register(project, KotlinCompilationProcessorSideEffect)
+    }
+
+    KotlinTargetArtifact.extensionPoint.apply {
+        register(project, KotlinMetadataArtifact)
+        register(project, KotlinLegacyCompatibilityMetadataArtifact)
+        register(project, KotlinLegacyMetadataArtifact)
+        register(project, KotlinJvmJarArtifact)
+        register(project, KotlinJsKlibArtifact)
+        register(project, KotlinNativeKlibArtifact)
+        register(project, KotlinNativeHostSpecificMetadataArtifact)
+    }
+
     KotlinGradleProjectChecker.extensionPoint.apply {
         register(project, CommonMainOrTestWithDependsOnChecker)
         register(project, DeprecatedKotlinNativeTargetsChecker)
@@ -107,6 +149,7 @@ internal fun Project.registerKotlinPluginExtensions() {
         register(project, KotlinTargetAlreadyDeclaredChecker)
         register(project, InternalGradlePropertiesUsageChecker)
         register(project, WasmSourceSetsNotFoundChecker)
+        register(project, DuplicateSourceSetChecker)
 
         if (isMultiplatform) {
             register(project, KotlinMultiplatformAndroidGradlePluginCompatibilityChecker)

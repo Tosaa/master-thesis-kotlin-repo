@@ -7,8 +7,8 @@ package org.jetbrains.kotlin.analysis.api.components
 
 import com.intellij.openapi.util.TextRange
 import com.intellij.psi.SmartPsiElementPointer
-import org.jetbrains.kotlin.analysis.api.components.ShortenOption.Companion.defaultCallableShortenOption
-import org.jetbrains.kotlin.analysis.api.components.ShortenOption.Companion.defaultClassShortenOption
+import org.jetbrains.kotlin.analysis.api.components.ShortenStrategy.Companion.defaultCallableShortenStrategy
+import org.jetbrains.kotlin.analysis.api.components.ShortenStrategy.Companion.defaultClassShortenStrategy
 import org.jetbrains.kotlin.analysis.api.lifetime.withValidityAssertion
 import org.jetbrains.kotlin.analysis.api.symbols.KtCallableSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KtClassLikeSymbol
@@ -20,7 +20,21 @@ import org.jetbrains.kotlin.psi.KtElement
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.psi.KtUserType
 
-public enum class ShortenOption {
+/**
+ * @property removeThis If set to `true`, reference shortener will detect redundant `this` qualifiers
+ * and will collect them to [ShortenCommand.qualifiersToShorten].
+ */
+public data class ShortenOptions(
+    public val removeThis: Boolean = false,
+) {
+    public companion object {
+        public val DEFAULT: ShortenOptions = ShortenOptions()
+
+        public val ALL_ENABLED: ShortenOptions = ShortenOptions(removeThis = true)
+    }
+}
+
+public enum class ShortenStrategy {
     /** Skip shortening references to this symbol. */
     DO_NOT_SHORTEN,
 
@@ -59,7 +73,7 @@ public enum class ShortenOption {
     SHORTEN_AND_STAR_IMPORT;
 
     public companion object {
-        public val defaultClassShortenOption: (KtClassLikeSymbol) -> ShortenOption = {
+        public val defaultClassShortenStrategy: (KtClassLikeSymbol) -> ShortenStrategy = {
             if (it.classIdIfNonLocal?.isNestedClass == true) {
                 SHORTEN_IF_ALREADY_IMPORTED
             } else {
@@ -67,7 +81,7 @@ public enum class ShortenOption {
             }
         }
 
-        public val defaultCallableShortenOption: (KtCallableSymbol) -> ShortenOption = { symbol ->
+        public val defaultCallableShortenStrategy: (KtCallableSymbol) -> ShortenStrategy = { symbol ->
             if (symbol is KtEnumEntrySymbol) DO_NOT_SHORTEN
             else SHORTEN_AND_IMPORT
         }
@@ -78,8 +92,9 @@ public abstract class KtReferenceShortener : KtAnalysisSessionComponent() {
     public abstract fun collectShortenings(
         file: KtFile,
         selection: TextRange,
-        classShortenOption: (KtClassLikeSymbol) -> ShortenOption,
-        callableShortenOption: (KtCallableSymbol) -> ShortenOption
+        shortenOptions: ShortenOptions,
+        classShortenStrategy: (KtClassLikeSymbol) -> ShortenStrategy,
+        callableShortenStrategy: (KtCallableSymbol) -> ShortenStrategy
     ): ShortenCommand
 }
 
@@ -97,15 +112,17 @@ public interface KtReferenceShortenerMixIn : KtAnalysisSessionMixIn {
     public fun collectPossibleReferenceShortenings(
         file: KtFile,
         selection: TextRange = file.textRange,
-        classShortenOption: (KtClassLikeSymbol) -> ShortenOption = defaultClassShortenOption,
-        callableShortenOption: (KtCallableSymbol) -> ShortenOption = defaultCallableShortenOption
+        shortenOptions: ShortenOptions = ShortenOptions.DEFAULT,
+        classShortenStrategy: (KtClassLikeSymbol) -> ShortenStrategy = defaultClassShortenStrategy,
+        callableShortenStrategy: (KtCallableSymbol) -> ShortenStrategy = defaultCallableShortenStrategy
     ): ShortenCommand =
         withValidityAssertion {
             analysisSession.referenceShortener.collectShortenings(
                 file,
                 selection,
-                classShortenOption,
-                callableShortenOption
+                shortenOptions,
+                classShortenStrategy,
+                callableShortenStrategy
             )
         }
 
@@ -120,15 +137,17 @@ public interface KtReferenceShortenerMixIn : KtAnalysisSessionMixIn {
      */
     public fun collectPossibleReferenceShorteningsInElement(
         element: KtElement,
-        classShortenOption: (KtClassLikeSymbol) -> ShortenOption = defaultClassShortenOption,
-        callableShortenOption: (KtCallableSymbol) -> ShortenOption = defaultCallableShortenOption
+        shortenOptions: ShortenOptions = ShortenOptions.DEFAULT,
+        classShortenStrategy: (KtClassLikeSymbol) -> ShortenStrategy = defaultClassShortenStrategy,
+        callableShortenStrategy: (KtCallableSymbol) -> ShortenStrategy = defaultCallableShortenStrategy
     ): ShortenCommand =
         withValidityAssertion {
             analysisSession.referenceShortener.collectShortenings(
                 element.containingKtFile,
                 element.textRange,
-                classShortenOption,
-                callableShortenOption
+                shortenOptions,
+                classShortenStrategy,
+                callableShortenStrategy
             )
         }
 }

@@ -6,13 +6,13 @@
 package org.jetbrains.kotlin.konan.test.blackbox.support.util
 
 import org.jetbrains.kotlin.konan.test.blackbox.support.compilation.TestCompilationArtifact
+import org.jetbrains.kotlin.library.KotlinIrSignatureVersion
 import java.io.File
 
-private fun invokeKlibTool(kotlinNativeClassLoader: ClassLoader, klibFile: File, functionName: String, vararg args: Any): String {
+private fun invokeKlibTool(kotlinNativeClassLoader: ClassLoader, klibFile: File, functionName: String, vararg args: Any?): String {
     val libraryClass = Class.forName("org.jetbrains.kotlin.cli.klib.Library", true, kotlinNativeClassLoader)
     val entryPoint = libraryClass.declaredMethods.single { it.name == functionName }
-    val lib = libraryClass.getDeclaredConstructor(String::class.java, String::class.java, String::class.java)
-        .newInstance(klibFile.canonicalPath, null, "host")
+    val lib = libraryClass.getDeclaredConstructor(String::class.java, String::class.java).newInstance(klibFile.canonicalPath, null)
 
     val output = StringBuilder()
     entryPoint.invoke(lib, output, *args)
@@ -20,13 +20,60 @@ private fun invokeKlibTool(kotlinNativeClassLoader: ClassLoader, klibFile: File,
 
 }
 
-internal fun TestCompilationArtifact.KLIB.getContents(kotlinNativeClassLoader: ClassLoader): String {
-    return invokeKlibTool(kotlinNativeClassLoader, klibFile, "contents", false)
-}
-
-internal fun TestCompilationArtifact.KLIB.getIr(
+internal fun TestCompilationArtifact.KLIB.dumpMetadata(
     kotlinNativeClassLoader: ClassLoader,
-    printSignatures: Boolean = false,
-): String {
-    return invokeKlibTool(kotlinNativeClassLoader, klibFile, "ir", printSignatures)
+    printSignatures: Boolean,
+    signatureVersion: KotlinIrSignatureVersion?
+): String = invokeKlibTool(
+    kotlinNativeClassLoader = kotlinNativeClassLoader,
+    klibFile = klibFile,
+    functionName = "dumpMetadata",
+    /* printSignatures= */ printSignatures,
+    /* signatureVersion= */ signatureVersion?.let { getSignatureVersionForIsolatedClassLoader(kotlinNativeClassLoader, signatureVersion) }
+)
+
+internal fun TestCompilationArtifact.KLIB.dumpIr(
+    kotlinNativeClassLoader: ClassLoader,
+    printSignatures: Boolean,
+    signatureVersion: KotlinIrSignatureVersion?
+): String = invokeKlibTool(
+    kotlinNativeClassLoader = kotlinNativeClassLoader,
+    klibFile = klibFile,
+    functionName = "dumpIr",
+    /* printSignatures= */ printSignatures,
+    /* signatureVersion= */ signatureVersion?.let { getSignatureVersionForIsolatedClassLoader(kotlinNativeClassLoader, signatureVersion) }
+)
+
+internal fun TestCompilationArtifact.KLIB.dumpMetadataSignatures(
+    kotlinNativeClassLoader: ClassLoader,
+    signatureVersion: KotlinIrSignatureVersion,
+): String = invokeKlibTool(
+    kotlinNativeClassLoader = kotlinNativeClassLoader,
+    klibFile = klibFile,
+    functionName = "dumpMetadataSignatures",
+    /* signatureVersion= */ getSignatureVersionForIsolatedClassLoader(kotlinNativeClassLoader, signatureVersion)
+)
+
+internal fun TestCompilationArtifact.KLIB.dumpIrSignatures(
+    kotlinNativeClassLoader: ClassLoader,
+    signatureVersion: KotlinIrSignatureVersion,
+): String = invokeKlibTool(
+    kotlinNativeClassLoader = kotlinNativeClassLoader,
+    klibFile = klibFile,
+    functionName = "dumpIrSignatures",
+    /* signatureVersion= */ getSignatureVersionForIsolatedClassLoader(kotlinNativeClassLoader, signatureVersion)
+)
+
+// This ceremony is required to load `KotlinIrSignatureVersion` class from the isolated class loader and thus avoid
+// "argument type mismatch" exception raised by the Java reflection API.
+// TODO: migrate on CLI-based scheme of invocation of all KLIB tool commands
+private fun getSignatureVersionForIsolatedClassLoader(
+    kotlinNativeClassLoader: ClassLoader,
+    signatureVersion: KotlinIrSignatureVersion,
+): Any {
+    return Class.forName(
+        signatureVersion::class.java.canonicalName,
+        true,
+        kotlinNativeClassLoader
+    ).getDeclaredConstructor(Int::class.java).newInstance(signatureVersion.number)!!
 }

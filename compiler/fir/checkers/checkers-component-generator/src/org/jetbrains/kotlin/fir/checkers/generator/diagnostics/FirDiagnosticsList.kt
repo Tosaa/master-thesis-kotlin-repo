@@ -17,7 +17,6 @@ import org.jetbrains.kotlin.descriptors.ClassKind
 import org.jetbrains.kotlin.descriptors.EffectiveVisibility
 import org.jetbrains.kotlin.descriptors.Visibility
 import org.jetbrains.kotlin.diagnostics.WhenMissingCase
-import org.jetbrains.kotlin.fir.FirElement
 import org.jetbrains.kotlin.fir.FirModuleData
 import org.jetbrains.kotlin.fir.checkers.generator.diagnostics.model.*
 import org.jetbrains.kotlin.fir.declarations.FirFunction
@@ -42,7 +41,6 @@ import org.jetbrains.kotlin.resolve.multiplatform.ExpectActualCompatibility.Inco
 import org.jetbrains.kotlin.serialization.deserialization.IncompatibleVersionErrorData
 import org.jetbrains.kotlin.types.Variance
 import org.jetbrains.kotlin.util.PrivateForInline
-import java.util.Optional
 import kotlin.properties.PropertyDelegateProvider
 import kotlin.properties.ReadOnlyProperty
 
@@ -309,12 +307,11 @@ object DIAGNOSTICS_LIST : DiagnosticList("FirErrors") {
         val SUPERTYPE_NOT_INITIALIZED by error<KtTypeReference>()
         val SUPERTYPE_INITIALIZED_WITHOUT_PRIMARY_CONSTRUCTOR by error<PsiElement>()
         val DELEGATION_SUPER_CALL_IN_ENUM_CONSTRUCTOR by error<PsiElement>()
-        val PRIMARY_CONSTRUCTOR_REQUIRED_FOR_DATA_CLASS by error<KtNamedDeclaration>(PositioningStrategy.DECLARATION_NAME)
         val EXPLICIT_DELEGATION_CALL_REQUIRED by error<PsiElement>(PositioningStrategy.SECONDARY_CONSTRUCTOR_DELEGATION_CALL)
         val SEALED_CLASS_CONSTRUCTOR_CALL by error<PsiElement>()
 
         // TODO: Consider creating a parameter list position strategy and report on the parameter list instead
-        val DATA_CLASS_WITHOUT_PARAMETERS by error<KtPrimaryConstructor>()
+        val DATA_CLASS_WITHOUT_PARAMETERS by error<KtNamedDeclaration>(PositioningStrategy.DECLARATION_NAME)
         val DATA_CLASS_VARARG_PARAMETER by error<KtParameter>()
         val DATA_CLASS_NOT_PROPERTY_PARAMETER by error<KtParameter>()
     }
@@ -461,7 +458,7 @@ object DIAGNOSTICS_LIST : DiagnosticList("FirErrors") {
     }
 
     val MODIFIERS by object : DiagnosticGroup("Modifiers") {
-        val INAPPLICABLE_INFIX_MODIFIER by error<PsiElement>()
+        val INAPPLICABLE_INFIX_MODIFIER by error<PsiElement>(PositioningStrategy.INFIX_MODIFIER)
         val REPEATED_MODIFIER by error<PsiElement> {
             parameter<KtModifierKeywordToken>("modifier")
         }
@@ -496,6 +493,9 @@ object DIAGNOSTICS_LIST : DiagnosticList("FirErrors") {
         }
         val OPERATOR_MODIFIER_REQUIRED by error<PsiElement> {
             parameter<FirNamedFunctionSymbol>("functionSymbol")
+            parameter<String>("name")
+        }
+        val OPERATOR_CALL_ON_CONSTRUCTOR by error<PsiElement> {
             parameter<String>("name")
         }
         val INFIX_MODIFIER_REQUIRED by error<PsiElement> {
@@ -791,7 +791,11 @@ object DIAGNOSTICS_LIST : DiagnosticList("FirErrors") {
         val CYCLIC_GENERIC_UPPER_BOUND by error<PsiElement>()
 
         val FINITE_BOUNDS_VIOLATION by error<PsiElement>()
-        val FINITE_BOUNDS_VIOLATION_IN_JAVA by error<PsiElement> {
+        val FINITE_BOUNDS_VIOLATION_IN_JAVA by warning<PsiElement> {
+            parameter<List<Symbol>>("containingTypes")
+        }
+        val EXPANSIVE_INHERITANCE by error<PsiElement>()
+        val EXPANSIVE_INHERITANCE_IN_JAVA by warning<PsiElement> {
             parameter<List<Symbol>>("containingTypes")
         }
 
@@ -1095,6 +1099,7 @@ object DIAGNOSTICS_LIST : DiagnosticList("FirErrors") {
 
         val FUNCTION_DECLARATION_WITH_NO_NAME by error<KtFunction>(PositioningStrategy.DECLARATION_SIGNATURE)
         val ANONYMOUS_FUNCTION_WITH_NAME by error<KtFunction>()
+        val SINGLE_ANONYMOUS_FUNCTION_WITH_NAME by deprecationError<KtFunction>(LanguageFeature.ProhibitSingleNamedFunctionAsExpression)
 
         // TODO: val ANONYMOUS_FUNCTION_WITH_NAME by error1<PsiElement, Name>(SourceElementPositioningStrategies.DECLARATION_NAME)
         val ANONYMOUS_FUNCTION_PARAMETER_WITH_DEFAULT_VALUE by error<KtParameter>(PositioningStrategy.PARAMETER_DEFAULT_VALUE)
@@ -1513,7 +1518,7 @@ object DIAGNOSTICS_LIST : DiagnosticList("FirErrors") {
         val UNDERSCORE_IS_RESERVED by error<PsiElement>(PositioningStrategy.NAME_IDENTIFIER)
         val UNDERSCORE_USAGE_WITHOUT_BACKTICKS by error<PsiElement>(PositioningStrategy.NAME_IDENTIFIER)
         val RESOLVED_TO_UNDERSCORE_NAMED_CATCH_PARAMETER by warning<KtNameReferenceExpression>()
-        val INVALID_CHARACTERS by error<KtNamedDeclaration>(PositioningStrategy.NAME_IDENTIFIER) {
+        val INVALID_CHARACTERS by error<PsiElement>(PositioningStrategy.NAME_IDENTIFIER) {
             parameter<String>("message")
         }
         val DANGEROUS_CHARACTERS by warning<KtNamedDeclaration>(PositioningStrategy.NAME_IDENTIFIER) {
@@ -1749,8 +1754,10 @@ object DIAGNOSTICS_LIST : DiagnosticList("FirErrors") {
         val PRE_RELEASE_CLASS by error<PsiElement> {
             parameter<String>("presentableString")
         }
+        val IR_WITH_UNSTABLE_ABI_COMPILED_CLASS by error<PsiElement> {
+            parameter<String>("presentableString")
+        }
     }
-
 }
 
 private val exposedVisibilityDiagnosticInit: DiagnosticBuilder.() -> Unit = {

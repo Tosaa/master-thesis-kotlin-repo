@@ -12,8 +12,12 @@ import org.jetbrains.kotlin.KtSourceElement
 import org.jetbrains.kotlin.descriptors.Modality
 import org.jetbrains.kotlin.descriptors.Visibility
 import org.jetbrains.kotlin.fir.FirElement
-import org.jetbrains.kotlin.fir.visitors.*
+import org.jetbrains.kotlin.fir.visitors.FirTransformer
+import org.jetbrains.kotlin.fir.visitors.FirVisitor
 
+/**
+ * Generated from: [org.jetbrains.kotlin.fir.tree.generator.FirTreeBuilder.declarationStatus]
+ */
 interface FirDeclarationStatus : FirElement {
     override val source: KtSourceElement?
     val visibility: Visibility

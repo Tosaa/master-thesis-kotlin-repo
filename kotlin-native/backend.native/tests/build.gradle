@@ -4,7 +4,6 @@
  */
 
 import org.jetbrains.kotlin.*
-import org.jetbrains.kotlin.gradle.plugin.konan.tasks.KonanKlibInstallTask
 import org.jetbrains.kotlin.gradle.plugin.tasks.KonanCompileNativeBinary
 import org.jetbrains.kotlin.konan.target.Architecture
 import org.jetbrains.kotlin.konan.target.Family
@@ -44,8 +43,6 @@ ext.testOutputRoot = rootProject.file("test.output").absolutePath
 
 ext.platformManager = project.project(":kotlin-native").platformManager
 ext.target = platformManager.targetManager(project.testTarget).target
-
-ext.testLibraryDir = "${ext.testOutputRoot}/klib/platform/${project.target.name}"
 
 // Add executor to run tests depending on a target
 // NOTE: If this persists in a gradle daemon, environment update (e.g. an Xcode update) may lead to execution failures.
@@ -130,28 +127,10 @@ allprojects {
 testOutputExternal.mkdirs()
 
 konanArtifacts {
-    library('testLibrary') {
-        srcDir 'testLibrary'
-    }
     library('baseTestClass', targets: [target]) {
         srcFiles 'testing/library.kt'
     }
-    UtilsKt.dependsOnDist(UtilsKt.findKonanBuildTask(project, "testLibrary", HostManager.@Companion.getHost()))
-}
-tasks.named("compileKonanBaseTestClass${UtilsKt.getTestTargetSuffix(project)}").configure {
-    UtilsKt.dependsOnDist(it)
-}
-
-def installTestLib = tasks.register("installTestLibrary", KonanKlibInstallTask) {
-    dependsOn "compileKonanTestLibraryHost"
-    klib = project.provider { konanArtifacts.testLibrary.getArtifactByTarget('host') }
-    repo = rootProject.file(testLibraryDir)
-
-    doLast {
-        // Remove the version in build/, so that we don't link two copies.
-        def file = project.file("build/konan/libs/${project.target.name}/testLibrary.klib")
-        file.delete()
-    }
+    UtilsKt.dependsOnDist(UtilsKt.findKonanBuildTask(project, "baseTestClass", target))
 }
 
 void konanc(String[] args) {
@@ -829,6 +808,31 @@ standaloneTest("cleaner_in_tls_worker") {
     enabled = !isNoopGC
     source = "runtime/basic/cleaner_in_tls_worker.kt"
     flags = ['-opt-in=kotlin.native.internal.InternalForKotlinNative']
+}
+
+standaloneTest('logging') {
+    outputChecker = { out ->
+        out.toLowerCase().contains("[logging]") && // loging reports configured log levels on info level
+        out.toLowerCase().contains("logging = debug") &&
+        out.toLowerCase().contains("gc = info") &&
+        out.toLowerCase().contains("mm = warning") &&
+        out.toLowerCase().contains("tls = error") &&
+        out.toLowerCase().contains("[gc]") // gc reports initialization on info level
+    }
+    source = "runtime/basic/logging.kt"
+    flags = ['-Xruntime-logs=gc=info,mm=warning,tls=error,logging=debug']
+}
+
+standaloneTest('logging_invalid') {
+    outputChecker = { it.isEmpty() }
+    source = "runtime/basic/logging.kt"
+    flags = ['-Xruntime-logs=invalid=unknown,logging=debug']
+}
+
+standaloneTest('logging_override') {
+    outputChecker = { it.isEmpty() }
+    source = "runtime/basic/logging.kt"
+    flags = ['-Xruntime-logs=logging=info,logging=debug,logging=none']
 }
 
 standaloneTest("worker_bound_reference0") {
@@ -2112,20 +2116,6 @@ standaloneTest("link_default_libs") {
     UtilsKt.dependsOnPlatformLibs(it)
 }
 
-standaloneTest("link_testLib_explicitly1") {
-    // there is no testLibrary for cross targets yet.
-    enabled = project.target.name == project.hostName
-    dependsOn installTestLib
-    useGoldenData = true
-    source = "link/testLib_explicitly1.kt"
-    // We force library inclusion, so need to see the warning banner.
-    flags = ['-l', 'testLibrary', '-r', testLibraryDir]
-    doLast {
-        def file = new File("$testLibraryDir/testLibrary")
-        file.deleteDir()
-    }
-}
-
 linkTest("no_purge_for_dependencies") {
     useGoldenData = true
     source = "link/purge1/prog.kt"
@@ -2274,49 +2264,9 @@ tasks.register("listof1", KonanLocalTest) {
     source = "datagen/literals/listof1.kt"
 }
 
-tasks.register("string_builder0", KonanLocalTest) {
+tasks.register("print_utf8", KonanLocalTest) {
     useGoldenData = true
-    source = "runtime/text/string_builder0.kt"
-}
-
-tasks.register("string_builder1", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/text/string_builder1.kt"
-}
-
-tasks.register("string0", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/text/string0.kt"
-}
-
-tasks.register("parse0", KonanLocalTest) {
-    source = "runtime/text/parse0.kt"
-}
-
-tasks.register("to_string0", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/text/to_string0.kt"
-}
-
-tasks.register("trim", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/text/trim.kt"
-}
-
-tasks.register("chars0", KonanLocalTest) {
-    disabled = isAggressiveGC // TODO: Investigate why too slow
-    source = "runtime/text/chars0.kt"
-    expectedExitStatus = 0
-}
-
-tasks.register("indexof", KonanLocalTest) {
-    source = "runtime/text/indexof.kt"
-}
-
-tasks.register("utf8", KonanLocalTest) {
-    enabled = !isAggressiveGC // TODO: Investigate why too slow
-    useGoldenData = true
-    source = "runtime/text/utf8.kt"
+    source = "runtime/basic/print_utf8.kt"
 }
 
 tasks.register("catch1", KonanLocalTest) {

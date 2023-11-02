@@ -6,10 +6,7 @@
 package org.jetbrains.kotlin.ir.backend.js.ic
 
 import org.jetbrains.kotlin.ir.IrElement
-import org.jetbrains.kotlin.ir.declarations.IrDeclaration
-import org.jetbrains.kotlin.ir.declarations.IrFile
-import org.jetbrains.kotlin.ir.declarations.IrFunction
-import org.jetbrains.kotlin.ir.declarations.IrSimpleFunction
+import org.jetbrains.kotlin.ir.declarations.*
 import org.jetbrains.kotlin.ir.expressions.IrCall
 import org.jetbrains.kotlin.ir.expressions.IrFunctionReference
 import org.jetbrains.kotlin.ir.symbols.IrSymbol
@@ -26,13 +23,24 @@ internal class IdSignatureHashCalculator(private val icHasher: ICHasher) {
     private val idSignatureHashes = hashMapOf<IdSignature, ICHash>()
 
     private val fileAnnotationHashes = hashMapOf<IrFile, ICHash>()
+    private val constantHashes = hashMapOf<IrProperty, ICHash>()
     private val inlineFunctionFlatHashes = hashMapOf<IrFunction, ICHash>()
 
-    private val inlineFunctionDepends = hashMapOf<IrFunction, LinkedHashSet<IrFunction>>()
+    private data class InlineFunctionDependencies(
+        val usedInlineFunctions: LinkedHashSet<IrFunction>,
+        val usedConstants: LinkedHashSet<IrProperty>,
+    )
+
+    private val inlineFunctionDepends = hashMapOf<IrFunction, InlineFunctionDependencies>()
 
     private val IrFile.annotationsHash: ICHash
         get() = fileAnnotationHashes.getOrPut(this) {
             icHasher.calculateIrAnnotationContainerHash(this)
+        }
+
+    private val IrProperty.constantHash: ICHash
+        get() = constantHashes.getOrPut(this) {
+            icHasher.calculateIrSymbolHash(symbol)
         }
 
     private val IrFunction.inlineFunctionFlatHash: ICHash
@@ -42,9 +50,10 @@ internal class IdSignatureHashCalculator(private val icHasher: ICHasher) {
             ICHash(symbol.calculateSymbolHash().hash.combineWith(flatHash.hash))
         }
 
-    private val IrFunction.inlineDepends: Collection<IrFunction>
+    private val IrFunction.inlineDepends: InlineFunctionDependencies
         get() = inlineFunctionDepends.getOrPut(this) {
             val usedInlineFunctions = linkedSetOf<IrFunction>()
+            val usedConstants = linkedSetOf<IrProperty>()
 
             acceptVoid(object : IrElementVisitorVoid {
                 override fun visitElement(element: IrElement) {
@@ -55,6 +64,10 @@ internal class IdSignatureHashCalculator(private val icHasher: ICHasher) {
                     val callee = expression.symbol.owner
                     if (callee.isInline) {
                         usedInlineFunctions += callee
+                    }
+                    val correspondingProperty = callee.correspondingPropertySymbol?.owner
+                    if (correspondingProperty?.isConst == true) {
+                        usedConstants += correspondingProperty
                     }
                     expression.acceptChildrenVoid(this)
                 }
@@ -71,11 +84,11 @@ internal class IdSignatureHashCalculator(private val icHasher: ICHasher) {
                 }
             })
 
-            usedInlineFunctions
+            InlineFunctionDependencies(usedInlineFunctions, usedConstants)
         }
 
     private fun IrSymbol.calculateSymbolHash(): ICHash {
-        var srcIrFile = signature?.let { sig -> idSignatureSources[sig]?.srcIrFile }
+        var srcIrFile = signature?.let { sig -> idSignatureSources[sig]?.irFile }
         if (srcIrFile == null) {
             var parentDeclaration = (owner as? IrDeclaration)?.parent
             while (parentDeclaration is IrDeclaration) {
@@ -94,11 +107,15 @@ internal class IdSignatureHashCalculator(private val icHasher: ICHasher) {
         val newDependsStack = transitiveDepends.toMutableList()
 
         while (newDependsStack.isNotEmpty()) {
-            newDependsStack.removeLast().inlineDepends.forEach { inlineFunction ->
+            val (usedInlineFunctions, usedConstants) = newDependsStack.removeLast().inlineDepends
+            for (inlineFunction in usedInlineFunctions) {
                 if (transitiveDepends.add(inlineFunction)) {
                     newDependsStack += inlineFunction
                     transitiveHash = ICHash(transitiveHash.hash.combineWith(inlineFunction.inlineFunctionFlatHash.hash))
                 }
+            }
+            for (constant in usedConstants) {
+                transitiveHash = ICHash(transitiveHash.hash.combineWith(constant.constantHash.hash))
             }
         }
 

@@ -646,6 +646,12 @@ public class FirOutOfContentRootLazyDeclarationResolveTestGenerated extends Abst
         }
 
         @Test
+        @TestMetadata("classDelegatedInCommonCode.kt")
+        public void testClassDelegatedInCommonCode() throws Exception {
+            runTest("analysis/low-level-api-fir/testData/lazyResolve/classes/classDelegatedInCommonCode.kt");
+        }
+
+        @Test
         @TestMetadata("classWithTypeParameters.kt")
         public void testClassWithTypeParameters() throws Exception {
             runTest("analysis/low-level-api-fir/testData/lazyResolve/classes/classWithTypeParameters.kt");
@@ -887,6 +893,42 @@ public class FirOutOfContentRootLazyDeclarationResolveTestGenerated extends Abst
         @Test
         public void testAllFilesPresentInProperties() throws Exception {
             KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("analysis/low-level-api-fir/testData/lazyResolve/properties"), Pattern.compile("^(.+)\\.(kt)$"), null, true);
+        }
+
+        @Test
+        @TestMetadata("constructorParameter.kt")
+        public void testConstructorParameter() throws Exception {
+            runTest("analysis/low-level-api-fir/testData/lazyResolve/properties/constructorParameter.kt");
+        }
+
+        @Test
+        @TestMetadata("constructorParameterWithImplicitParameterAnnotation.kt")
+        public void testConstructorParameterWithImplicitParameterAnnotation() throws Exception {
+            runTest("analysis/low-level-api-fir/testData/lazyResolve/properties/constructorParameterWithImplicitParameterAnnotation.kt");
+        }
+
+        @Test
+        @TestMetadata("delegateWithAnnotationOnAccessor.kt")
+        public void testDelegateWithAnnotationOnAccessor() throws Exception {
+            runTest("analysis/low-level-api-fir/testData/lazyResolve/properties/delegateWithAnnotationOnAccessor.kt");
+        }
+
+        @Test
+        @TestMetadata("delegateWithAnnotationOnAccessorWithExplicitType.kt")
+        public void testDelegateWithAnnotationOnAccessorWithExplicitType() throws Exception {
+            runTest("analysis/low-level-api-fir/testData/lazyResolve/properties/delegateWithAnnotationOnAccessorWithExplicitType.kt");
+        }
+
+        @Test
+        @TestMetadata("generatedPropertyFromParameter.kt")
+        public void testGeneratedPropertyFromParameter() throws Exception {
+            runTest("analysis/low-level-api-fir/testData/lazyResolve/properties/generatedPropertyFromParameter.kt");
+        }
+
+        @Test
+        @TestMetadata("generatedPropertyFromParameterWithImplicitAnnotation.kt")
+        public void testGeneratedPropertyFromParameterWithImplicitAnnotation() throws Exception {
+            runTest("analysis/low-level-api-fir/testData/lazyResolve/properties/generatedPropertyFromParameterWithImplicitAnnotation.kt");
         }
 
         @Test

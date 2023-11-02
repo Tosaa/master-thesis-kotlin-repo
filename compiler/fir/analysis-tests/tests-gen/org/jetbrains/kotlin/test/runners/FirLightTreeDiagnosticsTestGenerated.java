@@ -46,6 +46,12 @@ public class FirLightTreeDiagnosticsTestGenerated extends AbstractFirLightTreeDi
         }
 
         @Test
+        @TestMetadata("accessJavaFromKotlinViaStaticImportWithoutPermits.kt")
+        public void testAccessJavaFromKotlinViaStaticImportWithoutPermits() throws Exception {
+            runTest("compiler/fir/analysis-tests/testData/resolve/accessJavaFromKotlinViaStaticImportWithoutPermits.kt");
+        }
+
+        @Test
         public void testAllFilesPresentInResolve() throws Exception {
             KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("compiler/fir/analysis-tests/testData/resolve"), Pattern.compile("^([^.]+)\\.kt$"), null, true);
         }
@@ -765,6 +771,12 @@ public class FirLightTreeDiagnosticsTestGenerated extends AbstractFirLightTreeDi
             @Test
             public void testAllFilesPresentInAnnotations() throws Exception {
                 KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("compiler/fir/analysis-tests/testData/resolve/annotations"), Pattern.compile("^([^.]+)\\.kt$"), null, true);
+            }
+
+            @Test
+            @TestMetadata("kindaCompilerRequiredNestedAnnotation.kt")
+            public void testKindaCompilerRequiredNestedAnnotation() throws Exception {
+                runTest("compiler/fir/analysis-tests/testData/resolve/annotations/kindaCompilerRequiredNestedAnnotation.kt");
             }
 
             @Test

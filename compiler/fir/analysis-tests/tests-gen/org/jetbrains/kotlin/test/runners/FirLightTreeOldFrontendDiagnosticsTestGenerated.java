@@ -1555,6 +1555,12 @@ public class FirLightTreeOldFrontendDiagnosticsTestGenerated extends AbstractFir
             }
 
             @Test
+            @TestMetadata("AnnotatedErrorTypeRef.kt")
+            public void testAnnotatedErrorTypeRef() throws Exception {
+                runTest("compiler/testData/diagnostics/tests/annotations/AnnotatedErrorTypeRef.kt");
+            }
+
+            @Test
             @TestMetadata("annotatedExpressionInsideAnnotation.kt")
             public void testAnnotatedExpressionInsideAnnotation() throws Exception {
                 runTest("compiler/testData/diagnostics/tests/annotations/annotatedExpressionInsideAnnotation.kt");
@@ -5545,6 +5551,12 @@ public class FirLightTreeOldFrontendDiagnosticsTestGenerated extends AbstractFir
             }
 
             @Test
+            @TestMetadata("kt56629.kt")
+            public void testKt56629() throws Exception {
+                runTest("compiler/testData/diagnostics/tests/cast/kt56629.kt");
+            }
+
+            @Test
             @TestMetadata("kt614.kt")
             public void testKt614() throws Exception {
                 runTest("compiler/testData/diagnostics/tests/cast/kt614.kt");
@@ -9195,6 +9207,12 @@ public class FirLightTreeOldFrontendDiagnosticsTestGenerated extends AbstractFir
             }
 
             @Test
+            @TestMetadata("kt47245.kt")
+            public void testKt47245() throws Exception {
+                runTest("compiler/testData/diagnostics/tests/declarationChecks/kt47245.kt");
+            }
+
+            @Test
             @TestMetadata("kt559.kt")
             public void testKt559() throws Exception {
                 runTest("compiler/testData/diagnostics/tests/declarationChecks/kt559.kt");
@@ -9536,6 +9554,18 @@ public class FirLightTreeOldFrontendDiagnosticsTestGenerated extends AbstractFir
             @TestMetadata("defaultSetter.kt")
             public void testDefaultSetter() throws Exception {
                 runTest("compiler/testData/diagnostics/tests/delegatedProperty/defaultSetter.kt");
+            }
+
+            @Test
+            @TestMetadata("delegateWithAnnotationOnAccessorWithExplicitType.kt")
+            public void testDelegateWithAnnotationOnAccessorWithExplicitType() throws Exception {
+                runTest("compiler/testData/diagnostics/tests/delegatedProperty/delegateWithAnnotationOnAccessorWithExplicitType.kt");
+            }
+
+            @Test
+            @TestMetadata("delegateWithAnnotationOnAccessorWithImplicitType.kt")
+            public void testDelegateWithAnnotationOnAccessorWithImplicitType() throws Exception {
+                runTest("compiler/testData/diagnostics/tests/delegatedProperty/delegateWithAnnotationOnAccessorWithImplicitType.kt");
             }
 
             @Test
@@ -12315,6 +12345,12 @@ public class FirLightTreeOldFrontendDiagnosticsTestGenerated extends AbstractFir
             }
 
             @Test
+            @TestMetadata("ambiguousAnonymousExposed.kt")
+            public void testAmbiguousAnonymousExposed() throws Exception {
+                runTest("compiler/testData/diagnostics/tests/exposed/ambiguousAnonymousExposed.kt");
+            }
+
+            @Test
             @TestMetadata("delegate.kt")
             public void testDelegate() throws Exception {
                 runTest("compiler/testData/diagnostics/tests/exposed/delegate.kt");
@@ -12643,6 +12679,12 @@ public class FirLightTreeOldFrontendDiagnosticsTestGenerated extends AbstractFir
                 @TestMetadata("contextKeywordWithElvis.kt")
                 public void testContextKeywordWithElvis() throws Exception {
                     runTest("compiler/testData/diagnostics/tests/extensions/contextReceivers/contextKeywordWithElvis.kt");
+                }
+
+                @Test
+                @TestMetadata("contextReceiverAmbiguity.kt")
+                public void testContextReceiverAmbiguity() throws Exception {
+                    runTest("compiler/testData/diagnostics/tests/extensions/contextReceivers/contextReceiverAmbiguity.kt");
                 }
 
                 @Test
@@ -13709,6 +13751,12 @@ public class FirLightTreeOldFrontendDiagnosticsTestGenerated extends AbstractFir
             }
 
             @Test
+            @TestMetadata("approximationOfBoundedProjection.kt")
+            public void testApproximationOfBoundedProjection() throws Exception {
+                runTest("compiler/testData/diagnostics/tests/generics/approximationOfBoundedProjection.kt");
+            }
+
+            @Test
             @TestMetadata("approximationOfInProjection.kt")
             public void testApproximationOfInProjection() throws Exception {
                 runTest("compiler/testData/diagnostics/tests/generics/approximationOfInProjection.kt");
@@ -13928,6 +13976,12 @@ public class FirLightTreeOldFrontendDiagnosticsTestGenerated extends AbstractFir
             @TestMetadata("unresolvedClassifierInWhere.kt")
             public void testUnresolvedClassifierInWhere() throws Exception {
                 runTest("compiler/testData/diagnostics/tests/generics/unresolvedClassifierInWhere.kt");
+            }
+
+            @Test
+            @TestMetadata("whereClauseSyntax.kt")
+            public void testWhereClauseSyntax() throws Exception {
+                runTest("compiler/testData/diagnostics/tests/generics/whereClauseSyntax.kt");
             }
 
             @Test
@@ -20574,6 +20628,12 @@ public class FirLightTreeOldFrontendDiagnosticsTestGenerated extends AbstractFir
             @TestMetadata("annotationsInheritance.kt")
             public void testAnnotationsInheritance() throws Exception {
                 runTest("compiler/testData/diagnostics/tests/j+k/annotationsInheritance.kt");
+            }
+
+            @Test
+            @TestMetadata("arrayAnnotationConstructorReference.kt")
+            public void testArrayAnnotationConstructorReference() throws Exception {
+                runTest("compiler/testData/diagnostics/tests/j+k/arrayAnnotationConstructorReference.kt");
             }
 
             @Test
@@ -29171,6 +29231,12 @@ public class FirLightTreeOldFrontendDiagnosticsTestGenerated extends AbstractFir
             }
 
             @Test
+            @TestMetadata("kt60983.kt")
+            public void testKt60983() throws Exception {
+                runTest("compiler/testData/diagnostics/tests/samConversions/kt60983.kt");
+            }
+
+            @Test
             @TestMetadata("OverloadPriority.kt")
             public void testOverloadPriority() throws Exception {
                 runTest("compiler/testData/diagnostics/tests/samConversions/OverloadPriority.kt");
@@ -35212,6 +35278,12 @@ public class FirLightTreeOldFrontendDiagnosticsTestGenerated extends AbstractFir
             @TestMetadata("kt57065.kt")
             public void testKt57065() throws Exception {
                 runTest("compiler/testData/diagnostics/tests/typealias/kt57065.kt");
+            }
+
+            @Test
+            @TestMetadata("kt62099.kt")
+            public void testKt62099() throws Exception {
+                runTest("compiler/testData/diagnostics/tests/typealias/kt62099.kt");
             }
 
             @Test

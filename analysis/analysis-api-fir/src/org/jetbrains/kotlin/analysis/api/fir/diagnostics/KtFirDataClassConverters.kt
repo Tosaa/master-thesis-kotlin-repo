@@ -46,7 +46,6 @@ import org.jetbrains.kotlin.psi.KtNamedDeclaration
 import org.jetbrains.kotlin.psi.KtNamedFunction
 import org.jetbrains.kotlin.psi.KtObjectDeclaration
 import org.jetbrains.kotlin.psi.KtParameter
-import org.jetbrains.kotlin.psi.KtPrimaryConstructor
 import org.jetbrains.kotlin.psi.KtProperty
 import org.jetbrains.kotlin.psi.KtPropertyAccessor
 import org.jetbrains.kotlin.psi.KtReturnExpression
@@ -820,12 +819,6 @@ internal val KT_DIAGNOSTIC_CONVERTER = KtDiagnosticConverterBuilder.buildConvert
     }
     add(FirErrors.DELEGATION_SUPER_CALL_IN_ENUM_CONSTRUCTOR) { firDiagnostic ->
         DelegationSuperCallInEnumConstructorImpl(
-            firDiagnostic as KtPsiDiagnostic,
-            token,
-        )
-    }
-    add(FirErrors.PRIMARY_CONSTRUCTOR_REQUIRED_FOR_DATA_CLASS) { firDiagnostic ->
-        PrimaryConstructorRequiredForDataClassImpl(
             firDiagnostic as KtPsiDiagnostic,
             token,
         )
@@ -1636,6 +1629,13 @@ internal val KT_DIAGNOSTIC_CONVERTER = KtDiagnosticConverterBuilder.buildConvert
             token,
         )
     }
+    add(FirErrors.OPERATOR_CALL_ON_CONSTRUCTOR) { firDiagnostic ->
+        OperatorCallOnConstructorImpl(
+            firDiagnostic.a,
+            firDiagnostic as KtPsiDiagnostic,
+            token,
+        )
+    }
     add(FirErrors.INFIX_MODIFIER_REQUIRED) { firDiagnostic ->
         InfixModifierRequiredImpl(
             firSymbolBuilder.functionLikeBuilder.buildFunctionSymbol(firDiagnostic.a),
@@ -2420,6 +2420,21 @@ internal val KT_DIAGNOSTIC_CONVERTER = KtDiagnosticConverterBuilder.buildConvert
             token,
         )
     }
+    add(FirErrors.EXPANSIVE_INHERITANCE) { firDiagnostic ->
+        ExpansiveInheritanceImpl(
+            firDiagnostic as KtPsiDiagnostic,
+            token,
+        )
+    }
+    add(FirErrors.EXPANSIVE_INHERITANCE_IN_JAVA) { firDiagnostic ->
+        ExpansiveInheritanceInJavaImpl(
+            firDiagnostic.a.map { firBasedSymbol ->
+                firSymbolBuilder.buildSymbol(firBasedSymbol)
+            },
+            firDiagnostic as KtPsiDiagnostic,
+            token,
+        )
+    }
     add(FirErrors.DEPRECATED_TYPE_PARAMETER_SYNTAX) { firDiagnostic ->
         DeprecatedTypeParameterSyntaxImpl(
             firDiagnostic as KtPsiDiagnostic,
@@ -3045,6 +3060,18 @@ internal val KT_DIAGNOSTIC_CONVERTER = KtDiagnosticConverterBuilder.buildConvert
     }
     add(FirErrors.ANONYMOUS_FUNCTION_WITH_NAME) { firDiagnostic ->
         AnonymousFunctionWithNameImpl(
+            firDiagnostic as KtPsiDiagnostic,
+            token,
+        )
+    }
+    add(FirErrors.SINGLE_ANONYMOUS_FUNCTION_WITH_NAME.errorFactory) { firDiagnostic ->
+        SingleAnonymousFunctionWithNameErrorImpl(
+            firDiagnostic as KtPsiDiagnostic,
+            token,
+        )
+    }
+    add(FirErrors.SINGLE_ANONYMOUS_FUNCTION_WITH_NAME.warningFactory) { firDiagnostic ->
+        SingleAnonymousFunctionWithNameWarningImpl(
             firDiagnostic as KtPsiDiagnostic,
             token,
         )
@@ -4919,6 +4946,13 @@ internal val KT_DIAGNOSTIC_CONVERTER = KtDiagnosticConverterBuilder.buildConvert
             token,
         )
     }
+    add(FirErrors.IR_WITH_UNSTABLE_ABI_COMPILED_CLASS) { firDiagnostic ->
+        IrWithUnstableAbiCompiledClassImpl(
+            firDiagnostic.a,
+            firDiagnostic as KtPsiDiagnostic,
+            token,
+        )
+    }
     add(FirJvmErrors.OVERRIDE_CANNOT_BE_STATIC) { firDiagnostic ->
         OverrideCannotBeStaticImpl(
             firDiagnostic as KtPsiDiagnostic,
@@ -5628,6 +5662,12 @@ internal val KT_DIAGNOSTIC_CONVERTER = KtDiagnosticConverterBuilder.buildConvert
     add(FirJsErrors.WRONG_OPERATION_WITH_DYNAMIC) { firDiagnostic ->
         WrongOperationWithDynamicImpl(
             firDiagnostic.a,
+            firDiagnostic as KtPsiDiagnostic,
+            token,
+        )
+    }
+    add(FirJsErrors.JSCODE_ARGUMENT_NON_CONST_EXPRESSION) { firDiagnostic ->
+        JscodeArgumentNonConstExpressionImpl(
             firDiagnostic as KtPsiDiagnostic,
             token,
         )

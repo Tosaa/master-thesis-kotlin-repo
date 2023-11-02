@@ -59,52 +59,9 @@ internal class KtFirImportOptimizer(
         if (existingImports.isEmpty()) return KtImportOptimizerResult()
 
         val firFile = file.getOrBuildFirFile(firResolveSession).apply { lazyResolveToPhaseRecursively(FirResolvePhase.BODY_RESOLVE) }
-
-        val explicitlyImportedFqNames = existingImports
-            .asSequence()
-            .mapNotNull { it.importPath }
-            .filter { !it.isAllUnder && !it.hasAlias() }
-            .map { it.fqName }
-            .toSet()
-
         val (usedDeclarations, unresolvedNames) = collectReferencedEntities(firFile)
 
-        // TODO remove unused imports computing code completely
-        val referencesEntities = usedDeclarations
-            .filterNot { (fqName, referencedByNames) ->
-                val fromCurrentPackage = fqName.parentOrNull() == file.packageFqName
-                val noAliasedImports = referencedByNames.singleOrNull() == fqName.shortName()
-
-                fromCurrentPackage && noAliasedImports
-            }
-
-        val requiredStarImports = referencesEntities.keys
-            .asSequence()
-            .filterNot { it in explicitlyImportedFqNames }
-            .mapNotNull { it.parentOrNull() }
-            .filterNot { it.isRoot }
-            .toSet()
-
-        val unusedImports = mutableSetOf<KtImportDirective>()
-        val alreadySeenImports = mutableSetOf<ImportPath>()
-
-        for (import in existingImports) {
-            val importPath = import.importPath ?: continue
-
-            val isUsed = when {
-                importPath.importedName in unresolvedNames -> true
-                !alreadySeenImports.add(importPath) -> false
-                importPath.isAllUnder -> unresolvedNames.isNotEmpty() || importPath.fqName in requiredStarImports
-                importPath.fqName in referencesEntities -> importPath.importedName in referencesEntities.getValue(importPath.fqName)
-                else -> false
-            }
-
-            if (!isUsed) {
-                unusedImports += import
-            }
-        }
-
-        return KtImportOptimizerResult(unusedImports, usedDeclarations, unresolvedNames)
+        return KtImportOptimizerResult(usedDeclarations, unresolvedNames)
     }
 
     private data class ReferencedEntitiesResult(
@@ -519,7 +476,14 @@ private sealed interface TypeQualifier {
 
         private val FirResolvedTypeRef.isPresentInSource: Boolean
             get() = when (source?.kind) {
-                is KtRealSourceElementKind -> true
+                is KtRealSourceElementKind -> {
+                    val isArrayFromVararg = delegatedTypeRef?.source?.kind is KtFakeSourceElementKind.ArrayTypeFromVarargParameter;
+
+                    // type ref with delegated type ref with such source kind is NOT directly present in the source, so we ignore it
+                    !isArrayFromVararg
+                }
+
+                // type ref with such source kind is explicitly present in the source, so we want to see it
                 is KtFakeSourceElementKind.ArrayTypeFromVarargParameter -> true
 
                 else -> false

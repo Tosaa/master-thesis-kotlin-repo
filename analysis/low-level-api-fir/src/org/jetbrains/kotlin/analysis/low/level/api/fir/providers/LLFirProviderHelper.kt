@@ -102,10 +102,7 @@ internal class LLFirProviderHelper(
     val symbolNameCache = FirCompositeCachedSymbolNamesProvider.create(
         firSession,
         listOfNotNull(
-            object : LLFirKotlinSymbolNamesProvider(declarationProvider) {
-                // This is a temporary workaround for KTIJ-25536.
-                override fun getPackageNamesWithTopLevelCallables(): Set<String>? = null
-            },
+            LLFirKotlinSymbolNamesProvider(declarationProvider, allowKotlinPackage),
             extensionTool?.symbolNamesProvider,
         )
     )
@@ -117,11 +114,6 @@ internal class LLFirProviderHelper(
         if (classId.isLocal) return null
         if (!allowKotlinPackage && classId.isKotlinPackage()) return null
         return classifierByClassId.getNotNullValueForNotNullContext(classId, classLikeDeclaration)
-    }
-
-    fun getTopLevelClassNamesInPackage(packageFqName: FqName): Set<Name> {
-        if (!allowKotlinPackage && packageFqName.isKotlinPackage()) return emptySet()
-        return declarationProvider.getTopLevelKotlinClassLikeDeclarationNamesInPackage(packageFqName)
     }
 
     fun getTopLevelCallableSymbols(packageFqName: FqName, name: Name): List<FirCallableSymbol<*>> {

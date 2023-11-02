@@ -26,31 +26,42 @@ import org.jetbrains.kotlin.gradle.plugin.sources.KotlinDependencyScope
 import org.jetbrains.kotlin.gradle.plugin.sources.sourceSetDependencyConfigurationByScope
 import org.jetbrains.kotlin.gradle.targets.metadata.isKotlinGranularMetadataEnabled
 import org.jetbrains.kotlin.gradle.tooling.buildKotlinToolingMetadataTask
+import org.jetbrains.kotlin.gradle.utils.*
+import org.jetbrains.kotlin.gradle.utils.CompletableFuture
+import org.jetbrains.kotlin.gradle.utils.Future
+import org.jetbrains.kotlin.gradle.utils.projectStoredProperty
 import org.jetbrains.kotlin.gradle.utils.whenEvaluated
 
-internal val MultiplatformPublishingSetupAction = KotlinProjectSetupAction {
-    project.pluginManager.withPlugin("maven-publish") {
+private val Project.kotlinMultiplatformRootPublicationImpl: CompletableFuture<MavenPublication?>
+        by projectStoredProperty { CompletableFuture() }
+internal val Project.kotlinMultiplatformRootPublication: Future<MavenPublication?>
+    get() = kotlinMultiplatformRootPublicationImpl
+
+internal val MultiplatformPublishingSetupAction = KotlinProjectSetupCoroutine {
+    if (isPluginApplied("maven-publish")) {
         if (project.kotlinPropertiesProvider.createDefaultMultiplatformPublications) {
             project.extensions.configure(PublishingExtension::class.java) { publishing ->
-                createRootPublication(project, publishing)
+                createRootPublication(project, publishing).also(kotlinMultiplatformRootPublicationImpl::complete)
                 createTargetPublications(project, publishing)
             }
+        } else {
+            kotlinMultiplatformRootPublicationImpl.complete(null)
         }
-
         project.components.add(project.multiplatformExtension.rootSoftwareComponent)
+    } else {
+        kotlinMultiplatformRootPublicationImpl.complete(null)
     }
 }
 
 /**
  * The root publication that references the platform specific publications as its variants
  */
-private fun createRootPublication(project: Project, publishing: PublishingExtension) {
+private fun createRootPublication(project: Project, publishing: PublishingExtension): MavenPublication {
     val kotlinSoftwareComponent = project.multiplatformExtension.rootSoftwareComponent
 
-    publishing.publications.create("kotlinMultiplatform", MavenPublication::class.java).apply {
+    return publishing.publications.create("kotlinMultiplatform", MavenPublication::class.java).apply {
         from(kotlinSoftwareComponent)
         (this as MavenPublicationInternal).publishWithOriginalFileName()
-        kotlinSoftwareComponent.publicationDelegate = this@apply
 
         addKotlinToolingMetadataArtifactIfNeeded(project)
     }

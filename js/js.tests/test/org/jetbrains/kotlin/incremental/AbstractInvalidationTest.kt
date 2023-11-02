@@ -13,6 +13,7 @@ import com.intellij.psi.SingleRootFileViewProvider
 import com.intellij.testFramework.TestDataFile
 import org.jetbrains.kotlin.backend.common.phaser.PhaseConfig
 import org.jetbrains.kotlin.backend.common.phaser.toPhaseMap
+import org.jetbrains.kotlin.cli.common.config.addKotlinSourceRoot
 import org.jetbrains.kotlin.cli.jvm.compiler.EnvironmentConfigFiles
 import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment
 import org.jetbrains.kotlin.codegen.*
@@ -34,6 +35,7 @@ import org.jetbrains.kotlin.js.testOld.V8IrJsTestChecker
 import org.jetbrains.kotlin.konan.file.ZipFileSystemCacheableAccessor
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.psi.KtFile
+import org.jetbrains.kotlin.resolve.multiplatform.isCommonSource
 import org.jetbrains.kotlin.serialization.js.ModuleKind
 import org.jetbrains.kotlin.test.DebugMode
 import org.jetbrains.kotlin.test.TargetBackend
@@ -45,7 +47,11 @@ import org.jetbrains.kotlin.utils.addToStdlib.runIf
 import org.junit.ComparisonFailure
 import org.junit.jupiter.api.AfterEach
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.attribute.BasicFileAttributes
 import java.util.*
+import java.util.stream.Collectors
 
 abstract class AbstractInvalidationTest(
     private val targetBackend: TargetBackend,
@@ -150,6 +156,20 @@ abstract class AbstractInvalidationTest(
         return copy
     }
 
+    private fun CompilerConfiguration.enableKlibRelativePaths(moduleSourceDir: File) {
+        val bases = mutableListOf<String>()
+        val platformDirs = moduleSourceDir.listFiles() ?: arrayOf()
+        for (platformDir in platformDirs) {
+            if (platformDir.isDirectory) {
+                bases.add(platformDir.absolutePath)
+            }
+        }
+        if (bases.isEmpty()) {
+            bases.add(moduleSourceDir.absolutePath)
+        }
+        put(CommonConfigurationKeys.KLIB_RELATIVE_PATH_BASES, bases)
+    }
+
     private inner class ProjectStepsExecutor(
         private val projectInfo: ProjectInfo,
         private val moduleInfos: Map<String, ModuleInfo>,
@@ -191,6 +211,7 @@ abstract class AbstractInvalidationTest(
                     }
                 }
                 val configuration = createConfiguration(module, projStep.language, projectInfo.moduleKind)
+                configuration.enableKlibRelativePaths(moduleSourceDir)
                 outputKlibFile.delete()
                 buildKlib(configuration, module, moduleSourceDir, dependencies, friends, outputKlibFile)
             }
@@ -221,7 +242,7 @@ abstract class AbstractInvalidationTest(
                 for ((srcFile, dirtyStats) in updateStatus) {
                     for (dirtyStat in dirtyStats) {
                         if (dirtyStat != DirtyFileState.NON_MODIFIED_IR) {
-                            got.getOrPut(dirtyStat.str) { mutableSetOf() }.add(File(srcFile.path).name)
+                            got.getOrPut(dirtyStat.str) { mutableSetOf() }.add(srcFile.toString())
                         }
                     }
                 }
@@ -412,9 +433,22 @@ abstract class AbstractInvalidationTest(
 
     private fun String.isAllowedJsFile() = (endsWith(".js") || endsWith(".mjs")) && !TEST_FILE_IGNORE_PATTERN.matches(this)
 
-    protected fun File.filteredKtFiles(): Collection<File> {
-        assert(isDirectory && exists())
-        return listFiles { _, name -> name.isAllowedKtFile() }!!.toList()
+    protected fun CompilerConfiguration.addSourcesFromDir(sourceDir: File): List<KtFile> {
+        assert(sourceDir.isDirectory && sourceDir.exists()) { "Cannot find source directory $sourceDir" }
+
+        val sourceFiles = Files.find(sourceDir.toPath(), Integer.MAX_VALUE, { path: Path, fileAttributes: BasicFileAttributes ->
+            fileAttributes.isRegularFile && "${path.fileName}".isAllowedKtFile()
+        }).map { it.toFile() }.collect(Collectors.toList())
+
+        val ktSources = mutableListOf<KtFile>()
+        for (sourceFile in sourceFiles) {
+            val isCommon = sourceFile.parentFile.name == "common"
+            addKotlinSourceRoot(sourceFile.absolutePath, isCommon)
+            val ktFile = environment.createPsiFile(sourceFile)
+            ktFile.isCommonSource = isCommon
+            ktSources.add(ktFile)
+        }
+        return ktSources
     }
 
     private fun initializeWorkingDir(projectInfo: ProjectInfo, testDir: File, sourceDir: File, buildDir: File) {

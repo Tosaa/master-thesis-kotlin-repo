@@ -1,6 +1,8 @@
 import org.gradle.crypto.checksum.Checksum
 import org.gradle.plugins.ide.idea.model.IdeaModel
 import org.jetbrains.kotlin.gradle.targets.js.yarn.YarnLockMismatchReport
+import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
+import org.jetbrains.kotlin.gradle.dsl.KotlinVersion
 
 buildscript {
     // a workaround for kotlin compiler classpath in kotlin project: sometimes gradle substitutes
@@ -68,6 +70,7 @@ val kotlinVersion by extra(
 )
 
 val kotlinLanguageVersion: String by extra
+val kotlinApiVersionForModulesUsedInIDE: String by extra
 
 extra["kotlin_root"] = rootDir
 
@@ -121,6 +124,7 @@ val irCompilerModulesForIDE = arrayOf(
     ":compiler:ir.serialization.js", // used in IJ android plugin in `ComposeIrGenerationExtension`
     ":compiler:ir.backend.common",
     ":compiler:ir.interpreter",
+    ":compiler:ir.objcinterop",
 ).also { extra["irCompilerModulesForIDE"] = it }
 
 val commonCompilerModules = arrayOf(
@@ -244,6 +248,98 @@ extra["compilerModules"] =
             fe10CompilerModules +
             commonCompilerModules +
             firAllCompilerModules
+
+/**
+ * An array of projects used in the IntelliJ Kotlin Plugin.
+ *
+ * Experimental declarations from Kotlin stdlib cannot be used in those projects to avoid stdlib binary compatibility problems.
+ * See KT-62510 for details.
+ */
+val projectsUsedInIntelliJKotlinPlugin =
+    fe10CompilerModules +
+            commonCompilerModules +
+            firCompilerCoreModules +
+            irCompilerModulesForIDE +
+            arrayOf(
+                ":analysis:analysis-api",
+                ":analysis:analysis-api-fe10",
+                ":analysis:analysis-api-fir",
+                ":analysis:analysis-api-impl-barebone",
+                ":analysis:analysis-api-impl-base",
+                ":analysis:analysis-api-providers",
+                ":analysis:analysis-api-standalone:analysis-api-standalone-base",
+                ":analysis:analysis-api-standalone:analysis-api-fir-standalone-base",
+                ":analysis:analysis-api-standalone",
+                ":analysis:analysis-internal-utils",
+                ":analysis:analysis-test-framework",
+                ":analysis:decompiled",
+                ":analysis:kt-references",
+                ":analysis:kt-references:kt-references-fe10",
+                ":analysis:light-classes-base",
+                ":analysis:low-level-api-fir",
+                ":analysis:project-structure",
+                ":analysis:symbol-light-classes",
+            ) +
+            arrayOf(
+                ":kotlin-allopen-compiler-plugin.cli",
+                ":kotlin-allopen-compiler-plugin.common",
+                ":kotlin-allopen-compiler-plugin.k1",
+                ":kotlin-allopen-compiler-plugin.k2",
+
+                ":kotlin-assignment-compiler-plugin.cli",
+                ":kotlin-assignment-compiler-plugin.common",
+                ":kotlin-assignment-compiler-plugin.k1",
+                ":kotlin-assignment-compiler-plugin.k2",
+
+                ":plugins:parcelize:parcelize-compiler:parcelize.backend",
+                ":plugins:parcelize:parcelize-compiler:parcelize.cli",
+                ":plugins:parcelize:parcelize-compiler:parcelize.common",
+                ":plugins:parcelize:parcelize-compiler:parcelize.k1",
+                ":plugins:parcelize:parcelize-compiler:parcelize.k2",
+                ":plugins:parcelize:parcelize-runtime",
+
+                ":kotlin-sam-with-receiver-compiler-plugin.cli",
+                ":kotlin-sam-with-receiver-compiler-plugin.common",
+                ":kotlin-sam-with-receiver-compiler-plugin.k1",
+                ":kotlin-sam-with-receiver-compiler-plugin.k2",
+
+                ":kotlinx-serialization-compiler-plugin.cli",
+                ":kotlinx-serialization-compiler-plugin.common",
+                ":kotlinx-serialization-compiler-plugin.k1",
+                ":kotlinx-serialization-compiler-plugin.k2",
+                ":kotlinx-serialization-compiler-plugin.backend",
+
+                ":kotlin-lombok-compiler-plugin.cli",
+                ":kotlin-lombok-compiler-plugin.common",
+                ":kotlin-lombok-compiler-plugin.k1",
+                ":kotlin-lombok-compiler-plugin.k2",
+
+                ":kotlin-noarg-compiler-plugin.cli",
+                ":kotlin-noarg-compiler-plugin.common",
+                ":kotlin-noarg-compiler-plugin.k1",
+                ":kotlin-noarg-compiler-plugin.k2",
+                ":kotlin-noarg-compiler-plugin.backend",
+
+                ":plugins:android-extensions-compiler",
+
+                ":kotlin-sam-with-receiver-compiler-plugin.cli",
+                ":kotlin-sam-with-receiver-compiler-plugin.common",
+                ":kotlin-sam-with-receiver-compiler-plugin.k1",
+                ":kotlin-sam-with-receiver-compiler-plugin.k2",
+
+
+                ":kotlin-compiler-runner-unshaded",
+                ":kotlin-preloader",
+                ":daemon-common",
+                ":kotlin-daemon-client",
+
+                ":kotlin-scripting-compiler",
+                ":kotlin-gradle-statistics",
+                ":jps:jps-common",
+            ) +
+            if (kotlinBuildProperties.isKotlinNativeEnabled) arrayOf(":kotlin-native:backend.native") else emptyArray()
+
+extra["projectsUsedInIntelliJKotlinPlugin"] = projectsUsedInIntelliJKotlinPlugin
 
 // They are embedded just because we don't publish those dependencies as separate Maven artifacts (yet)
 extra["kotlinJpsPluginEmbeddedDependencies"] = listOf(
@@ -385,6 +481,9 @@ val projectsWithEnabledContextReceivers by extra {
         ":compiler:fir:raw-fir:raw-fir.common",
         ":compiler:fir:raw-fir:psi2fir",
         ":compiler:fir:raw-fir:light-tree2fir",
+        ":compiler:fir:tree:tree-generator",
+        ":compiler:ir.tree:tree-generator",
+        ":generators:tree-generator-common",
         ":kotlin-lombok-compiler-plugin.k1",
         ":kotlinx-serialization-compiler-plugin.k2",
         ":plugins:parcelize:parcelize-compiler:parcelize.k2",
@@ -786,6 +885,7 @@ tasks {
         dependsOn(":kotlin-tooling-core:check")
         dependsOn(":kotlin-tooling-metadata:check")
         dependsOn(":compiler:build-tools:kotlin-build-tools-api:check")
+        dependsOn(":tools:ide-plugin-dependencies-validator:test")
     }
 
     register("examplesTest") {
@@ -836,6 +936,10 @@ tasks {
 
     register("codebaseTests") {
         dependsOn(":repo:codebase-tests:test")
+    }
+
+    register("statisticsTests") {
+        dependsOn(":kotlin-gradle-statistics:test")
     }
 
     register("test") {

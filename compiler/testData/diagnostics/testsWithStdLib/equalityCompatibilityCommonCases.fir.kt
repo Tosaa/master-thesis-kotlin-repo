@@ -53,7 +53,7 @@ fun incompatibleTypes(a: Int) = when(a) {
 fun incompatibleTypesSmartCast(a: Any?) {
     if (a is Int) {
         when(a) {
-            <!INCOMPATIBLE_TYPES!>C(10)<!> -> 1
+            <!INCOMPATIBLE_TYPES_WARNING!>C(10)<!> -> 1
             else -> 2
         }
     }
@@ -95,4 +95,21 @@ fun incompatibleIdentityRegardlessNullabilityWithValueClassesSmartCast(c: Any?, 
         <!EQUALITY_NOT_APPLICABLE_WARNING!>c == d<!>
         <!FORBIDDEN_IDENTITY_EQUALS_WARNING!>c === d<!>
     }
+}
+
+enum class F
+
+fun <T: E, K: F> incompatibleEnumComparisonWithTypeParameters(e: T, f: K) {
+    <!INCOMPATIBLE_ENUM_COMPARISON!>e == f<!>
+}
+
+interface A
+enum class G : B
+
+fun <I : A> incompatibleEnumAndUnrelatedInterfaceThroughTypeParameter(x: G?, i: I?) {
+    <!INCOMPATIBLE_ENUM_COMPARISON!>x == i<!>
+}
+
+fun incompatibleEnumAndUnrelatedInterface(x: G?, i: A?) {
+    <!INCOMPATIBLE_ENUM_COMPARISON!>x == i<!>
 }

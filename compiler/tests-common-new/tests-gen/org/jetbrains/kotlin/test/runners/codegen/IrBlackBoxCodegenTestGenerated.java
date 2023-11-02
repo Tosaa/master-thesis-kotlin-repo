@@ -535,6 +535,12 @@ public class IrBlackBoxCodegenTestGenerated extends AbstractIrBlackBoxCodegenTes
             }
 
             @Test
+            @TestMetadata("AnnotationInstantiationWithArray.kt")
+            public void testAnnotationInstantiationWithArray() throws Exception {
+                runTest("compiler/testData/codegen/box/annotations/instances/AnnotationInstantiationWithArray.kt");
+            }
+
+            @Test
             @TestMetadata("annotationJvmHashCode.kt")
             public void testAnnotationJvmHashCode() throws Exception {
                 runTest("compiler/testData/codegen/box/annotations/instances/annotationJvmHashCode.kt");
@@ -19237,6 +19243,12 @@ public class IrBlackBoxCodegenTestGenerated extends AbstractIrBlackBoxCodegenTes
         @TestMetadata("selectingLambdas.kt")
         public void testSelectingLambdas() throws Exception {
             runTest("compiler/testData/codegen/box/fir/selectingLambdas.kt");
+        }
+
+        @Test
+        @TestMetadata("StackOverflowInAnnotationLoader.kt")
+        public void testStackOverflowInAnnotationLoader() throws Exception {
+            runTest("compiler/testData/codegen/box/fir/StackOverflowInAnnotationLoader.kt");
         }
 
         @Test

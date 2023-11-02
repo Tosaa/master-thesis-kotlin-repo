@@ -41,6 +41,7 @@ import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.components.substut
 import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.components.symbolDeclarationOverridesProvider.AbstractIsSubclassOfTest
 import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.components.symbolDeclarationOverridesProvider.AbstractOverriddenDeclarationProviderTest
 import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.components.symbolDeclarationRenderer.AbstractRendererTest
+import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.components.symbolDeclarationRenderer.AbstractSymbolRenderingByReferenceTest
 import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.components.symbolInfoProvider.AbstractAnnotationApplicableTargetsTest
 import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.components.typeCreator.AbstractBuildClassTypeTest
 import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.components.typeCreator.AbstractTypeParameterTypeTest
@@ -55,6 +56,7 @@ import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.references.Abstrac
 import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.references.AbstractReferenceShortenerTest
 import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.symbols.*
 import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.types.AbstractAnalysisApiSubstitutorsTest
+import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.types.AbstractBuiltInTypeTest
 import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.types.AbstractTypeByDeclarationReturnTypeTest
 import org.jetbrains.kotlin.analysis.api.standalone.fir.test.cases.components.psiDeclarationProvider.AbstractPsiDeclarationProviderTest
 import org.jetbrains.kotlin.analysis.test.framework.test.configurators.AnalysisApiMode
@@ -169,6 +171,10 @@ private fun AnalysisApiTestGroup.generateAnalysisApiNonComponentsTests() {
     group("types", filter = analysisSessionModeIs(AnalysisSessionMode.Normal)) {
         test(AbstractTypeByDeclarationReturnTypeTest::class) {
             model(it, "byDeclarationReturnType")
+        }
+
+        test(AbstractBuiltInTypeTest::class) {
+            model(it, "builtins")
         }
     }
 
@@ -320,7 +326,7 @@ private fun AnalysisApiTestGroup.generateAnalysisApiComponentsTests() {
     component("importOptimizer") {
         test(
             AbstractAnalysisApiImportOptimizerTest::class,
-            filter = analysisSessionModeIs(AnalysisSessionMode.Normal),
+            filter = analysisSessionModeIs(AnalysisSessionMode.Normal) and frontendIs(FrontendKind.Fir),
         ) {
             model(it, "analyseImports")
         }
@@ -371,6 +377,10 @@ private fun AnalysisApiTestGroup.generateAnalysisApiComponentsTests() {
     component("symbolDeclarationRenderer") {
         test(AbstractRendererTest::class) {
             model(it, "renderDeclaration")
+        }
+
+        test(AbstractSymbolRenderingByReferenceTest::class, analysisApiModeIs(AnalysisApiMode.Ide, AnalysisApiMode.Standalone)) {
+            model(it, "symbolRenderingByReference")
         }
     }
 

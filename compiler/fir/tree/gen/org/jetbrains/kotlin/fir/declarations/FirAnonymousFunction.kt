@@ -20,10 +20,13 @@ import org.jetbrains.kotlin.fir.references.FirControlFlowGraphReference
 import org.jetbrains.kotlin.fir.symbols.impl.FirAnonymousFunctionSymbol
 import org.jetbrains.kotlin.fir.types.ConeSimpleKotlinType
 import org.jetbrains.kotlin.fir.types.FirTypeRef
+import org.jetbrains.kotlin.fir.visitors.FirTransformer
+import org.jetbrains.kotlin.fir.visitors.FirVisitor
 import org.jetbrains.kotlin.serialization.deserialization.descriptors.DeserializedContainerSource
-import org.jetbrains.kotlin.fir.visitors.*
-import org.jetbrains.kotlin.fir.declarations.ResolveStateAccess
 
+/**
+ * Generated from: [org.jetbrains.kotlin.fir.tree.generator.FirTreeBuilder.anonymousFunction]
+ */
 abstract class FirAnonymousFunction : FirFunction(), FirTypeParametersOwner, FirContractDescriptionOwner {
     abstract override val source: KtSourceElement?
     abstract override val annotations: List<FirAnnotation>

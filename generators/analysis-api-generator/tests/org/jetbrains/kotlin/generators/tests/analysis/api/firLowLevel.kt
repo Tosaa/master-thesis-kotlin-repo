@@ -6,15 +6,17 @@
 package org.jetbrains.kotlin.generators.tests.analysis.api
 
 import org.jetbrains.kotlin.analysis.low.level.api.fir.*
-import org.jetbrains.kotlin.analysis.low.level.api.fir.diagnostic.compiler.based.AbstractLLFirDiagnosticCompilerTestDataSpecTest
 import org.jetbrains.kotlin.analysis.low.level.api.fir.diagnostic.AbstractFirOutOfContentRootContextCollectionTest
 import org.jetbrains.kotlin.analysis.low.level.api.fir.diagnostic.AbstractFirSourceContextCollectionTest
 import org.jetbrains.kotlin.analysis.low.level.api.fir.diagnostic.AbstractScriptContextCollectionTest
 import org.jetbrains.kotlin.analysis.low.level.api.fir.diagnostic.AbstractScriptDiagnosticTraversalCounterTest
 import org.jetbrains.kotlin.analysis.low.level.api.fir.diagnostic.AbstractSourceDiagnosticTraversalCounterTest
 import org.jetbrains.kotlin.analysis.low.level.api.fir.diagnostic.compiler.based.AbstractDiagnosticCompilerTestDataTest
+import org.jetbrains.kotlin.analysis.low.level.api.fir.diagnostic.compiler.based.AbstractLLFirBlackBoxCodegenBasedTest
+import org.jetbrains.kotlin.analysis.low.level.api.fir.diagnostic.compiler.based.AbstractLLFirDiagnosticCompilerTestDataSpecTest
 import org.jetbrains.kotlin.analysis.low.level.api.fir.diagnostic.compiler.based.AbstractLLFirPreresolvedReversedDiagnosticCompilerTestDataSpecTest
 import org.jetbrains.kotlin.analysis.low.level.api.fir.diagnostic.compiler.based.AbstractLLFirPreresolvedReversedDiagnosticCompilerTestDataTest
+import org.jetbrains.kotlin.analysis.low.level.api.fir.diagnostic.compiler.based.AbstractLLFirReversedBlackBoxCodegenBasedTest
 import org.jetbrains.kotlin.analysis.low.level.api.fir.file.structure.*
 import org.jetbrains.kotlin.analysis.low.level.api.fir.resolve.AbstractErrorResistanceTest
 import org.jetbrains.kotlin.analysis.low.level.api.fir.resolve.AbstractOutOfContentRootWholeFileResolvePhaseTest
@@ -23,6 +25,7 @@ import org.jetbrains.kotlin.analysis.low.level.api.fir.resolve.AbstractSourceWho
 import org.jetbrains.kotlin.generators.TestGroup
 import org.jetbrains.kotlin.generators.TestGroupSuite
 import org.jetbrains.kotlin.generators.util.TestGeneratorUtil
+import org.jetbrains.kotlin.generators.util.TestGeneratorUtil.KT_OR_KTS
 import org.jetbrains.kotlin.spec.utils.GeneralConfiguration
 import org.jetbrains.kotlin.spec.utils.tasks.detectDirsWithTestsMapFileOnly
 import org.jetbrains.kotlin.test.utils.CUSTOM_TEST_DATA_EXTENSION_PATTERN
@@ -246,11 +249,13 @@ internal fun TestGroupSuite.generateFirLowLevelApiTests() {
                 // MPP tests are not actual for Analysis Api (IDE) infrastructure because it doesn't use IR at all, unlike MPP
                 excludeDirsRecursively = listOf("multiplatform"),
                 excludedPattern = CUSTOM_TEST_DATA_EXTENSION_PATTERN,
+                pattern = KT_OR_KTS,
             )
             model(
                 "diagnostics/testsWithStdLib",
                 excludedPattern = CUSTOM_TEST_DATA_EXTENSION_PATTERN,
-                excludeDirs = listOf("native")
+                excludeDirs = listOf("native"),
+                pattern = KT_OR_KTS,
             )
         }
 
@@ -260,6 +265,22 @@ internal fun TestGroupSuite.generateFirLowLevelApiTests() {
 
         testClass<AbstractLLFirPreresolvedReversedDiagnosticCompilerTestDataTest>(suiteTestClassName = "LLFirPreresolvedReversedDiagnosticCompilerFE10TestDataTestGenerated") {
             modelInit()
+        }
+
+        testClass<AbstractLLFirBlackBoxCodegenBasedTest> {
+            model("codegen/box")
+        }
+
+        testClass<AbstractLLFirReversedBlackBoxCodegenBasedTest> {
+            model("codegen/box")
+        }
+
+        testClass<AbstractLLFirBlackBoxCodegenBasedTest>(suiteTestClassName = "LLFirBlackBoxModernJdkCodegenBasedTestGenerated") {
+            model("codegen/boxModernJdk")
+        }
+
+        testClass<AbstractLLFirReversedBlackBoxCodegenBasedTest>(suiteTestClassName = "LLFirReversedBlackBoxModernJdkCodegenBasedTestGenerated") {
+            model("codegen/boxModernJdk")
         }
     }
 

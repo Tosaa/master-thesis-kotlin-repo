@@ -10,7 +10,8 @@ import com.intellij.psi.SmartPointerManager
 import com.intellij.psi.SmartPsiElementPointer
 import org.jetbrains.kotlin.analysis.api.components.KtReferenceShortener
 import org.jetbrains.kotlin.analysis.api.components.ShortenCommand
-import org.jetbrains.kotlin.analysis.api.components.ShortenOption
+import org.jetbrains.kotlin.analysis.api.components.ShortenOptions
+import org.jetbrains.kotlin.analysis.api.components.ShortenStrategy
 import org.jetbrains.kotlin.analysis.api.descriptors.KtFe10AnalysisSession
 import org.jetbrains.kotlin.analysis.api.descriptors.components.base.Fe10KtAnalysisSessionComponent
 import org.jetbrains.kotlin.analysis.api.lifetime.KtLifetimeToken
@@ -31,8 +32,9 @@ internal class KtFe10ReferenceShortener(
     override fun collectShortenings(
         file: KtFile,
         selection: TextRange,
-        classShortenOption: (KtClassLikeSymbol) -> ShortenOption,
-        callableShortenOption: (KtCallableSymbol) -> ShortenOption,
+        shortenOptions: ShortenOptions,
+        classShortenStrategy: (KtClassLikeSymbol) -> ShortenStrategy,
+        callableShortenStrategy: (KtCallableSymbol) -> ShortenStrategy,
     ): ShortenCommand {
         // Compiler implementation does nothing.
         // Descriptor-based shortening is implemented on the IDE plugin side.

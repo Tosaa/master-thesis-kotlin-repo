@@ -238,6 +238,7 @@ object LightTreePositioningStrategies {
             //in FE 1.0 this is part of DeclarationHeader abstract strategy
             if (node.tokenType != KtNodeTypes.OBJECT_DECLARATION
                 && node.tokenType != KtNodeTypes.FUN
+                && node.tokenType != KtNodeTypes.PRIMARY_CONSTRUCTOR
                 && node.tokenType != KtNodeTypes.SECONDARY_CONSTRUCTOR
                 && node.tokenType != KtNodeTypes.OBJECT_LITERAL
             ) {
@@ -472,6 +473,9 @@ object LightTreePositioningStrategies {
 
     val OPERATOR_MODIFIER: LightTreePositioningStrategy =
         ModifierSetBasedLightTreePositioningStrategy(KtTokens.OPERATOR_KEYWORD)
+
+    val INFIX_MODIFIER: LightTreePositioningStrategy =
+        ModifierSetBasedLightTreePositioningStrategy(KtTokens.INFIX_KEYWORD)
 
     val ENUM_MODIFIER: LightTreePositioningStrategy =
         ModifierSetBasedLightTreePositioningStrategy(KtTokens.ENUM_KEYWORD)

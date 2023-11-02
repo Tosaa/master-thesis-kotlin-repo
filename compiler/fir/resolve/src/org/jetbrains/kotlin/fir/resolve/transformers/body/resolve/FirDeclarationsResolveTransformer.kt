@@ -25,6 +25,7 @@ import org.jetbrains.kotlin.fir.declarations.utils.isLocal
 import org.jetbrains.kotlin.fir.diagnostics.ConeSimpleDiagnostic
 import org.jetbrains.kotlin.fir.diagnostics.DiagnosticKind
 import org.jetbrains.kotlin.fir.expressions.*
+import org.jetbrains.kotlin.fir.expressions.impl.FirSingleExpressionBlock
 import org.jetbrains.kotlin.fir.references.FirResolvedErrorReference
 import org.jetbrains.kotlin.fir.references.FirResolvedNamedReference
 import org.jetbrains.kotlin.fir.resolve.*
@@ -186,7 +187,7 @@ open class FirDeclarationsResolveTransformer(
 
                         property.transformAccessors(SetterResolutionMode.FULLY_RESOLVE, shouldResolveEverything = true)
                     } else {
-                        transformPropertyAccessorsWithDelegate(property, delegate)
+                        transformPropertyAccessorsWithDelegate(property, delegate, shouldResolveEverything)
                         if (property.delegateFieldSymbol != null) {
                             replacePropertyReferenceTypeInDelegateAccessors(property)
                         }
@@ -298,7 +299,11 @@ open class FirDeclarationsResolveTransformer(
         (property.delegate as? FirFunctionCall)?.replacePropertyReferenceTypeInDelegateAccessors(property)
     }
 
-    private fun transformPropertyAccessorsWithDelegate(property: FirProperty, delegate: FirExpression) {
+    private fun transformPropertyAccessorsWithDelegate(
+        property: FirProperty,
+        delegate: FirExpression,
+        shouldResolveEverything: Boolean,
+    ) {
         val isImplicitTypedProperty = property.returnTypeRef is FirImplicitTypeRef
 
         context.forPropertyDelegateAccessors(property, resolutionContext, callCompleter) {
@@ -317,7 +322,11 @@ open class FirDeclarationsResolveTransformer(
             // It's necessary because we need to supply the property type as the 3rd argument for `setValue` and there might be uninferred
             // variables from `getValue`.
             // The same logic was used at K1 (see org.jetbrains.kotlin.resolve.DelegatedPropertyResolver.inferDelegateTypeFromGetSetValueMethods)
-            property.transformAccessors(if (isImplicitTypedProperty) SetterResolutionMode.SKIP else SetterResolutionMode.FULLY_RESOLVE)
+            property.transformAccessors(
+                if (isImplicitTypedProperty) SetterResolutionMode.SKIP else SetterResolutionMode.FULLY_RESOLVE,
+                shouldResolveEverything,
+            )
+
             val completedCalls = completeCandidates()
 
             val finalSubstitutor = createFinalSubstitutor()
@@ -346,7 +355,7 @@ open class FirDeclarationsResolveTransformer(
 
         // `isImplicitTypedProperty` means we haven't run setter resolution yet (see its second usage)
         if (isImplicitTypedProperty) {
-            property.resolveSetter(mayResolveSetterBody = true, shouldResolveEverything = true)
+            property.resolveSetter(mayResolveSetterBody = true, shouldResolveEverything = shouldResolveEverything)
         }
 
         dataFlowAnalyzer.exitDelegateExpression(delegate)
@@ -498,7 +507,7 @@ open class FirDeclarationsResolveTransformer(
         val hadExplicitType = variable.returnTypeRef !is FirImplicitTypeRef
 
         if (delegate != null) {
-            transformPropertyAccessorsWithDelegate(variable, delegate)
+            transformPropertyAccessorsWithDelegate(variable, delegate, shouldResolveEverything = true)
             if (variable.delegateFieldSymbol != null) {
                 replacePropertyReferenceTypeInDelegateAccessors(variable)
             }
@@ -1203,7 +1212,7 @@ open class FirDeclarationsResolveTransformer(
                     val unwrappedInitializer = initializer.unwrapSmartcastExpression()
                     unwrappedInitializer.resolvedType.toFirResolvedTypeRef()
                 }
-                variable.getter != null && variable.getter !is FirDefaultPropertyAccessor -> variable.getter?.returnTypeRef
+                variable.getter?.body is FirSingleExpressionBlock -> variable.getter?.returnTypeRef
                 else -> null
             }
 
@@ -1236,12 +1245,14 @@ open class FirDeclarationsResolveTransformer(
         return when (this) {
             is FirImplicitTypeRef -> buildErrorTypeRef {
                 diagnostic = ConeSimpleDiagnostic("No result type for initializer", DiagnosticKind.InferenceError)
+                annotations.addAll(this@toExpectedTypeRef.annotations)
             }
             is FirErrorTypeRef -> buildErrorTypeRef {
                 diagnostic = this@toExpectedTypeRef.diagnostic
                 this@toExpectedTypeRef.source?.fakeElement(KtFakeSourceElementKind.ImplicitTypeRef)?.let {
                     source = it
                 }
+                annotations.addAll(this@toExpectedTypeRef.annotations)
             }
             else -> {
                 buildResolvedTypeRef {

@@ -16,8 +16,10 @@ import org.jetbrains.kotlin.konan.test.blackbox.support.runner.TestRunChecks
 import org.jetbrains.kotlin.konan.test.blackbox.support.settings.KotlinNativeClassLoader
 import org.jetbrains.kotlin.konan.test.blackbox.support.settings.Timeouts
 import org.jetbrains.kotlin.konan.test.blackbox.support.util.getAbsoluteFile
-import org.jetbrains.kotlin.konan.test.blackbox.support.util.getContents
+import org.jetbrains.kotlin.konan.test.blackbox.support.util.dumpMetadata
+import org.jetbrains.kotlin.library.KotlinIrSignatureVersion
 import org.jetbrains.kotlin.test.services.JUnit5Assertions.assertEqualsToFile
+import org.jetbrains.kotlin.test.utils.withSuffixAndExtension
 import org.junit.jupiter.api.Tag
 import java.io.File
 
@@ -33,9 +35,23 @@ abstract class AbstractNativeKlibDumpMetadataTest : AbstractNativeSimpleTest() {
         val testCompilationResult: TestCompilationResult.Success<out KLIB> = compileToLibrary(testCase)
 
         val kotlinNativeClassLoader = testRunSettings.get<KotlinNativeClassLoader>()
-        val klibContents = testCompilationResult.assertSuccess().resultingArtifact.getContents(kotlinNativeClassLoader.classLoader)
-        val klibContentsFiltered = filterContentsOutput(klibContents, linestoExclude = listOf("package test {", "}", ""))
-        assertEqualsToFile(File("${testPathFull.canonicalPath.substringBeforeLast(".")}.txt"), StringUtilRt.convertLineSeparators(klibContentsFiltered))
+        val klib: KLIB = testCompilationResult.assertSuccess().resultingArtifact
+
+        (KotlinIrSignatureVersion.CURRENTLY_SUPPORTED_VERSIONS + null).forEach { signatureVersion: KotlinIrSignatureVersion? ->
+            val metadataDump = klib.dumpMetadata(
+                kotlinNativeClassLoader.classLoader,
+                printSignatures = signatureVersion != null,
+                signatureVersion
+            )
+            val filteredMetadataDump = StringUtilRt.convertLineSeparators(filterMetadataDump(metadataDump))
+
+            val goldenDataFile = testPathFull.withSuffixAndExtension(
+                suffix = signatureVersion?.let { ".v${it.number}" } ?: "",
+                extension = "txt"
+            )
+
+            assertEqualsToFile(goldenDataFile, filteredMetadataDump)
+        }
     }
 
     private fun generateTestCaseWithSingleSource(source: File, extraArgs: List<String>): TestCase {
@@ -56,9 +72,25 @@ abstract class AbstractNativeKlibDumpMetadataTest : AbstractNativeSimpleTest() {
         }
     }
 
-    private fun filterContentsOutput(contents: String, linestoExclude: List<String>) =
-        contents.lines()
-            .filterNot { line ->
-                linestoExclude.any { exclude -> exclude == line }
-            }.joinToString(separator = "\n")
+    // Remove intermediate "}\n\npackage ABC {\n" parts.
+    private fun filterMetadataDump(contents: String): String {
+        var packageLineMet = false
+        return contents.lineSequence()
+            .dropWhile { line -> line.isBlank() }
+            .filter { line ->
+                when {
+                    line.isBlank() -> false
+                    line.startsWith("package ") -> {
+                        if (packageLineMet)
+                            false
+                        else {
+                            packageLineMet = true
+                            true
+                        }
+                    }
+                    line == "}" -> false
+                    else -> true
+                }
+            }.joinToString(separator = "\n", postfix = "\n}")
+    }
 }

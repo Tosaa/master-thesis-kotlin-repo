@@ -245,7 +245,33 @@ kotlin {
         commonWasmTargetConfiguration()
     }
 
+    if (kotlinBuildProperties.isInIdeaSync) {
+        val hostOs = System.getProperty("os.name")
+        val isMingwX64 = hostOs.startsWith("Windows")
+        val nativeTarget = when {
+            hostOs == "Mac OS X" -> macosX64("native")
+            hostOs == "Linux" -> linuxX64("native")
+            isMingwX64 -> mingwX64("native")
+            else -> throw GradleException("Host OS is not supported in Kotlin/Native.")
+        }
+        nativeTarget.apply {
+            compilations.all {
+                kotlinOptions {
+                    freeCompilerArgs += listOf(
+                        "-Xallow-kotlin-package",
+                        "-Xexpect-actual-classes",
+                        "-nostdlib",
+                    )
+                }
+            }
+        }
+    }
+
     sourceSets {
+        fun <TP : TaskProvider<*>> TP.requiredForImport(): TP {
+            tasks.findByName("prepareKotlinIdeaImport")?.dependsOn(this)
+            return this
+        }
         all {
             kotlin.setSrcDirs(emptyList<File>())
         }
@@ -325,7 +351,7 @@ kotlin {
         val jsMain by getting {
             val prepareJsIrMainSources by tasks.registering(Sync::class)
             kotlin {
-                srcDir(prepareJsIrMainSources)
+                srcDir(prepareJsIrMainSources.requiredForImport())
                 srcDir("$jsDir/builtins")
                 srcDir("$jsDir/runtime")
                 srcDir("$jsDir/src").apply {
@@ -404,7 +430,7 @@ kotlin {
             dependsOn(nativeWasmMain)
             val prepareWasmBuiltinSources by tasks.registering(Sync::class)
             kotlin {
-                srcDir(prepareWasmBuiltinSources)
+                srcDir(prepareWasmBuiltinSources.requiredForImport())
                 srcDir("wasm/builtins")
                 srcDir("wasm/internal")
                 srcDir("wasm/runtime")
@@ -488,6 +514,46 @@ kotlin {
             }
         }
 
+        if (kotlinBuildProperties.isInIdeaSync) {
+            val nativeKotlinTestCommon by creating {
+                dependsOn(commonMain.get())
+                val prepareKotlinTestCommonNativeSources by tasks.registering(Sync::class) {
+                    from("../kotlin.test/common/src/main/kotlin")
+                    from("../kotlin.test/annotations-common/src/main/kotlin")
+                    into("$buildDir/src/native-kotlin-test-common-sources")
+                }
+
+                kotlin {
+                    srcDir(prepareKotlinTestCommonNativeSources.requiredForImport())
+                }
+            }
+            val nativeMain by getting {
+                dependsOn(nativeWasmMain)
+                dependsOn(nativeKotlinTestCommon)
+                kotlin {
+                    srcDir("$rootDir/kotlin-native/runtime/src/main/kotlin")
+                    srcDir("$rootDir/kotlin-native/Interop/Runtime/src/main/kotlin")
+                    srcDir("$rootDir/kotlin-native/Interop/Runtime/src/native/kotlin")
+                }
+                languageSettings {
+                    optIn("kotlin.native.internal.InternalForKotlinNative")
+                }
+            }
+            val nativeTest by getting {
+                dependsOn(nativeWasmTest)
+                kotlin {
+                    srcDir("$rootDir/kotlin-native/runtime/test")
+                }
+                languageSettings {
+                    optIn("kotlin.experimental.ExperimentalNativeApi")
+                    optIn("kotlin.native.ObsoleteNativeApi")
+                    optIn("kotlin.native.runtime.NativeRuntimeApi")
+                    optIn("kotlin.native.internal.InternalForKotlinNative")
+                    optIn("kotlinx.cinterop.ExperimentalForeignApi")
+                }
+            }
+        }
+
         all sourceSet@ {
             languageSettings {
                 // TODO: progressiveMode = use build property 'test.progressive.mode'
@@ -507,7 +573,7 @@ dependencies {
     val jvmMainApi by configurations.getting
     val commonMainMetadataElementsWithClassifier by configurations.creating
     val metadataApiElements by configurations.getting
-    val nativeApiElements by configurations.creating
+    val nativeApiElements = configurations.maybeCreate("nativeApiElements")
     constraints {
         // there is no dependency anymore from kotlin-stdlib to kotlin-stdlib-common,
         // but use this constraint to align it if another library brings it transitively

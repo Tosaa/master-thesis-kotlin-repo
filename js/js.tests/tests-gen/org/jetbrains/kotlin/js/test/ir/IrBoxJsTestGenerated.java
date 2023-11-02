@@ -957,6 +957,12 @@ public class IrBoxJsTestGenerated extends AbstractIrBoxJsTest {
         }
 
         @Test
+        @TestMetadata("suspendInvokeWithSuspendKlassRef.kt")
+        public void testSuspendInvokeWithSuspendKlassRef() throws Exception {
+            runTest("js/js.translator/testData/box/coroutines/suspendInvokeWithSuspendKlassRef.kt");
+        }
+
+        @Test
         @TestMetadata("suspendMethodWithSuperCall.kt")
         public void testSuspendMethodWithSuperCall() throws Exception {
             runTest("js/js.translator/testData/box/coroutines/suspendMethodWithSuperCall.kt");
@@ -7096,6 +7102,12 @@ public class IrBoxJsTestGenerated extends AbstractIrBoxJsTest {
         @TestMetadata("comments.kt")
         public void testComments() throws Exception {
             runTest("js/js.translator/testData/box/jsCode/comments.kt");
+        }
+
+        @Test
+        @TestMetadata("compileTimeString.kt")
+        public void testCompileTimeString() throws Exception {
+            runTest("js/js.translator/testData/box/jsCode/compileTimeString.kt");
         }
 
         @Test

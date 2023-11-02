@@ -45,7 +45,12 @@ public abstract class KotlinDeclarationProvider : KotlinComposableProvider {
 
     public abstract fun findFilesForScript(scriptFqName: FqName): Collection<KtScript>
 
-    public abstract fun computePackageSetWithTopLevelCallableDeclarations(): Set<String>
+    /**
+     * Calculates the set of package names which can be provided by this declaration provider and contain callables.
+     *
+     * The set may contain false positives. `null` may be returned if the package set is too expensive or impossible to compute.
+     */
+    public abstract fun computePackageSetWithTopLevelCallableDeclarations(): Set<String>?
 }
 
 public abstract class KotlinDeclarationProviderFactory {
@@ -74,8 +79,16 @@ public abstract class KotlinDeclarationProviderMerger : KotlinComposableProvider
     }
 }
 
-public fun Project.createDeclarationProvider(scope: GlobalSearchScope, module: KtModule?): KotlinDeclarationProvider =
-    KotlinDeclarationProviderFactory.getInstance(this).createDeclarationProvider(scope, module)
+/**
+ * Creates a [KotlinDeclarationProvider] providing symbols within the given [scope].
+ *
+ * The [contextualModule] is the module which contains the symbols to be provided, if applicable. The declaration provider may use the
+ * contextual module to provide declarations differently, such as providing alternative declarations for an outsider module. Some
+ * functionality such as package set computation may also depend on the contextual module, as the declaration provider may require
+ * additional information not available in the [scope].
+ */
+public fun Project.createDeclarationProvider(scope: GlobalSearchScope, contextualModule: KtModule?): KotlinDeclarationProvider =
+    KotlinDeclarationProviderFactory.getInstance(this).createDeclarationProvider(scope, contextualModule)
 
 public fun Project.mergeDeclarationProviders(declarationProviders: List<KotlinDeclarationProvider>): KotlinDeclarationProvider =
     KotlinDeclarationProviderMerger.getInstance(this).merge(declarationProviders)

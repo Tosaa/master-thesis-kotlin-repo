@@ -42,10 +42,7 @@ import org.jetbrains.kotlin.ir.declarations.impl.IrVariableImpl
 import org.jetbrains.kotlin.ir.declarations.impl.SCRIPT_K2_ORIGIN
 import org.jetbrains.kotlin.ir.expressions.IrExpression
 import org.jetbrains.kotlin.ir.expressions.impl.IrErrorExpressionImpl
-import org.jetbrains.kotlin.ir.symbols.IrConstructorSymbol
-import org.jetbrains.kotlin.ir.symbols.IrFieldSymbol
-import org.jetbrains.kotlin.ir.symbols.IrPropertySymbol
-import org.jetbrains.kotlin.ir.symbols.IrSimpleFunctionSymbol
+import org.jetbrains.kotlin.ir.symbols.*
 import org.jetbrains.kotlin.ir.symbols.impl.*
 import org.jetbrains.kotlin.ir.types.IrType
 import org.jetbrains.kotlin.ir.util.*
@@ -569,22 +566,24 @@ class Fir2IrCallableDeclarationsGenerator(val components: Fir2IrComponents) : Fi
     ): IrField = convertCatching(firProperty) {
         val inferredType = type ?: firInitializerExpression!!.resolvedType.toIrType()
         return declareIrField { symbol ->
-            irFactory.createField(
-                startOffset = irProperty.startOffset,
-                endOffset = irProperty.endOffset,
-                origin = origin,
-                name = name,
-                visibility = visibility,
-                symbol = symbol,
-                type = inferredType,
-                isFinal = isFinal,
-                isStatic = firProperty.isStatic || !(irProperty.parent is IrClass || irProperty.parent is IrScript),
-                isExternal = firProperty.isExternal,
-            ).also {
-                it.correspondingPropertySymbol = irProperty.symbol
-            }.apply {
-                metadata = FirMetadataSource.Property(firProperty)
-                convertAnnotationsForNonDeclaredMembers(firProperty, origin)
+            (firProperty.delegate ?: firProperty.backingField ?: firProperty).convertWithOffsets { startOffset: Int, endOffset: Int ->
+                irFactory.createField(
+                    startOffset = startOffset,
+                    endOffset = endOffset,
+                    origin = origin,
+                    name = name,
+                    visibility = visibility,
+                    symbol = symbol,
+                    type = inferredType,
+                    isFinal = isFinal,
+                    isStatic = firProperty.isStatic || !(irProperty.parent is IrClass || irProperty.parent is IrScript),
+                    isExternal = firProperty.isExternal,
+                ).also {
+                    it.correspondingPropertySymbol = irProperty.symbol
+                }.apply {
+                    metadata = FirMetadataSource.Property(firProperty)
+                    convertAnnotationsForNonDeclaredMembers(firProperty, origin)
+                }
             }
         }
     }
@@ -1119,6 +1118,7 @@ internal fun IrDeclaration.setParent(irParent: IrDeclarationParent?) {
  *      Note that IrClass will be a parent if some declaration is declared inside anonymous initializer, because IrAnonymousInitializer
  *      is not a IrDeclarationParent
  */
+@OptIn(UnsafeDuringIrConstructionAPI::class)
 internal fun addDeclarationToParent(declaration: IrDeclaration, irParent: IrDeclarationParent?) {
     if (irParent == null) return
     when (irParent) {

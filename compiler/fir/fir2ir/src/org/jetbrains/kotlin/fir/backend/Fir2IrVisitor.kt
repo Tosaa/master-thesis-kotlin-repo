@@ -41,11 +41,11 @@ import org.jetbrains.kotlin.ir.expressions.*
 import org.jetbrains.kotlin.ir.expressions.impl.*
 import org.jetbrains.kotlin.ir.symbols.IrClassSymbol
 import org.jetbrains.kotlin.ir.symbols.IrPropertySymbol
+import org.jetbrains.kotlin.ir.symbols.UnsafeDuringIrConstructionAPI
 import org.jetbrains.kotlin.ir.symbols.impl.IrValueParameterSymbolImpl
 import org.jetbrains.kotlin.ir.types.*
 import org.jetbrains.kotlin.ir.types.impl.IrErrorClassImpl
 import org.jetbrains.kotlin.ir.types.impl.IrErrorTypeImpl
-import org.jetbrains.kotlin.ir.util.coerceToUnit
 import org.jetbrains.kotlin.ir.util.constructors
 import org.jetbrains.kotlin.ir.util.defaultConstructor
 import org.jetbrains.kotlin.lexer.KtTokens
@@ -147,6 +147,9 @@ class Fir2IrVisitor(
             converter.bindFakeOverridesInClass(correspondingClass)
             conversionScope.withParent(correspondingClass) {
                 memberGenerator.convertClassContent(correspondingClass, anonymousObject)
+
+                // `correspondingClass` definitely is not a lazy class
+                @OptIn(UnsafeDuringIrConstructionAPI::class)
                 val constructor = correspondingClass.constructors.first()
                 irEnumEntry.initializerExpression = irFactory.createExpressionBody(
                     IrEnumConstructorCallImpl(
@@ -171,6 +174,8 @@ class Fir2IrVisitor(
             }
         } else if (irParentEnumClass != null && initializer == null) {
             // a default-ish enum entry whose initializer would be a delegating constructor call
+            // `irParentEnumClass` definitely is not a lazy class
+            @OptIn(UnsafeDuringIrConstructionAPI::class)
             val constructor = irParentEnumClass.defaultConstructor
                 ?: error("Assuming that default constructor should exist and be converted at this point")
             enumEntry.convertWithOffsets { startOffset, endOffset ->
@@ -325,6 +330,8 @@ class Fir2IrVisitor(
 
     override fun visitCodeFragment(codeFragment: FirCodeFragment, data: Any?): IrElement {
         val irClass = classifierStorage.getCachedIrCodeFragment(codeFragment)!!
+        // class for code fragment definitely is not a lazy class
+        @OptIn(UnsafeDuringIrConstructionAPI::class)
         val irFunction = irClass.declarations.firstIsInstance<IrSimpleFunction>()
 
         declarationStorage.enterScope(irFunction.symbol)
@@ -362,6 +369,8 @@ class Fir2IrVisitor(
                         startOffset,
                         endOffset,
                         anonymousClassType,
+                        // a class for an anonymous object definitely is not a lazy class
+                        @OptIn(UnsafeDuringIrConstructionAPI::class)
                         irAnonymousObject.constructors.first().symbol,
                         irAnonymousObject.typeParameters.size,
                         origin = IrStatementOrigin.OBJECT_LITERAL
@@ -885,7 +894,12 @@ class Fir2IrVisitor(
 
     internal fun convertToIrExpression(
         expression: FirExpression,
-        isDelegate: Boolean = false
+        isDelegate: Boolean = false,
+        // This argument is used for a corner case with deserialized empty array literals
+        // These array literals normally have a type of Array<Any>,
+        // so FIR2IR should instead use a type of corresponding property
+        // See also KT-62598
+        expectedType: ConeKotlinType? = null,
     ): IrExpression {
         return when (expression) {
             is FirBlock -> expression.convertToIrExpressionOrBlock(
@@ -899,6 +913,7 @@ class Fir2IrVisitor(
             else -> {
                 when (val unwrappedExpression = expression.unwrapArgument()) {
                     is FirCallableReferenceAccess -> convertCallableReferenceAccess(unwrappedExpression, isDelegate)
+                    is FirArrayLiteral -> convertToArrayLiteral(unwrappedExpression, expectedType)
                     else -> expression.accept(this, null) as IrExpression
                 }
             }
@@ -1568,9 +1583,13 @@ class Fir2IrVisitor(
             classifierStorage.getOrCreateIrClass(it).symbol
         }
 
-    private fun convertToArrayLiteral(arrayLiteral: FirArrayLiteral): IrVararg {
+    private fun convertToArrayLiteral(
+        arrayLiteral: FirArrayLiteral,
+        // See comment to convertToIrExpression
+        expectedType: ConeKotlinType?,
+    ): IrVararg {
         return arrayLiteral.convertWithOffsets { startOffset, endOffset ->
-            val arrayType = arrayLiteral.resolvedType.toIrType()
+            val arrayType = (expectedType ?: arrayLiteral.resolvedType).toIrType()
             val elementType = arrayType.getArrayElementType(irBuiltIns)
             IrVarargImpl(
                 startOffset, endOffset,
@@ -1579,10 +1598,6 @@ class Fir2IrVisitor(
                 elements = arrayLiteral.arguments.map { it.convertToIrVarargElement() }
             )
         }
-    }
-
-    override fun visitArrayLiteral(arrayLiteral: FirArrayLiteral, data: Any?): IrElement = whileAnalysing(session, arrayLiteral) {
-        return convertToArrayLiteral(arrayLiteral)
     }
 
     override fun visitAugmentedArraySetCall(

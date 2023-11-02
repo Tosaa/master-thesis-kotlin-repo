@@ -26,7 +26,7 @@ import org.jetbrains.kotlin.ir.expressions.impl.IrGetValueImpl
 import org.jetbrains.kotlin.ir.expressions.impl.IrReturnImpl
 import org.jetbrains.kotlin.ir.symbols.IrPropertySymbol
 import org.jetbrains.kotlin.ir.symbols.IrSimpleFunctionSymbol
-import org.jetbrains.kotlin.ir.symbols.IrSymbolInternals
+import org.jetbrains.kotlin.ir.symbols.UnsafeDuringIrConstructionAPI
 import org.jetbrains.kotlin.ir.types.*
 import org.jetbrains.kotlin.ir.types.impl.IrSimpleTypeImpl
 import org.jetbrains.kotlin.ir.util.SYNTHETIC_OFFSET
@@ -182,7 +182,7 @@ class DelegatedMemberGenerator(private val components: Fir2IrComponents) : Fir2I
         return result?.unwrapSubstitutionOverrides()
     }
 
-    @OptIn(IrSymbolInternals::class)
+    @OptIn(UnsafeDuringIrConstructionAPI::class)
     fun bindDelegatedMembersOverriddenSymbols(irClass: IrClass) {
         val superClasses by lazy(LazyThreadSafetyMode.NONE) {
             irClass.superTypes.mapNotNullTo(mutableSetOf()) { it.classifierOrNull?.owner as? IrClass }
@@ -369,13 +369,13 @@ class DelegatedMemberGenerator(private val components: Fir2IrComponents) : Fir2I
             subClassLookupTag: ConeClassLikeLookupTag,
             firField: FirField,
         ): D? {
-            val callable = this.fir as? D ?: return null
+            val callable = this.fir
 
             val delegatedWrapperData = callable.delegatedWrapperData ?: return null
             if (delegatedWrapperData.containingClass != subClassLookupTag) return null
             if (delegatedWrapperData.delegateField != firField) return null
 
-            val wrapped = delegatedWrapperData.wrapped as? D ?: return null
+            val wrapped = delegatedWrapperData.wrapped
 
             @Suppress("UNCHECKED_CAST")
             val wrappedSymbol = wrapped.symbol as? S ?: return null
