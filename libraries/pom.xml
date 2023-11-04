@@ -292,6 +292,7 @@
             </activation>
             <properties>
                 <jdk_1_8>${env.JDK_1_8}</jdk_1_8>
+                <!-- <jdk_1_8>/Users/anton/.sdkman/candidates/java/8.0.392-tem</jdk_1_8> -->
             </properties>
         </profile>
         <profile>
@@ -304,6 +305,7 @@
             </activation>
             <properties>
                 <jdk_1_8>${env.JDK_18}</jdk_1_8>
+                <!-- <jdk_1_8>/Users/anton/.sdkman/candidates/java/8.0.392-tem</jdk_1_8> -->
             </properties>
         </profile>
         <profile>
