@@ -32,22 +32,23 @@ private val Properties.dependenciesUrl: String
     get() = getProperty("dependenciesUrl")
         ?: throw IllegalStateException("No such property in konan.properties: dependenciesUrl")
 
-private val Properties.airplaneMode : Boolean
+private val Properties.airplaneMode: Boolean
     get() = getProperty("airplaneMode")?.toBoolean() ?: false
 
-private val Properties.downloadingAttempts : Int
+private val Properties.downloadingAttempts: Int
     get() = getProperty("downloadingAttempts")?.toInt()
-            ?: DependencyDownloader.DEFAULT_MAX_ATTEMPTS
+        ?: DependencyDownloader.DEFAULT_MAX_ATTEMPTS
 
-private val Properties.downloadingAttemptIntervalMs : Long
+private val Properties.downloadingAttemptIntervalMs: Long
     get() = getProperty("downloadingAttemptPauseMs")?.toLong()
-            ?: DependencyDownloader.DEFAULT_ATTEMPT_INTERVAL_MS
+        ?: DependencyDownloader.DEFAULT_ATTEMPT_INTERVAL_MS
 
 private fun Properties.findCandidates(dependencies: List<String>): Map<String, List<DependencySource>> {
     val dependencyProfiles = this.propertyList("dependencyProfiles")
     return dependencies.map { dependency ->
         dependency to dependencyProfiles.flatMap { profile ->
             val candidateSpecs = propertyList("$dependency.$profile")
+            println("Properties.findCandidates(): candidateSpecs for ${dependency}.$profile = ${candidateSpecs.joinToString()}")
             if (profile == "default" && candidateSpecs.isEmpty()) {
                 listOf(DependencySource.Remote.Public)
             } else {
@@ -64,10 +65,10 @@ private fun Properties.findCandidates(dependencies: List<String>): Map<String, L
 }
 
 
-private val KonanPropertiesLoader.dependenciesUrl : String            get() = properties.dependenciesUrl
-private val KonanPropertiesLoader.airplaneMode : Boolean              get() = properties.airplaneMode
-private val KonanPropertiesLoader.downloadingAttempts : Int           get() = properties.downloadingAttempts
-private val KonanPropertiesLoader.downloadingAttemptIntervalMs : Long get() = properties.downloadingAttemptIntervalMs
+private val KonanPropertiesLoader.dependenciesUrl: String get() = properties.dependenciesUrl
+private val KonanPropertiesLoader.airplaneMode: Boolean get() = properties.airplaneMode
+private val KonanPropertiesLoader.downloadingAttempts: Int get() = properties.downloadingAttempts
+private val KonanPropertiesLoader.downloadingAttemptIntervalMs: Long get() = properties.downloadingAttemptIntervalMs
 
 sealed class DependencySource {
     data class Local(val path: File) : DependencySource()
@@ -114,36 +115,43 @@ class DependencyProcessor(
     private val downloader = DependencyDownloader(maxAttempts, attemptIntervalMs, customProgressCallback)
     private val extractor = DependencyExtractor(archiveType)
 
-    constructor(dependenciesRoot: File,
-                properties: KonanPropertiesLoader,
-                dependenciesUrl: String = properties.dependenciesUrl.also { println("DependencyProcessor.constructor(): properties.dependenciesUrl = $it") },
-                keepUnstable:Boolean = true,
-                archiveType: ArchiveType = ArchiveType.systemDefault,
-                customProgressCallback: ProgressCallback? = null) : this(
-            dependenciesRoot,
-            properties.properties,
-            properties.dependencies.also { println("DependencyProcessor.constructor(): properties.dependencies = ${it.joinToString()}") },
-            dependenciesUrl,
-            keepUnstable = keepUnstable,
-            archiveType = archiveType,
-            customProgressCallback = customProgressCallback)
+    constructor(
+        dependenciesRoot: File,
+        properties: KonanPropertiesLoader,
+        dependenciesUrl: String = properties.dependenciesUrl.also { println("DependencyProcessor.constructor(): properties.dependenciesUrl = $it") },
+        keepUnstable: Boolean = true,
+        archiveType: ArchiveType = ArchiveType.systemDefault,
+        customProgressCallback: ProgressCallback? = null
+    ) : this(
+        dependenciesRoot,
+        properties.properties,
+        properties.dependencies.also { println("DependencyProcessor.constructor(): properties.dependencies:\n\t ${it.joinToString("\n\t")}") },
+        dependenciesUrl,
+        keepUnstable = keepUnstable,
+        archiveType = archiveType,
+        customProgressCallback = customProgressCallback
+    )
 
-    constructor(dependenciesRoot: File,
-                properties: Properties,
-                dependencies: List<String>,
-                dependenciesUrl: String = properties.dependenciesUrl,
-                keepUnstable:Boolean = true,
-                archiveType: ArchiveType = ArchiveType.systemDefault,
-                customProgressCallback: ProgressCallback? = null ) : this(
-            dependenciesRoot,
-            dependenciesUrl,
-            dependencyToCandidates = properties.findCandidates(dependencies).also { println("DependencyProcessor.constructor(): properties.findCandidates = $it") },
-            airplaneMode = properties.airplaneMode,
-            maxAttempts = properties.downloadingAttempts,
-            attemptIntervalMs = properties.downloadingAttemptIntervalMs,
-            keepUnstable = keepUnstable,
-            archiveType = archiveType,
-            customProgressCallback = customProgressCallback)
+    constructor(
+        dependenciesRoot: File,
+        properties: Properties,
+        dependencies: List<String>,
+        dependenciesUrl: String = properties.dependenciesUrl,
+        keepUnstable: Boolean = true,
+        archiveType: ArchiveType = ArchiveType.systemDefault,
+        customProgressCallback: ProgressCallback? = null
+    ) : this(
+        dependenciesRoot,
+        dependenciesUrl,
+        dependencyToCandidates = properties.findCandidates(dependencies)
+            .also { println("DependencyProcessor.constructor(): properties.findCandidates = $it") },
+        airplaneMode = properties.airplaneMode,
+        maxAttempts = properties.downloadingAttempts,
+        attemptIntervalMs = properties.downloadingAttemptIntervalMs,
+        keepUnstable = keepUnstable,
+        archiveType = archiveType,
+        customProgressCallback = customProgressCallback
+    )
 
 
     class DependencyFile(directory: File, fileName: String) {
@@ -178,11 +186,11 @@ class DependencyProcessor(
     private fun downloadDependency(dependency: String, baseUrl: String) {
         val depDir = File(dependenciesDirectory, dependency)
         val depName = depDir.name
-
         val fileName = "$depName.${archiveType.fileExtension}"
         val archive = cacheDirectory.resolve(fileName)
         val url = URL("$baseUrl/$fileName")
 
+        println("DependencyProcessor.downloadDependency(): load $dependency to $archive from $url")
         val extractedDependencies = DependencyFile(dependenciesDirectory, ".extracted")
         if (extractedDependencies.contains(depName) &&
             depDir.exists() &&
@@ -226,7 +234,9 @@ class DependencyProcessor(
             get() = InternalServer.isAvailable
     }
 
-    private val resolvedDependencies = dependencyToCandidates.map { (dependency, candidates) ->
+    private val resolvedDependencies = dependencyToCandidates.also {
+        println("DependencyProcessor.init() resolvedDependencies:\n\t${it.toList().joinToString("\n\t")}")
+    }.map { (dependency, candidates) ->
         val candidate = candidates.asSequence().mapNotNull { candidate ->
             when (candidate) {
                 is DependencySource.Local -> candidate.takeIf { it.path.exists() }
@@ -242,7 +252,6 @@ class DependencyProcessor(
 
     private fun resolveDependency(dependency: String): File {
         val candidate = resolvedDependencies[dependency]
-        println(resolvedDependencies.entries.joinToString("\n"))
         return when (candidate) {
             is DependencySource.Local -> candidate.path
             is DependencySource.Remote -> File(dependenciesDirectory, dependency)
@@ -263,14 +272,13 @@ class DependencyProcessor(
      *  Also it is tightly tied to KonanProperties.
      */
     fun resolve(path: String): File =
-            if (Paths.get(path).isAbsolute) File(path) else resolveRelative(path)
+        if (Paths.get(path).isAbsolute) File(path) else resolveRelative(path)
 
     private fun resolveRelative(relative: String): File {
         val path = Paths.get(relative)
         if (path.isAbsolute) error("not a relative path: $relative")
-        println("DependencyProcessor.resolveRelative($relative) path = $path")
         val dependency = path.first().toString()
-        println("DependencyProcessor.resolveRelative($relative) dependency = $dependency")
+        println("DependencyProcessor.resolveRelative($relative):\n\tpath = $path,\n\tdependency = $dependency")
         return resolveDependency(dependency).let {
             if (path.nameCount > 1) {
                 it.toPath().resolve(path.subpath(1, path.nameCount)).toFile()
@@ -293,8 +301,12 @@ class DependencyProcessor(
                 is DependencySource.Local -> null
                 is DependencySource.Remote -> dependency to candidate
             }
+        }.also {
+            println("DependencyProcessor.run(): remoteDependencies:\n\t${it.toMap().toList().joinToString("\n\t")}")
         }
-        if (remoteDependencies.isEmpty()) { return }
+        if (remoteDependencies.isEmpty()) {
+            return
+        }
 
         synchronized(lock) {
             RandomAccessFile(lockFile, "rw").use {
@@ -319,15 +331,16 @@ internal object InternalServer {
 
     private const val internalDomain = "labs.intellij.net"
 
-    val isAvailable: Boolean get() {
-        val envKey = "KONAN_USE_INTERNAL_SERVER"
-        return when (val envValue = System.getenv(envKey)) {
-            null, "0" -> false
-            "1" -> true
-            "auto" -> isAccessible
-            else -> error("unexpected environment: $envKey=$envValue")
+    val isAvailable: Boolean
+        get() {
+            val envKey = "KONAN_USE_INTERNAL_SERVER"
+            return when (val envValue = System.getenv(envKey)) {
+                null, "0" -> false
+                "1" -> true
+                "auto" -> isAccessible
+                else -> error("unexpected environment: $envKey=$envValue")
+            }
         }
-    }
 
     private val isAccessible by lazy { checkAccessible() }
 

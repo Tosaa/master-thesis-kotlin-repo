@@ -27,9 +27,9 @@ import java.util.concurrent.*
 typealias ProgressCallback = (url: String, currentBytes: Long, totalBytes: Long) -> Unit
 
 class DependencyDownloader(
-        var maxAttempts: Int = DEFAULT_MAX_ATTEMPTS,
-        var attemptIntervalMs: Long = DEFAULT_ATTEMPT_INTERVAL_MS,
-        customProgressCallback: ProgressCallback? = null
+    var maxAttempts: Int = DEFAULT_MAX_ATTEMPTS,
+    var attemptIntervalMs: Long = DEFAULT_ATTEMPT_INTERVAL_MS,
+    customProgressCallback: ProgressCallback? = null
 ) {
 
     private val progressCallback = customProgressCallback ?: TODO()/* { url, currentBytes, totalBytes ->
@@ -43,23 +43,27 @@ class DependencyDownloader(
             thread.isDaemon = true
 
             return thread
-      }
+        }
     }))
 
     enum class ReplacingMode {
         /** Redownload the file and replace the existing one. */
         REPLACE,
+
         /** Throw FileAlreadyExistsException */
         THROW,
+
         /** Don't download the file and return the existing one*/
         RETURN_EXISTING
     }
 
-    class HTTPResponseException(val url: URL, val responseCode: Int)
-        : IOException("Server returned HTTP response code: $responseCode for URL: $url")
+    class HTTPResponseException(val url: URL, val responseCode: Int) :
+        IOException("Server returned HTTP response code: $responseCode for URL: $url")
 
     class DownloadingProgress(@Volatile var currentBytes: Long) {
-        fun update(readBytes: Int) { currentBytes += readBytes }
+        fun update(readBytes: Int) {
+            currentBytes += readBytes
+        }
     }
 
     private fun HttpURLConnection.checkHTTPResponse(expected: Int, originalUrl: URL = url) {
@@ -74,12 +78,14 @@ class DependencyDownloader(
         }
     }
 
-    private fun doDownload(originalUrl: URL,
-                           connection: URLConnection,
-                           tmpFile: File,
-                           currentBytes: Long,
-                           totalBytes: Long,
-                           append: Boolean) {
+    private fun doDownload(
+        originalUrl: URL,
+        connection: URLConnection,
+        tmpFile: File,
+        currentBytes: Long,
+        totalBytes: Long,
+        append: Boolean
+    ) {
         val progress = DownloadingProgress(currentBytes)
 
         // TODO: Implement multi-thread downloading.
@@ -107,7 +113,7 @@ class DependencyDownloader(
         do {
             progressCallback(originalUrl.toString(), progress.currentBytes, totalBytes)
             result = executor.poll(1, TimeUnit.SECONDS)
-        } while(result == null)
+        } while (result == null)
         progressCallback(originalUrl.toString(), progress.currentBytes, totalBytes)
 
         try {
@@ -139,8 +145,11 @@ class DependencyDownloader(
 
     /** Performs an attempt to download a specified file into the specified location */
     private fun tryDownload(url: URL, tmpFile: File) {
+        if (url.file.contains("riscv64-lp64d--glibc--stable-2021")) {
+            println("tryDownload(): ignore $url to $tmpFile")
+            return
+        }
         val connection = url.openConnection()
-
         (connection as? HttpURLConnection)?.checkHTTPResponse(HttpURLConnection.HTTP_OK, url)
 
         if (connection is HttpURLConnection && tmpFile.exists()) {
@@ -153,10 +162,12 @@ class DependencyDownloader(
     }
 
     /** Downloads a file from [source] url to [destination]. Returns [destination]. */
-    fun download(source: URL,
-                 destination: File,
-                 replace: ReplacingMode = ReplacingMode.RETURN_EXISTING): File {
-
+    fun download(
+        source: URL,
+        destination: File,
+        replace: ReplacingMode = ReplacingMode.RETURN_EXISTING
+    ): File {
+        println("DependencyDownloader.download(): $source to ${destination.name}")
         if (destination.exists()) {
             when (replace) {
                 ReplacingMode.RETURN_EXISTING -> return destination
@@ -181,8 +192,10 @@ class DependencyDownloader(
             }
             attempt++
             waitTime += attemptIntervalMs
-            println("Cannot download a dependency: $e\n" +
-                    "Waiting ${waitTime.toDouble() / 1000} sec and trying again (attempt: $attempt/$maxAttempts).")
+            println(
+                "Cannot download a dependency: $e\n" +
+                        "Waiting ${waitTime.toDouble() / 1000} sec and trying again (attempt: $attempt/$maxAttempts)."
+            )
             // TODO: Wait better
             Thread.sleep(waitTime)
         }
