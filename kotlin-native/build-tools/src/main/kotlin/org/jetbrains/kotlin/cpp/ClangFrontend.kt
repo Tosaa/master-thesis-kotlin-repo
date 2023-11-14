@@ -41,15 +41,19 @@ private abstract class ClangFrontendJob : WorkAction<ClangFrontendJob.Parameters
 
     override fun execute() {
         with(parameters) {
-            val execClang = ExecClang.create(objects, platformManager.get())
-
             val baseDir = workingDirectory.asFile.get()
-            outputFile.get().asFile.parentFile.mkdirs()
             val inputRelativePath = baseDir.toPath().relativize(inputFile.get().asFile.toPath())
-            execClang.execKonanClang(targetName.get()) {
-                workingDir = baseDir
-                executable = compilerExecutable.get()
-                args = arguments.get() + listOf(inputRelativePath.toString(), "-o", outputFile.get().asFile.absolutePath)
+            try {
+                val execClang = ExecClang.create(objects, platformManager.get())
+                outputFile.get().asFile.parentFile.mkdirs()
+                execClang.execKonanClang(targetName.get()) {
+                    workingDir = baseDir
+                    executable = compilerExecutable.get()
+                    args = arguments.get() + listOf("-isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/", inputRelativePath.toString(), "-o", outputFile.get().asFile.absolutePath)
+                }
+            } catch (e: Exception) {
+                println("Executing KonanClang failed: ${arguments.get() + listOf("-isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/", inputRelativePath.toString(), "-o", outputFile.get().asFile.absolutePath)}")
+                throw e
             }
         }
     }

@@ -30,7 +30,8 @@ Ret waitUntilViaFor(
         }
         auto left = until - current;
         // Shield standard library from saturating types.
-        auto interval = left > step ? std::chrono::duration<Rep, Period>(step) : std::chrono::duration<Rep, Period>(left);
+        auto left2 = left.count().value;
+        auto interval = left > step ? std::chrono::duration<Rep, Period>(step) : std::chrono::duration<Rep, Period>(left2);
         if (auto value = std::invoke(std::forward<WaitForF>(waitForF), interval); value != timeoutValue) {
             return value;
         }
