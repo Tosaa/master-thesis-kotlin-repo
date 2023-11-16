@@ -26,6 +26,7 @@ import org.gradle.process.ExecResult
 import org.gradle.process.ExecSpec
 import org.jetbrains.kotlin.konan.target.*
 import java.io.File
+import java.util.*
 import javax.inject.Inject
 
 abstract class ExecClang @Inject constructor(
@@ -34,11 +35,22 @@ abstract class ExecClang @Inject constructor(
 
     @get:Inject
     protected abstract val fileOperations: FileOperations
+
     @get:Inject
     protected abstract val execOperations: ExecOperations
 
     private fun clangArgsForCppRuntime(target: KonanTarget): List<String> {
-        return platformManager.platform(target).clang.clangArgsForKonanSources.asList()
+        return platformManager.platform(target).clang.clangArgsForKonanSources.asList().let { clangArgs ->
+            val buildLLVMNew = true
+            if (buildLLVMNew && clangArgs.contains("-D__ENVIRONMENT_OS_VERSION_MIN_REQUIRED__=__ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__")) {
+                println("clangArgsForCppRuntime(${target.name}) = removed '-D__ENVIRONMENT_OS_VERSION_MIN_REQUIRED__=__ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__'")
+                clangArgs.filter { !it.contains("-D__ENVIRONMENT_OS_VERSION_MIN_REQUIRED__=__ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__") }
+            } else {
+                clangArgs
+            }.also {
+                println("clangArgsForCppRuntime(${target.name}) = ${it.joinToString(" ")}")
+            }
+        }
     }
 
     fun clangArgsForCppRuntime(targetName: String?): List<String> {
@@ -125,6 +137,7 @@ abstract class ExecClang @Inject constructor(
     }
 
     private fun execClang(defaultArgs: List<String>, action: Action<in ExecSpec>): ExecResult {
+        val execUUID = UUID.randomUUID()
         val extendedAction = Action<ExecSpec> {
             action.execute(this)
             executable = resolveExecutable(executable)
@@ -133,9 +146,15 @@ abstract class ExecClang @Inject constructor(
             environment["PATH"] = fileOperations.configurableFiles(hostPlatform.clang.clangPaths).asPath +
                     File.pathSeparator + environment["PATH"]
             args = args + defaultArgs
-            println("ExecClang.execClang(): env = ${environment["PATH"]}, args = $args")
+            println("ExecClang.execClang(): uuid = $execUUID, env = ${environment["PATH"]}, args = ${args.joinToString(" ")}")
         }
-        return execOperations.exec(extendedAction)
+
+        return try {
+            execOperations.exec(extendedAction).assertNormalExitValue()
+        } catch (e: Exception) {
+            println("ExecClang.execClang(): operation failed uuid = $execUUID")
+            throw e
+        }
     }
 
     companion object {

@@ -41,6 +41,8 @@ private abstract class ClangFrontendJob : WorkAction<ClangFrontendJob.Parameters
 
     override fun execute() {
         with(parameters) {
+            val withExtraIsysRoot = true
+            val extraSysRoot = "-isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/"
             val baseDir = workingDirectory.asFile.get()
             val inputRelativePath = baseDir.toPath().relativize(inputFile.get().asFile.toPath())
             try {
@@ -49,10 +51,18 @@ private abstract class ClangFrontendJob : WorkAction<ClangFrontendJob.Parameters
                 execClang.execKonanClang(targetName.get()) {
                     workingDir = baseDir
                     executable = compilerExecutable.get()
-                    args = arguments.get() + listOf("-isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/", inputRelativePath.toString(), "-o", outputFile.get().asFile.absolutePath)
+                    if (withExtraIsysRoot) {
+                        args = arguments.get() + listOf(extraSysRoot, inputRelativePath.toString(), "-o", outputFile.get().asFile.absolutePath)
+                    } else {
+                        args = arguments.get() + listOf(inputRelativePath.toString(), "-o", outputFile.get().asFile.absolutePath)
+                    }
                 }
             } catch (e: Exception) {
-                println("Executing KonanClang failed: ${arguments.get() + listOf("-isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/", inputRelativePath.toString(), "-o", outputFile.get().asFile.absolutePath)}")
+                if (withExtraIsysRoot) {
+                    println("Executing KonanClang failed: ${arguments.get() + listOf(extraSysRoot, inputRelativePath.toString(), "-o", outputFile.get().asFile.absolutePath)}")
+                } else {
+                    println("Executing KonanClang failed: ${arguments.get() + listOf(inputRelativePath.toString(), "-o", outputFile.get().asFile.absolutePath)}")
+                }
                 throw e
             }
         }
