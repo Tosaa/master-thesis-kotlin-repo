@@ -74,7 +74,7 @@ sealed class ClangArgs(
         KonanTarget.LINUX_X64 -> "$absoluteTargetToolchain/bin"
         KonanTarget.MINGW_X64 -> "$absoluteTargetToolchain/bin"
         KonanTarget.MACOS_X64,
-        KonanTarget.MACOS_ARM64 -> "$absoluteTargetToolchain/usr/bin"
+        KonanTarget.MACOS_ARM64 -> "$absoluteTargetToolchain/bin"
         else -> throw TargetSupportException("Unexpected host platform")
     }
     // TODO: Use buildList
@@ -232,13 +232,22 @@ sealed class ClangArgs(
     val clangArgsForKonanSources =
             clangXXArgs + clangArgsSpecificForKonanSources
 
-    private val libclangSpecificArgs =
-            // libclang works not exactly the same way as the clang binary and
-            // (in particular) uses different default header search path.
-            // See e.g. http://lists.llvm.org/pipermail/cfe-dev/2013-November/033680.html
-            // We workaround the problem with -isystem flag below.
-            // TODO: Revise after update to LLVM 10.
-            listOf("-isystem", "$absoluteLlvmHome/lib/clang/${configurables.llvmVersion}/include")
+    private val libclangSpecificArgs : List<String>
+        get() {
+            val defaultPath = "$absoluteLlvmHome/lib/clang/${configurables.llvmVersion}/include"
+            return if (File(defaultPath).exists){
+                // libclang works not exactly the same way as the clang binary and
+                // (in particular) uses different default header search path.
+                // See e.g. http://lists.llvm.org/pipermail/cfe-dev/2013-November/033680.html
+                // We workaround the problem with -isystem flag below.
+                // TODO: Revise after update to LLVM 10.
+                listOf("-isystem", defaultPath)
+            } else {
+                println("ClangArgs.getLibclangSpecificArgs(): Path for /lib/clang/${configurables.llvmVersion}/include in llvmHome: $absoluteLlvmHome does not exist! -> discard -isystem parameter")
+                emptyList()
+            }
+        }
+
 
     /**
      * libclang args for plain C and Objective-C.

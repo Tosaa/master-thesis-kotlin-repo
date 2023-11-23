@@ -59,7 +59,7 @@ interface Configurables : TargetableExternalStorage, RelocationModeFlags {
 
     val llvmHome get() = hostString("llvmHome").also { println("load llvmHome = $it") }
     val llvmVersion get() = hostString("llvmVersion")
-    val libffiDir get() = hostString("libffiDir")
+    val libffiDir get() = hostString("libffiDir").also { println("load libffiDir = $it") }
 
     val cacheableTargets get() = hostList("cacheableTargets")
     val additionalCacheFlags get() = targetList("additionalCacheFlags")
