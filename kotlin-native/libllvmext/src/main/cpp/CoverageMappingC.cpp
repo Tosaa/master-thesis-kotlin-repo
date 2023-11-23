@@ -9,7 +9,7 @@
 #include <llvm/ProfileData/Coverage/CoverageMappingWriter.h>
 #include <llvm/IR/GlobalVariable.h>
 #include <llvm/Support/raw_ostream.h>
-#include <llvm/ADT/Triple.h>
+#include <llvm/TargetParser/Triple.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Type.h>
@@ -71,7 +71,7 @@ LLVMFunctionCoverage* LLVMWriteCoverageRegionMapping(unsigned int *fileIdMapping
         struct LLVMCoverageRegion region = *mappingRegions[i];
         counterMappingRegions.emplace_back(createCounterMappingRegion(region));
     }
-    CoverageMappingWriter writer(ArrayRef<unsigned int>(fileIdMapping, fileIdMappingSize), None, counterMappingRegions);
+    CoverageMappingWriter writer(ArrayRef<unsigned int>(fileIdMapping, fileIdMappingSize), std::nullopt, counterMappingRegions);
     std::string CoverageMapping;
     raw_string_ostream OS(CoverageMapping);
     writer.write(OS);
@@ -212,7 +212,7 @@ LLVMValueRef LLVMCoverageEmit(LLVMModuleRef moduleRef,
 
 LLVMValueRef LLVMInstrProfIncrement(LLVMModuleRef moduleRef) {
     Module &module = *unwrap(moduleRef);
-    return wrap(Intrinsic::getDeclaration(&module, Intrinsic::instrprof_increment, None));
+    return wrap(Intrinsic::getDeclaration(&module, Intrinsic::instrprof_increment, std::nullopt));
 }
 
 LLVMValueRef LLVMCreatePGOFunctionNameVar(LLVMValueRef llvmFunction, const char *pgoFunctionName) {

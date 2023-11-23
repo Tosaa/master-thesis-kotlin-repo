@@ -4,7 +4,7 @@
 
 #include <CAPIExtensions.h>
 #include <llvm/ProfileData/Coverage/CoverageMapping.h>
-#include <llvm/ADT/Triple.h>
+#include <llvm/TargetParser/Triple.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/LegacyPassManager.h>
@@ -20,6 +20,7 @@ void LLVMAddObjCARCContractPass(LLVMPassManagerRef passManagerRef) {
     passManager->add(createObjCARCContractPass());
 }
 
+// Todo: add RiscV to list below: INIT_LLVM_TARGET(RiscV)
 void LLVMKotlinInitializeTargets() {
 #define INIT_LLVM_TARGET(TargetName) \
     LLVMInitialize##TargetName##TargetInfo();\
@@ -57,7 +58,8 @@ int LLVMInlineCall(LLVMValueRef call) {
 }
 
 void LLVMAddThreadSanitizerPass(LLVMPassManagerRef PM) {
-  unwrap(PM)->add(createThreadSanitizerLegacyPassPass());
+  // Todo: Find out what should happen here. But createThreadSanitizerLegacyPassPass is no where declared in this project.
+  // unwrap(PM)->add(createThreadSanitizerLegacyPassPass());
 }
 
 void LLVMSetTimePasses(int enabled) {
