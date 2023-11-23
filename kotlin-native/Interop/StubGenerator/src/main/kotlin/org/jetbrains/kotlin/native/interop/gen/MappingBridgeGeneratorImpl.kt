@@ -99,7 +99,9 @@ class MappingBridgeGeneratorImpl(
                     val kniStructResult = "kniStructResult"
 
                     out("${unwrappedReturnType.decl.spelling} $kniStructResult = $nativeResult;")
-                    out("memcpy(${bridgeNativeValues.last()}, &$kniStructResult, sizeof($kniStructResult));")
+                    out("memcpy((void *)${bridgeNativeValues.last()}, &$kniStructResult, sizeof($kniStructResult));")
+                    // Todo: Check if that works -> manual adjustment seems to work.
+                    //out("memcpy(${bridgeNativeValues.last()}, &$kniStructResult, sizeof($kniStructResult));")
                     ""
                 }
                 else -> {

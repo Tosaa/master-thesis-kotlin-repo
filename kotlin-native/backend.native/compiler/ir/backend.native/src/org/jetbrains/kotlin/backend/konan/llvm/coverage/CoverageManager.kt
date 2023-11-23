@@ -109,10 +109,13 @@ internal class CoverageManager(val generationState: NativeGenerationState) {
      * Add passes that should be executed after main LLVM optimization pipeline.
      */
     fun addLateLlvmPasses(passManager: LLVMPassManagerRef) {
+        println("CoverageManager.addLateLlvmPasses() got called, but wont do anything since underlying llvm function was removed. See: [https://github.com/llvm/llvm-project/commit/3a42c499c2c2945104d7899e6ae8d7bd95d40f5b]")
+        /*
         if (enabled) {
             // It's a late pass since DCE can kill __llvm_profile_filename global.
             LLVMAddInstrProfPass(passManager, outputFileName)
         }
+         */
     }
 
     /**
