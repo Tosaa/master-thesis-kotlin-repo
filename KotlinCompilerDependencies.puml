@@ -1,0 +1,35 @@
+@startuml
+'https://plantuml.com/component-diagram
+
+
+package "Kotlin Compiler" {
+    json KC_Versions_new{
+        "llvm": "LLVM Stable 2023",
+        "libffi": "libffi-3.4.4"
+    }
+    json KC_Versions_old{
+        "llvm": "LLVM Stable 2020",
+        "libffi": "libffi-3.3-1-macos-arm64"
+    }
+
+    [Kotlin Runtime] -> [Kotlin Runtime <Platform>] : builds withLLVM
+    component "Kotlin Runtime"{
+        [callbacks.c]
+    }
+}
+
+package "Apple LLVM"{
+    component "LLVM Stable 2023" {
+        json Versions{
+            "gcc": "123123456"
+        }
+        [ARM64 support]
+        [RISCV support]
+    }
+
+    component "LLVM Stable 2020" {
+        [ARM64 support]
+    }
+}
+
+@enduml
