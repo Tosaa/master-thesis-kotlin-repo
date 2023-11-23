@@ -15,6 +15,7 @@ import org.jetbrains.kotlin.konan.util.usingNativeMemoryAllocator
 private fun mainImpl(args: Array<String>, runFromDaemon: Boolean, konancMain: (Array<String>) -> Unit) {
     val utilityName = args[0]
     val utilityArgs = args.drop(1).toTypedArray()
+    println("mainImpl: ${args.joinToString(" ")}")
     when (utilityName) {
         "konanc" ->
             konancMain(utilityArgs)
