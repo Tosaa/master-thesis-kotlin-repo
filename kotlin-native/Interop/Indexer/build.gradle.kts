@@ -11,6 +11,7 @@ import org.jetbrains.kotlin.konan.target.*
 import org.jetbrains.kotlin.konan.target.ClangArgs
 import org.jetbrains.kotlin.konan.target.Family.*
 import org.jetbrains.kotlin.konan.target.HostManager.Companion.hostIsMac
+import java.io.FilenameFilter
 
 plugins {
     id("org.jetbrains.kotlin.jvm")
@@ -57,14 +58,23 @@ if (libclangextIsEnabled) {
             "__ZN4llvm3omp33getOpenMPContextTraitPropertyNameENS0_13TraitPropertyE",
             "__ZN4llvm3omp33getOpenMPContextTraitSelectorNameENS0_13TraitSelectorE",
             "__ZN4llvm3omp35getOpenMPContextTraitSetForPropertyENS0_13TraitPropertyE",
-            "__ZN4llvm3omp33getOpenMPContextTraitPropertyKindENS0_8TraitSetENS_9StringRefE"
+            "__ZN4llvm3omp33getOpenMPContextTraitPropertyKindENS0_8TraitSetENS_9StringRefE",
+            // The following are ignored -> dont know how to resolve the problem.
+            "_ZSTD_compress",
+            "_ZSTD_compressBound",
+            "_ZSTD_decompress",
+            "_ZSTD_getErrorName",
+            "_ZSTD_isError",
     )
     ldflags.addAll(
             listOf("-Wl,--no-demangle", "-Wl,-search_paths_first", "-Wl,-headerpad_max_install_names", "-Wl,-U,_futimens") +
                     unnecessarySymbols.map { "-Wl,-U,$it" }
     )
 
-    val llvmLibs = listOf(
+    val llvmLibs = File("${nativeDependencies.llvmPath}/lib/").listFiles()?.filter { it.name.endsWith(".a") }?.map{it.absolutePath} ?: emptyList()
+    // All llvm libs are used for now
+    /*
+    listOf(
             "clangAST", "clangASTMatchers", "clangAnalysis", "clangBasic", "clangDriver", "clangEdit",
             "clangFrontend", "clangFrontendTool", "clangLex", "clangParse", "clangSema",
             "clangRewrite", "clangRewriteFrontend", "clangStaticAnalyzerFrontend",
@@ -74,7 +84,7 @@ if (libclangextIsEnabled) {
             "LLVMBitWriter", "LLVMBitReader", "LLVMAnalysis", "LLVMProfileData", "LLVMCore",
             "LLVMSupport", "LLVMBinaryFormat", "LLVMDemangle"
     ).map { "${nativeDependencies.llvmPath}/lib/lib${it}.a" }
-
+    */
     ldflags.addAll(llvmLibs)
     ldflags.addAll(listOf("-lpthread", "-lz", "-lm", "-lcurses"))
 }
@@ -119,6 +129,7 @@ native {
             "-shared",
             "-o", ruleOut(), *ruleInAll(),
             *ldflags.toTypedArray())
+        println("libclangstubs.dylib = ${hostPlatform.clangForJni.clangCXX("").joinToString(" ")} -shared -o ${ruleOut()} ${ruleInAll().joinToString(" ")} ${ldflags.joinToString(" ")}")
     }
 }
 

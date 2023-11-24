@@ -147,7 +147,8 @@ class DependencyDownloader(
     private fun tryDownload(url: URL, tmpFile: File) {
         if (url.file.contains("riscv64-lp64d--glibc--stable-2021") ||
             url.file.contains("aarch64--glibc--stable-2023.08-1") ||
-            url.file.contains("apple-llvm-20230725-macos-x64-1")
+            url.file.contains("apple-llvm-20230725-macos-x64-1") ||
+            url.file.contains("apple-llvm-20230725-macos-x64-2-zstd-enabled")
             ) {
             println("tryDownload(): ignore $url to $tmpFile")
             return

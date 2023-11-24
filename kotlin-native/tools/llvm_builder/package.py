@@ -112,6 +112,7 @@ def construct_cmake_flags(
         '-DLLVM_ENABLE_IDE=OFF',
         '-DLLVM_BUILD_UTILS=ON',
         '-DLLVM_INSTALL_UTILS=ON'
+        '-DLLVM_ENABLE_ZSTD=ON'
     ]
     if not building_bootstrap:
         if distribution_components:
