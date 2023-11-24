@@ -25,6 +25,7 @@ import org.gradle.process.ExecOperations
 import org.gradle.process.ExecResult
 import org.gradle.process.ExecSpec
 import org.jetbrains.kotlin.konan.target.*
+import java.util.*
 import java.io.File
 import javax.inject.Inject
 
@@ -34,6 +35,7 @@ abstract class ExecClang @Inject constructor(
 
     @get:Inject
     protected abstract val fileOperations: FileOperations
+
     @get:Inject
     protected abstract val execOperations: ExecOperations
 
@@ -125,16 +127,22 @@ abstract class ExecClang @Inject constructor(
     }
 
     private fun execClang(defaultArgs: List<String>, action: Action<in ExecSpec>): ExecResult {
+        val execUUID = UUID.randomUUID()
         val extendedAction = Action<ExecSpec> {
             action.execute(this)
             executable = resolveExecutable(executable)
-
             val hostPlatform = platformManager.hostPlatform
-            environment["PATH"] = fileOperations.configurableFiles(hostPlatform.clang.clangPaths).asPath +
-                    File.pathSeparator + environment["PATH"]
+            environment["PATH"] = fileOperations.configurableFiles(hostPlatform.clang.clangPaths).asPath + File.pathSeparator + environment["PATH"]
             args = args + defaultArgs
+            println("ExecClang.execClang(): uuid = $execUUID, env = ${environment["PATH"]}, args = ${args.joinToString(" ")}")
         }
-        return execOperations.exec(extendedAction)
+
+        return try {
+            execOperations.exec(extendedAction).assertNormalExitValue()
+        } catch (e: Exception) {
+            println("ExecClang.execClang(): operation failed uuid = $execUUID")
+            throw e
+        }
     }
 
     companion object {

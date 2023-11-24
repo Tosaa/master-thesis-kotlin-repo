@@ -139,6 +139,10 @@ class DependencyDownloader(
 
     /** Performs an attempt to download a specified file into the specified location */
     private fun tryDownload(url: URL, tmpFile: File) {
+        if (url.file.contains("riscv64-lp64d--glibc--stable-2021")) {
+            println("tryDownload(): ignore $url to $tmpFile")
+            return
+        }
         val connection = url.openConnection()
 
         (connection as? HttpURLConnection)?.checkHTTPResponse(HttpURLConnection.HTTP_OK, url)
