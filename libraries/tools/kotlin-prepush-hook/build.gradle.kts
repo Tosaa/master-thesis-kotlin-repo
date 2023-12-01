@@ -17,7 +17,7 @@ fun Project.getGitDirectory(): File {
         val workTreeLink = dotGitFile.readLines().single { it.startsWith("gitdir: ") }
         val mainRepoPath = workTreeLink
             .substringAfter("gitdir: ", "")
-            .substringBefore("/.git/worktrees/", "")
+            .substringBefore("/.git/", "") // The folder .git/worktrees/ did not exist -> build fails
             .also { require(it.isNotEmpty()) }
 
         File(mainRepoPath, ".git").also { require(it.isDirectory) }
