@@ -50,7 +50,8 @@ build/
 node_modules/
 .rpt2_cache/
 libraries/tools/kotlin-test-js-runner/lib/
-local.properties
+# do not ignore local.properties because i want to track changes on it!
+# local.properties
 buildSrcTmp/
 distTmp/
 outTmp/
