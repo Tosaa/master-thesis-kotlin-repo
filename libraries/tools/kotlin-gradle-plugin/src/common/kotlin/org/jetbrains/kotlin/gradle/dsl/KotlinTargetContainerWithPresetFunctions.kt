@@ -500,6 +500,23 @@ interface KotlinTargetContainerWithPresetFunctions : KotlinTargetsContainerWithP
     fun linuxArm64(name: String, configure: Action<KotlinNativeTarget>) = linuxArm64(name) { configure.execute(this) }
     fun linuxArm64(configure: Action<KotlinNativeTarget>) = linuxArm64 { configure.execute(this) }
 
+    // Added to support riscV
+    fun linuxRiscV64(
+        name: String = "linuxRiscV64",
+        configure: KotlinNativeTarget.() -> Unit = { }
+        ): KotlinNativeTarget =
+            configureOrCreate(
+                name,
+                @Suppress("DEPRECATION")
+                presets.getByName("linuxRiscV64") as KotlinNativeTargetPreset,
+                configure
+            )
+            /* object : KotlinNativeTarget() {}*/
+
+    fun linuxRiscV64() = linuxRiscV64("linuxRiscV64") { }
+    fun linuxRiscV64(name: String) = linuxRiscV64(name) { }
+    fun linuxRiscV64(name: String, configure: Action<KotlinNativeTarget>) = linuxRiscV64(name) { configure.execute(this) }
+    fun linuxRiscV64(configure: Action<KotlinNativeTarget>) = linuxRiscV64 { configure.execute(this) }
 
     @Deprecated(DEPRECATED_TARGET_MESSAGE, level = DeprecationLevel.WARNING)
     fun linuxArm32Hfp(

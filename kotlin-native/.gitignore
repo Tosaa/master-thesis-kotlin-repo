@@ -2,7 +2,7 @@
 .idea/shelf
 *.iml
 /dependencies/all
-dist
+dist_riscv
 kotlin-native-*.tar.gz
 kotlin-native-*.zip
 translator/src/test/kotlin/tests/*/linked
@@ -11,8 +11,8 @@ tmp
 workspace.xml
 *.versionsBackup
 
-local.properties
-.gradle
+# manually removed for now
+# local.properties.gradle
 build
 translator/.gradle/2.9/taskArtifacts
 

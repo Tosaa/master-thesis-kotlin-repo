@@ -343,6 +343,8 @@ KInt Konan_Platform_getCpuArchitecture() {
   return 6;
 #elif KONAN_WASM
   return 7;
+#elif KONAN_RISCV64
+  return 8;
 #else
 #warning "Unknown CPU"
   return 0;

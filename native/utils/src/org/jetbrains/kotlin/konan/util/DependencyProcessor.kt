@@ -182,6 +182,7 @@ class DependencyProcessor(
         val fileName = "$depName.${archiveType.fileExtension}"
         val archive = cacheDirectory.resolve(fileName)
         val url = URL("$baseUrl/$fileName")
+        println("DependencyProcessor.downloadDependency(): load $dependency to $archive from $url")
 
         val extractedDependencies = DependencyFile(dependenciesDirectory, ".extracted")
         if (extractedDependencies.contains(depName) &&
@@ -292,7 +293,10 @@ class DependencyProcessor(
                 is DependencySource.Remote -> dependency to candidate
             }
         }
-        if (remoteDependencies.isEmpty()) { return }
+        if (remoteDependencies.isEmpty()) {
+            println("DependencyProcessor.run(): Early return, because remoteDependencies isEmpty for ${resolvedDependencies.toList().joinToString()}")
+            return
+        }
 
         synchronized(lock) {
             RandomAccessFile(lockFile, "rw").channel.lock().use {

@@ -133,6 +133,7 @@ abstract class ExecClang @Inject constructor(
             environment["PATH"] = fileOperations.configurableFiles(hostPlatform.clang.clangPaths).asPath +
                     File.pathSeparator + environment["PATH"]
             args = args + defaultArgs
+            println("ExecClang.execClang(): env = ${environment["PATH"]}, args = $args")
         }
         return execOperations.exec(extendedAction)
     }
