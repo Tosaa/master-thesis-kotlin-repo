@@ -42,8 +42,10 @@ native {
         OSX -> {
             cxxflags += "-DKONAN_MACOS=1"
         }
-        else -> Unit
-    }
+        else ->
+            println("Unexpected target = ${org.jetbrains.kotlin.konan.target.HostManager.host.family}")
+
+        }
     suffixes {
         (".cpp" to ".$obj") {
             tool(*hostPlatform.clangForJni.clangCXX("").toTypedArray())

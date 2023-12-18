@@ -80,9 +80,10 @@ bitcode {
             onlyIf { target.supportsMimallocAllocator() }
         }
 
+        // Todo: Check ELF size
         module("libbacktrace") {
             val elfSize = when (target.architecture) {
-                TargetArchitecture.X64, TargetArchitecture.ARM64 -> 64
+                TargetArchitecture.X64, TargetArchitecture.ARM64, TargetArchitecture.RISCV64 -> 64
                 TargetArchitecture.X86, TargetArchitecture.ARM32,
                 TargetArchitecture.MIPS32, TargetArchitecture.MIPSEL32,
                 TargetArchitecture.WASM32 -> 32

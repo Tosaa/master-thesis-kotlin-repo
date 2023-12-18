@@ -211,6 +211,8 @@ internal constructor(
             Architecture.MIPS32,
             Architecture.MIPSEL32,
             Architecture.WASM32 -> error("Fat frameworks are not supported for target `$name`")
+            Architecture.RISCV64 -> error("Fat frameworks are not supported for RISCV64 target `$name`")
+            // todo: What is a Fat framework ?
         }
 
     // region DSL methods.
