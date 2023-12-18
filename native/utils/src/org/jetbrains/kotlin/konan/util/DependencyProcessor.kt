@@ -176,6 +176,10 @@ class DependencyProcessor(
     }
 
     private fun downloadDependency(dependency: String, baseUrl: String) {
+	if(dependency.isEmpty()){
+		println("Dependency is empty")
+		return
+	}
         val depDir = File(dependenciesDirectory, dependency)
         val depName = depDir.name
 
