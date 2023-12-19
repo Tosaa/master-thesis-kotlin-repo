@@ -65,7 +65,7 @@ object PositioningStrategies {
     val SUPERTYPES_LIST: PositioningStrategy<PsiElement> = object : PositioningStrategy<PsiElement>() {
         override fun mark(element: PsiElement): List<TextRange> {
             val supertypes = ((
-                    element as? KtClass
+                    element as? KtClassOrObject
                     ) ?: return markElement(element)
                     ).superTypeListEntries
             return if (supertypes.isEmpty())
@@ -314,6 +314,10 @@ object PositioningStrategies {
     @JvmField
     val OPERATOR_MODIFIER: PositioningStrategy<KtModifierListOwner> =
         ModifierSetBasedPositioningStrategy(KtTokens.OPERATOR_KEYWORD)
+
+    @JvmField
+    val INFIX_MODIFIER: PositioningStrategy<KtModifierListOwner> =
+        ModifierSetBasedPositioningStrategy(KtTokens.INFIX_KEYWORD)
 
     @JvmField
     val ENUM_MODIFIER: PositioningStrategy<KtModifierListOwner> =
@@ -1015,7 +1019,6 @@ object PositioningStrategies {
         }
     }
 
-    @OptIn(ExperimentalStdlibApi::class)
     val COMMAS: PositioningStrategy<PsiElement> = object : PositioningStrategy<PsiElement>() {
         override fun mark(element: PsiElement): List<TextRange> {
             return buildList {
@@ -1044,6 +1047,21 @@ object PositioningStrategies {
     val TYPEALIAS_TYPE_REFERENCE = object : PositioningStrategy<KtTypeAlias>() {
         override fun mark(element: KtTypeAlias): List<TextRange> {
             return markElement(element.getTypeReference() ?: element)
+        }
+    }
+
+    @JvmField
+    val SUPERTYPE_INITIALIZED_IN_EXPECTED_CLASS_DIAGNOSTIC = object : PositioningStrategy<KtElement>() {
+        override fun mark(element: KtElement): List<TextRange> {
+            val elementToMark = when (element) {
+                is KtEnumEntry -> element.initializerList ?: element
+                is KtTypeReference -> {
+                    val superTypeCallEntry = (element.parent as? KtConstructorCalleeExpression)?.parent as? KtSuperTypeCallEntry
+                    superTypeCallEntry?.valueArgumentList ?: element
+                }
+                else -> element
+            }
+            return markElement(elementToMark)
         }
     }
 

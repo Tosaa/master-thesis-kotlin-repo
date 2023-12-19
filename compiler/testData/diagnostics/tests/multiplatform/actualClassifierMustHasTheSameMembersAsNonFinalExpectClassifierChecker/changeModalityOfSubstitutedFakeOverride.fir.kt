@@ -2,14 +2,14 @@
 // FILE: common.kt
 
 open class Base<T> {
-    <!INCOMPATIBLE_MATCHING{JVM}!>open fun foo(t: T) {}<!>
+    open fun foo(t: T) {}
 }
 
-<!INCOMPATIBLE_MATCHING{JVM}!>expect open class Foo : Base<String><!>
+<!EXPECT_ACTUAL_INCOMPATIBILITY{JVM}, EXPECT_ACTUAL_INCOMPATIBILITY{JVM}!>expect open class Foo : Base<String><!>
 
 // MODULE: m2-jvm()()(m1-common)
 // FILE: jvm.kt
 
 actual open class Foo : Base<String>() {
-    final override fun foo(t: String) {}
+    final override fun <!ACTUAL_WITHOUT_EXPECT!>foo<!>(t: String) {}
 }

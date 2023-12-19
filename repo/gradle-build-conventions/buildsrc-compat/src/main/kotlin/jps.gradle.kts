@@ -8,10 +8,10 @@ import org.jetbrains.gradle.ext.TopLevelArtifact
 import org.jetbrains.kotlin.ideaExt.*
 
 
-val ideaPluginDir: File by extra
-val ideaSandboxDir: File by extra
 val ideaSdkPath: String
     get() = rootProject.ideaHomePathForTests().absolutePath
+val distDir by extra("$rootDir/dist")
+val distKotlinHomeDir by extra("$distDir/kotlinc")
 
 fun updateCompilerXml() {
     val modulesExcludedFromJps = listOf(
@@ -34,7 +34,6 @@ fun updateCompilerXml() {
         "libraries/tools/kotlin-gradle-plugin-idea",
         "libraries/tools/kotlin-gradle-plugin-idea-for-compatibility-tests",
         "libraries/tools/kotlin-gradle-plugin-integration-tests",
-        "libraries/tools/kotlin-gradle-plugin-kpm-android",
         "libraries/tools/kotlin-gradle-plugin-tcs-android",
         "libraries/tools/kotlin-gradle-plugin-model",
         "libraries/tools/kotlin-gradle-plugin-npm-versions-codegen",
@@ -53,7 +52,6 @@ fun updateCompilerXml() {
         "libraries/tools/kotlin-noarg",
         "libraries/tools/kotlin-osgi-bundle",
         "libraries/tools/kotlin-prepush-hook",
-        "libraries/tools/kotlin-project-model",
         "libraries/tools/kotlin-sam-with-receiver",
         "libraries/tools/kotlin-serialization",
         "libraries/tools/kotlin-serialization-unshaded",
@@ -66,10 +64,10 @@ fun updateCompilerXml() {
         "libraries/tools/maven-archetypes",
         "libraries/tools/mutability-annotations-compat",
         "libraries/tools/script-runtime",
+        "libraries/scripting/dependencies-maven-all",
         "native/commonizer-api",
         "libraries/examples",
         "libraries/tools/kotlin-gradle-plugin-idea-proto",
-        "libraries/tools/kotlin-project-model-tests-generator",
         "repo/gradle-settings-conventions",
         "plugins/fir-plugin-prototype/plugin-annotations",
     )
@@ -106,10 +104,10 @@ fun JUnit.configureForKotlin(xmx: String = "1600m") {
         "-Didea.ignore.disabled.plugins=true",
         "-Didea.home.path=$ideaSdkPath",
         "-Didea.use.native.fs.for.win=false",
-        "-Djps.kotlin.home=${ideaPluginDir.absolutePath}",
+        "-Djps.kotlin.home=${File(distKotlinHomeDir).absolutePath}",
         "-Duse.jps=true",
         "-Djava.awt.headless=true"
-    ).filterNotNull().joinToString(" ")
+    ).joinToString(" ")
 
     envs = mapOf(
         "NO_FS_ROOTS_ACCESS_CHECK" to "true",
@@ -374,12 +372,16 @@ fun NamedDomainObjectContainer<TopLevelArtifact>.dist() {
         directory("common") {
             // Use output-file-name when fixed https://github.com/JetBrains/gradle-idea-ext-plugin/issues/63
             archive("kotlin-stdlib-common.jar") {
-                extractedDirectory(commonStdlib.singleFile)
+                extractedDirectory(commonStdlib.filter {
+                    it.name.contains("stdlib")
+                }.singleFile)
             }
 
             // Use output-file-name when fixed https://github.com/JetBrains/gradle-idea-ext-plugin/issues/63
             archive("kotlin-stdlib-common-sources.jar") {
-                extractedDirectory(commonStdlibSources.singleFile)
+                extractedDirectory(commonStdlibSources.filter {
+                    it.name.contains("stdlib")
+                }.singleFile)
             }
         }
 

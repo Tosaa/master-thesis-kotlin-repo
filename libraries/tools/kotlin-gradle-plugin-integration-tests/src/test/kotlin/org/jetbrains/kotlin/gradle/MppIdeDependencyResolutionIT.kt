@@ -189,8 +189,13 @@ class MppIdeDependencyResolutionIT : KGPBaseTest() {
     }
 
     @GradleTest
-    fun `test cinterops - are stored in root gradle folder`(gradleVersion: GradleVersion) {
-        project(projectName = "cinteropImport", gradleVersion = gradleVersion) {
+    fun `test cinterops - are stored in root gradle folder`(
+        gradleVersion: GradleVersion,
+    ) {
+        project(
+            projectName = "cinteropImport",
+            gradleVersion = gradleVersion,
+        ) {
             resolveIdeDependencies("dep-with-cinterop") { dependencies ->
 
                 /* Check behaviour of platform cinterops on linuxX64Main */
@@ -198,12 +203,12 @@ class MppIdeDependencyResolutionIT : KGPBaseTest() {
                     .filter { !it.isNativeDistribution && it.klibExtra?.isInterop == true }
                     .ifEmpty { fail("Expected at least one cinterop on linuxX64Main") }
 
+                val persistentCInteropsCache = projectPersistentCache.resolve("metadata").resolve("kotlinCInteropLibraries")
                 cinterops.forEach { cinterop ->
                     if (cinterop.classpath.isEmpty()) fail("Missing classpath for $cinterop")
                     cinterop.classpath.forEach { cinteropFile ->
                         /* Check file was copied into root .gradle folder */
-                        val expectedParent = projectPath.toFile().resolve(".gradle/kotlin/kotlinCInteropLibraries").canonicalFile
-                        assertEquals(expectedParent, cinteropFile.parentFile.canonicalFile)
+                        assertEquals(persistentCInteropsCache.toFile().canonicalFile, cinteropFile.parentFile.canonicalFile)
 
                         /* Check crc in file name */
                         val crc = CRC32()

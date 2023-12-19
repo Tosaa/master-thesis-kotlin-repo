@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2021 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Copyright 2010-2023 JetBrains s.r.o. and Kotlin Programming Language contributors.
  * Use of this source code is governed by the Apache 2.0 license that can be found in the license/LICENSE.txt file.
  */
 
@@ -23,14 +23,15 @@ import org.jetbrains.kotlin.fir.expressions.*
 import org.jetbrains.kotlin.fir.psi
 import org.jetbrains.kotlin.fir.realPsi
 import org.jetbrains.kotlin.fir.references.FirErrorNamedReference
+import org.jetbrains.kotlin.fir.resolve.diagnostics.ConeAmbiguityError
 import org.jetbrains.kotlin.fir.resolve.diagnostics.ConeUnresolvedError
 import org.jetbrains.kotlin.fir.resolve.diagnostics.ConeUnresolvedNameError
 import org.jetbrains.kotlin.fir.resolve.diagnostics.ConeUnresolvedReferenceError
 import org.jetbrains.kotlin.fir.resolve.diagnostics.ConeUnresolvedSymbolError
 import org.jetbrains.kotlin.fir.resolve.diagnostics.ConeUnresolvedTypeQualifierError
-import org.jetbrains.kotlin.fir.symbols.lazyResolveToPhase
 import org.jetbrains.kotlin.fir.symbols.impl.FirCallableSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirClassLikeSymbol
+import org.jetbrains.kotlin.fir.symbols.lazyResolveToPhaseRecursively
 import org.jetbrains.kotlin.fir.types.FirErrorTypeRef
 import org.jetbrains.kotlin.fir.types.FirResolvedTypeRef
 import org.jetbrains.kotlin.fir.types.classId
@@ -55,54 +56,12 @@ internal class KtFirImportOptimizer(
 
     override fun analyseImports(file: KtFile): KtImportOptimizerResult {
         val existingImports = file.importDirectives
-        if (existingImports.isEmpty()) return KtImportOptimizerResult(emptySet())
+        if (existingImports.isEmpty()) return KtImportOptimizerResult()
 
-        val firFile = file.getOrBuildFirFile(firResolveSession).apply { lazyResolveToPhase(FirResolvePhase.BODY_RESOLVE) }
+        val firFile = file.getOrBuildFirFile(firResolveSession).apply { lazyResolveToPhaseRecursively(FirResolvePhase.BODY_RESOLVE) }
+        val (usedDeclarations, unresolvedNames) = collectReferencedEntities(firFile)
 
-        val explicitlyImportedFqNames = existingImports
-            .asSequence()
-            .mapNotNull { it.importPath }
-            .filter { !it.isAllUnder && !it.hasAlias() }
-            .map { it.fqName }
-            .toSet()
-
-        val (usedImports, unresolvedNames) = collectReferencedEntities(firFile)
-
-        val referencesEntities = usedImports
-            .filterNot { (fqName, referencedByNames) ->
-                val fromCurrentPackage = fqName.parentOrNull() == file.packageFqName
-                val noAliasedImports = referencedByNames.singleOrNull() == fqName.shortName()
-
-                fromCurrentPackage && noAliasedImports
-            }
-
-        val requiredStarImports = referencesEntities.keys
-            .asSequence()
-            .filterNot { it in explicitlyImportedFqNames }
-            .mapNotNull { it.parentOrNull() }
-            .filterNot { it.isRoot }
-            .toSet()
-
-        val unusedImports = mutableSetOf<KtImportDirective>()
-        val alreadySeenImports = mutableSetOf<ImportPath>()
-
-        for (import in existingImports) {
-            val importPath = import.importPath ?: continue
-
-            val isUsed = when {
-                importPath.importedName in unresolvedNames -> true
-                !alreadySeenImports.add(importPath) -> false
-                importPath.isAllUnder -> unresolvedNames.isNotEmpty() || importPath.fqName in requiredStarImports
-                importPath.fqName in referencesEntities -> importPath.importedName in referencesEntities.getValue(importPath.fqName)
-                else -> false
-            }
-
-            if (!isUsed) {
-                unusedImports += import
-            }
-        }
-
-        return KtImportOptimizerResult(unusedImports)
+        return KtImportOptimizerResult(usedDeclarations, unresolvedNames)
     }
 
     private data class ReferencedEntitiesResult(
@@ -300,9 +259,10 @@ internal class KtFirImportOptimizer(
 }
 
 private val FirErrorNamedReference.unresolvedName: Name?
-    get() {
-        val diagnostic = diagnostic as? ConeUnresolvedError ?: return null
-        return diagnostic.unresolvedName
+    get() = when (val diagnostic = diagnostic) {
+        is ConeUnresolvedError -> diagnostic.unresolvedName
+        is ConeAmbiguityError -> diagnostic.name
+        else -> null
     }
 
 private val ConeUnresolvedError.unresolvedName: Name?
@@ -382,7 +342,7 @@ private val FirQualifiedAccessExpression.dispatchedWithoutImport: Boolean
     get() = when {
         isQualifiedWithPackage -> true
         dispatchReceiver is FirThisReceiverExpression -> true
-        dispatchReceiver == explicitReceiver -> true
+        explicitReceiver != null && dispatchReceiver == explicitReceiver -> true
         else -> false
     }
 
@@ -492,7 +452,12 @@ private sealed interface TypeQualifier {
 
     companion object {
         val FirResolvedQualifier.isPresentInSource: Boolean
-            get() = source?.kind is KtRealSourceElementKind
+            get() = when (source?.kind) {
+                is KtRealSourceElementKind -> true
+                is KtFakeSourceElementKind.ImplicitInvokeCall -> true
+
+                else -> false
+            }
 
         fun createFor(qualifier: FirResolvedQualifier): TypeQualifier? {
             if (!qualifier.isPresentInSource) return null
@@ -511,7 +476,14 @@ private sealed interface TypeQualifier {
 
         private val FirResolvedTypeRef.isPresentInSource: Boolean
             get() = when (source?.kind) {
-                is KtRealSourceElementKind -> true
+                is KtRealSourceElementKind -> {
+                    val isArrayFromVararg = delegatedTypeRef?.source?.kind is KtFakeSourceElementKind.ArrayTypeFromVarargParameter;
+
+                    // type ref with delegated type ref with such source kind is NOT directly present in the source, so we ignore it
+                    !isArrayFromVararg
+                }
+
+                // type ref with such source kind is explicitly present in the source, so we want to see it
                 is KtFakeSourceElementKind.ArrayTypeFromVarargParameter -> true
 
                 else -> false

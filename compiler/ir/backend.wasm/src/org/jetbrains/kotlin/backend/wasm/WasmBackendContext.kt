@@ -28,7 +28,7 @@ import org.jetbrains.kotlin.ir.types.IrTypeSystemContext
 import org.jetbrains.kotlin.ir.types.IrTypeSystemContextImpl
 import org.jetbrains.kotlin.ir.util.SymbolTable
 import org.jetbrains.kotlin.ir.util.addChild
-import org.jetbrains.kotlin.js.config.JSConfigurationKeys
+import org.jetbrains.kotlin.ir.util.file
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.Name
 
@@ -95,6 +95,9 @@ class WasmBackendContext(
 
             override fun getLineNumber(offset: Int) = UNDEFINED_LINE_NUMBER
             override fun getColumnNumber(offset: Int) = UNDEFINED_COLUMN_NUMBER
+            override fun getLineAndColumnNumbers(offset: Int): LineAndColumn {
+                return LineAndColumn(UNDEFINED_LINE_NUMBER, UNDEFINED_COLUMN_NUMBER)
+            }
         }, internalPackageFragmentDescriptor, irModuleFragment).also {
             irModuleFragment.files += it
         }
@@ -167,6 +170,9 @@ class WasmBackendContext(
 
             override fun getLineNumber(offset: Int) = UNDEFINED_LINE_NUMBER
             override fun getColumnNumber(offset: Int) = UNDEFINED_COLUMN_NUMBER
+            override fun getLineAndColumnNumbers(offset: Int): LineAndColumn {
+                return LineAndColumn(UNDEFINED_LINE_NUMBER, UNDEFINED_COLUMN_NUMBER)
+            }
         }, internalPackageFragmentDescriptor, module).also {
             module.files += it
         }
@@ -177,7 +183,8 @@ class WasmBackendContext(
     val testEntryPoints: Collection<IrSimpleFunction>
         get() = testContainerFuns.values
 
-    override fun createTestContainerFun(irFile: IrFile): IrSimpleFunction {
+    override fun createTestContainerFun(container: IrDeclaration): IrSimpleFunction {
+        val irFile = container.file
         val module = irFile.module
         return testContainerFuns.getOrPut(module) {
             val file = syntheticFile("tests", module)

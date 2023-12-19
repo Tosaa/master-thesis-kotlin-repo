@@ -55,6 +55,8 @@ internal abstract class AbstractKotlinCompileConfig<TASK : AbstractKotlinCompile
             task.localStateDirectories.from(task.taskBuildLocalStateDirectory).disallowChanges()
             task.systemPropertiesService.value(compilerSystemPropertiesService).disallowChanges()
 
+            task.kotlinCompilerArgumentsLogLevel.value(propertiesProvider.kotlinCompilerArgumentsLogLevel).disallowChanges()
+
             propertiesProvider.kotlinDaemonJvmArgs?.let { kotlinDaemonJvmArgs ->
                 task.kotlinDaemonJvmArguments.set(providers.provider {
                     kotlinDaemonJvmArgs.split("\\s+".toRegex())
@@ -78,9 +80,6 @@ internal abstract class AbstractKotlinCompileConfig<TASK : AbstractKotlinCompile
             task.taskOutputsBackupExcludes.addAll(task.keepIncrementalCompilationCachesInMemory.map {
                 if (it) listOf(task.taskBuildCacheableOutputDirectory.get().asFile) else emptyList()
             })
-            task.suppressExperimentalIcOptimizationsWarning
-                .convention(propertiesProvider.suppressExperimentalICOptimizationsWarning)
-                .finalizeValueOnRead()
             task.buildFinishedListenerService.value(buildFinishedListenerService).disallowChanges()
             task.buildIdService.value(buildIdService).disallowChanges()
 
@@ -111,7 +110,7 @@ internal abstract class AbstractKotlinCompileConfig<TASK : AbstractKotlinCompile
     ) {
         configureTask { task ->
             task.friendPaths.from({ compilationInfo.friendPaths })
-            compilationInfo.tcsOrNull?.compilation?.let { compilation ->
+            compilationInfo.tcs.compilation.let { compilation ->
                 task.friendSourceSets
                     .value(providers.provider { compilation.allAssociatedCompilations.map { it.name } })
                     .disallowChanges()
@@ -127,8 +126,7 @@ internal abstract class AbstractKotlinCompileConfig<TASK : AbstractKotlinCompile
                 providers.provider {
                     compilationInfo.project.plugins.any {
                         it is KotlinPlatformPluginBase ||
-                                it is AbstractKotlinMultiplatformPluginWrapper ||
-                                it is AbstractKotlinPm20PluginWrapper
+                                it is AbstractKotlinMultiplatformPluginWrapper
                     }
                 }
             )
@@ -138,10 +136,10 @@ internal abstract class AbstractKotlinCompileConfig<TASK : AbstractKotlinCompile
                     project.providers.provider {
                         // Plugin explicitly does not configures 'explicitApi' mode for test sources
                         // compilation, as test sources are not published
-                        val compilation = compilationInfo.tcsOrNull?.compilation
-                        val isCommonCompilation = compilation?.target is KotlinMetadataTarget
+                        val compilation = compilationInfo.tcs.compilation
+                        val isCommonCompilation = compilation.target is KotlinMetadataTarget
 
-                        val androidCompilation = compilationInfo.tcsOrNull?.compilation as? KotlinJvmAndroidCompilation
+                        val androidCompilation = compilationInfo.tcs.compilation as? KotlinJvmAndroidCompilation
                         val isMainAndroidCompilation = androidCompilation?.let {
                             getTestedVariantData(it.androidVariant) == null
                         } ?: false

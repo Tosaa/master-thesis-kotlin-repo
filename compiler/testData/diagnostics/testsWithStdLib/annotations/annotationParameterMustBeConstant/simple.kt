@@ -1,5 +1,3 @@
-// IGNORE_REVERSED_RESOLVE
-// FIR_IDENTICAL
 @Retention(AnnotationRetention.SOURCE)
 @Repeatable
 annotation class Ann(val i: Int)

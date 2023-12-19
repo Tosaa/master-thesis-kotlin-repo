@@ -5,17 +5,16 @@
 
 package org.jetbrains.kotlin.fir.checkers.generator.diagnostics.model
 
-import org.jetbrains.kotlin.fir.checkers.generator.collectClassNamesTo
-import org.jetbrains.kotlin.fir.checkers.generator.inBracketsWithIndent
-import org.jetbrains.kotlin.fir.checkers.generator.printImports
-import org.jetbrains.kotlin.fir.tree.generator.printer.printCopyright
-import org.jetbrains.kotlin.fir.tree.generator.printer.printGeneratedMessage
+import org.jetbrains.kotlin.fir.checkers.generator.*
+import org.jetbrains.kotlin.fir.checkers.generator.printCopyright
 import org.jetbrains.kotlin.fir.tree.generator.util.writeToFileUsingSmartPrinterIfFileContentChanged
+import org.jetbrains.kotlin.generators.tree.printer.printKDoc
 import org.jetbrains.kotlin.utils.SmartPrinter
 import java.io.File
 import kotlin.reflect.KClass
 import kotlin.reflect.KType
 import kotlin.reflect.KTypeProjection
+import kotlin.reflect.KVariance
 
 object ErrorListDiagnosticListRenderer : DiagnosticListRenderer() {
     const val BASE_PACKAGE = "org.jetbrains.kotlin.fir.analysis.diagnostics"
@@ -41,7 +40,7 @@ object ErrorListDiagnosticListRenderer : DiagnosticListRenderer() {
         println("package $packageName")
         println()
         collectAndPrintImports(diagnosticList, packageName, starImportsToAdd)
-        printGeneratedMessage()
+        printKDoc(diagnosticList.extendedKDoc())
         printErrorsObject(diagnosticList)
     }
 
@@ -119,6 +118,11 @@ object ErrorListDiagnosticListRenderer : DiagnosticListRenderer() {
         if (typeArgumentType == null) {
             print("*")
         } else {
+            when (typeArgument.variance) {
+                KVariance.INVARIANT, null -> {}
+                KVariance.IN -> print("in ")
+                KVariance.OUT -> print("out ")
+            }
             printType(typeArgumentType)
         }
     }

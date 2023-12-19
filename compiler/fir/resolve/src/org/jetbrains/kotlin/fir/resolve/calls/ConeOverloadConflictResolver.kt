@@ -8,7 +8,11 @@ package org.jetbrains.kotlin.fir.resolve.calls
 import org.jetbrains.kotlin.descriptors.Modality
 import org.jetbrains.kotlin.fir.FirSession
 import org.jetbrains.kotlin.fir.declarations.FirMemberDeclaration
+import org.jetbrains.kotlin.fir.declarations.getSingleMatchedExpectForActualOrNull
+import org.jetbrains.kotlin.fir.declarations.utils.isActual
+import org.jetbrains.kotlin.fir.declarations.utils.isExpect
 import org.jetbrains.kotlin.fir.declarations.utils.modality
+import org.jetbrains.kotlin.fir.expressions.FirCallableReferenceAccess
 import org.jetbrains.kotlin.fir.resolve.BodyResolveComponents
 import org.jetbrains.kotlin.fir.resolve.inference.ConeTypeParameterBasedTypeVariable
 import org.jetbrains.kotlin.fir.resolve.inference.InferenceComponents
@@ -31,6 +35,7 @@ import org.jetbrains.kotlin.types.model.KotlinTypeMarker
 import org.jetbrains.kotlin.types.model.TypeParameterMarker
 import org.jetbrains.kotlin.types.model.TypeSubstitutorMarker
 import org.jetbrains.kotlin.types.model.TypeSystemInferenceExtensionContext
+import org.jetbrains.kotlin.utils.addToStdlib.runIf
 import org.jetbrains.kotlin.utils.exceptions.errorWithAttachment
 
 typealias CandidateSignature = FlatSignature<Candidate>
@@ -49,7 +54,13 @@ class ConeOverloadConflictResolver(
     override fun chooseMaximallySpecificCandidates(
         candidates: Set<Candidate>,
         discriminateAbstracts: Boolean,
-    ): Set<Candidate> = chooseMaximallySpecificCandidates(candidates, discriminateAbstracts, discriminateGenerics = true)
+    ): Set<Candidate> = chooseMaximallySpecificCandidates(
+        candidates,
+        discriminateAbstracts,
+        // We don't discriminate against generics for callable references because, other than in regular calls,
+        // there is no syntax for specifying generic type arguments.
+        discriminateGenerics = candidates.first().callInfo.callSite !is FirCallableReferenceAccess
+    )
 
     /**
      * Partial mirror of [org.jetbrains.kotlin.resolve.calls.results.OverloadingConflictResolver.chooseMaximallySpecificCandidates]
@@ -112,9 +123,10 @@ class ConeOverloadConflictResolver(
     }
 
     private fun Candidate.overrides(other: Candidate): Boolean {
+        val symbol = symbol
         if (symbol !is FirCallableSymbol || other.symbol !is FirCallableSymbol) return false
 
-        val otherOriginal = other.symbol.unwrapSubstitutionOverrides()
+        val otherOriginal = (other.symbol as FirCallableSymbol).unwrapSubstitutionOverrides()
         if (symbol.unwrapSubstitutionOverrides<FirCallableSymbol<*>>() == otherOriginal) return true
 
         val scope = originScope as? FirTypeScope ?: return false
@@ -266,7 +278,9 @@ class ConeOverloadConflictResolver(
     ): Candidate? {
         if (candidates.size <= 1) return candidates.singleOrNull()
 
-        val candidateSignatures = candidates.map { candidateCall ->
+        val candidatesWithoutActualizedExpects = filterOutActualizedExpectCandidates(candidates)
+
+        val candidateSignatures = candidatesWithoutActualizedExpects.map { candidateCall ->
             createFlatSignature(candidateCall)
         }
 
@@ -277,6 +291,23 @@ class ConeOverloadConflictResolver(
         }
 
         return bestCandidatesByParameterTypes.exactMaxWith()?.origin
+    }
+
+    private fun filterOutActualizedExpectCandidates(candidates: Set<Candidate>): Set<Candidate> {
+        val expectForActualSymbols = candidates
+            .mapNotNullTo(mutableSetOf()) {
+                val callableSymbol = it.symbol as? FirCallableSymbol<*> ?: return@mapNotNullTo null
+                runIf(callableSymbol.isActual) { callableSymbol.getSingleMatchedExpectForActualOrNull() }
+            }
+
+        return if (expectForActualSymbols.isEmpty()) {
+            candidates // Optimization: in most cases, there are no expectForActualSymbols that's why filtering and allocation are not performed
+        } else {
+            candidates.filterTo(mutableSetOf()) { candidate ->
+                val symbol = candidate.symbol
+                symbol is FirCallableSymbol<*> && (!symbol.isExpect || symbol !in expectForActualSymbols)
+            }
+        }
     }
 
     /**
@@ -294,21 +325,23 @@ class ConeOverloadConflictResolver(
     private fun List<CandidateSignature>.exactMaxWith(): CandidateSignature? {
         var result: CandidateSignature? = null
         for (candidate in this) {
-            if (result == null || isOfNotLessSpecificShape(candidate, result)) {
+            if (result == null || checkExpectAndNotLessSpecificShape(candidate, result)) {
                 result = candidate
             }
         }
         if (result == null) return null
-        if (any { it != result && isOfNotLessSpecificShape(it, result) }) {
+        if (any { it != result && checkExpectAndNotLessSpecificShape(it, result) }) {
             return null
         }
         return result
     }
 
-    private fun isOfNotLessSpecificShape(
+    private fun checkExpectAndNotLessSpecificShape(
         call1: FlatSignature<Candidate>,
         call2: FlatSignature<Candidate>
     ): Boolean {
+        if (!call1.isExpect && call2.isExpect) return true
+        if (call1.isExpect && !call2.isExpect) return false
         val hasVarargs1 = call1.hasVarargs
         val hasVarargs2 = call2.hasVarargs
         if (hasVarargs1 && !hasVarargs2) return false

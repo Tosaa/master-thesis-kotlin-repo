@@ -50,7 +50,8 @@ Prerequisites:
       Note: using `JDK x86_64` on `MacOS aarch64` will cause `java.lang.UnsatisfiedLinkError` for `libclang.dylib`
 *   Linux: glibc 2.23 or newer
 *   Windows:
-    * Microsoft C++ build tools for Visual Studio 2019 14.29 or newer
+    * Microsoft C++ build tools for Visual Studio 2019 14.29.
+      It might work with other VS2019 versions, but this was never tested.
     * Windows SDK 10.0.18362.0 or newer
 
 The commands below should be run from either repository root or this (`kotlin-native/`) directory.
@@ -72,7 +73,7 @@ To run the full build:
     ./gradlew :kotlin-native:bundle
 
 This will produce compiler and libraries for all supported targets.
-The full build can take about an hour on a Macbook Pro.
+The full build can take about an hour on a Macbook Pro, but the duration can vary based on your system configuration.
 
 After any of the commands above, `./dist` will contain Kotlin/Native distribution.
 You can use it like a distribution of

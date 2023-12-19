@@ -3,7 +3,7 @@
  * Use of this source code is governed by the Apache 2.0 license that can be found in the license/LICENSE.txt file.
  */
 
-package org.jetbrains.kotlin.base.kapt3
+package org.jetbrains.kotlin.kapt3.base
 
 import org.jetbrains.kotlin.kapt3.base.incremental.SourcesToReprocess
 import java.io.File
@@ -130,7 +130,6 @@ enum class KaptFlag(val description: String, val defaultValue: Boolean = false) 
     STRIP_METADATA("Strip @Metadata annotations from stubs"),
     KEEP_KDOC_COMMENTS_IN_STUBS("Keep KDoc comments in stubs", defaultValue = true),
     USE_JVM_IR("Use JVM IR backend", defaultValue = true),
-    USE_K2("Use K2"),
     ;
 }
 

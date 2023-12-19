@@ -14,6 +14,7 @@ import org.jetbrains.kotlin.cli.common.fir.FirDiagnosticsCompilerResultsReporter
 import org.jetbrains.kotlin.cli.common.messages.AnalyzerWithCompilerReport
 import org.jetbrains.kotlin.cli.common.messages.MessageCollector
 import org.jetbrains.kotlin.config.CommonConfigurationKeys
+import org.jetbrains.kotlin.config.CompilerConfiguration
 import org.jetbrains.kotlin.config.languageVersionSettings
 import org.jetbrains.kotlin.constant.EvaluatedConstTracker
 import org.jetbrains.kotlin.descriptors.impl.ModuleDescriptorImpl
@@ -116,6 +117,15 @@ inline fun <F> compileModuleToAnalyzedFir(
     return outputs
 }
 
+internal fun reportCollectedDiagnostics(
+    compilerConfiguration: CompilerConfiguration,
+    diagnosticsReporter: BaseDiagnosticsCollector,
+    messageCollector: MessageCollector
+) {
+    val renderName = compilerConfiguration.getBoolean(CLIConfigurationKeys.RENDER_DIAGNOSTIC_INTERNAL_NAME)
+    FirDiagnosticsCompilerResultsReporter.reportToMessageCollector(diagnosticsReporter, messageCollector, renderName)
+}
+
 open class AnalyzedFirOutput(val output: List<ModuleCompilerAnalyzedOutput>) {
     protected open fun checkSyntaxErrors(messageCollector: MessageCollector) = false
 
@@ -125,8 +135,7 @@ open class AnalyzedFirOutput(val output: List<ModuleCompilerAnalyzedOutput>) {
         messageCollector: MessageCollector,
     ): Boolean {
         if (checkSyntaxErrors(messageCollector) || diagnosticsReporter.hasErrors) {
-            val renderName = moduleStructure.compilerConfiguration.getBoolean(CLIConfigurationKeys.RENDER_DIAGNOSTIC_INTERNAL_NAME)
-            FirDiagnosticsCompilerResultsReporter.reportToMessageCollector(diagnosticsReporter, messageCollector, renderName)
+            reportCollectedDiagnostics(moduleStructure.compilerConfiguration, diagnosticsReporter, messageCollector)
             return true
         }
 
@@ -242,6 +251,8 @@ fun transformFirToIr(
             inlineConstTracker = null,
             expectActualTracker = moduleStructure.compilerConfiguration[CommonConfigurationKeys.EXPECT_ACTUAL_TRACKER],
             allowNonCachedDeclarations = false,
+            useIrFakeOverrideBuilder =
+            moduleStructure.compilerConfiguration.getBoolean(CommonConfigurationKeys.USE_IR_FAKE_OVERRIDE_BUILDER),
         ),
         IrGenerationExtension.getInstances(moduleStructure.project),
         signatureComposer = DescriptorSignatureComposerStub(JsManglerDesc),
@@ -250,8 +261,8 @@ fun transformFirToIr(
         visibilityConverter = Fir2IrVisibilityConverter.Default,
         kotlinBuiltIns = builtInsModule ?: DefaultBuiltIns.Instance,
         actualizerTypeContextProvider = ::IrTypeSystemContextImpl
-    ) {
-        (this.irModuleFragment.descriptor as? FirModuleDescriptor)?.let { it.allDependencyModules = librariesDescriptors }
+    ) { _, irPart ->
+        (irPart.irModuleFragment.descriptor as? FirModuleDescriptor)?.let { it.allDependencyModules = librariesDescriptors }
     }
 }
 
@@ -269,7 +280,7 @@ private class Fir2KlibSerializer(
     }
 
     private val actualizedExpectDeclarations by lazy {
-        fir2IrActualizedResult.irActualizedResult.extractFirDeclarations()
+        fir2IrActualizedResult.irActualizedResult?.actualizedExpectDeclarations?.extractFirDeclarations()
     }
 
     private val metadataVersion = moduleStructure.compilerConfiguration.metadataVersion()
@@ -291,7 +302,7 @@ private class Fir2KlibSerializer(
                 session, metadataVersion,
                 ConstValueProviderImpl(fir2IrActualizedResult.components),
                 allowErrorTypes = false, exportKDoc = false,
-                fir2IrActualizedResult.components.annotationsFromPluginRegistrar.createMetadataAnnotationsProvider()
+                fir2IrActualizedResult.components.annotationsFromPluginRegistrar.createAdditionalMetadataProvider()
             ),
             languageVersionSettings,
         )
@@ -303,6 +314,7 @@ fun serializeFirKlib(
     firOutputs: List<ModuleCompilerAnalyzedOutput>,
     fir2IrActualizedResult: Fir2IrActualizedResult,
     outputKlibPath: String,
+    nopack: Boolean,
     messageCollector: MessageCollector,
     diagnosticsReporter: BaseDiagnosticsCollector,
     jsOutputName: String?,
@@ -315,13 +327,13 @@ fun serializeFirKlib(
         moduleStructure.compilerConfiguration[CommonConfigurationKeys.MODULE_NAME]!!,
         moduleStructure.compilerConfiguration,
         moduleStructure.compilerConfiguration.get(IrMessageLogger.IR_MESSAGE_LOGGER) ?: IrMessageLogger.None,
+        diagnosticsReporter,
         fir2KlibSerializer.sourceFiles,
         klibPath = outputKlibPath,
         moduleStructure.allDependencies,
         fir2IrActualizedResult.irModuleFragment,
-        expectDescriptorToSymbol = mutableMapOf(),
         cleanFiles = icData ?: emptyList(),
-        nopack = true,
+        nopack = nopack,
         perFile = false,
         containsErrorCode = messageCollector.hasErrors() || diagnosticsReporter.hasErrors,
         abiVersion = KotlinAbiVersion.CURRENT, // TODO get from test file data

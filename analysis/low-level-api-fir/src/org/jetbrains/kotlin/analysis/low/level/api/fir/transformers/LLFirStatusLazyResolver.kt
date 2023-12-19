@@ -148,9 +148,7 @@ private class LLFirStatusTargetResolver(
             true
         }
 
-        else -> {
-            false
-        }
+        else -> false
     }
 
     private inline fun <T : FirCallableDeclaration> performResolveWithOverriddenCallables(
@@ -192,7 +190,10 @@ private class LLFirStatusTargetResolver(
 
         if (resolveMode.resolveSupertypes) {
             transformer.storeClass(firClass) {
-                resolveCallableMembers(firClass)
+                withClassInStack(firClass) {
+                    resolveCallableMembers(firClass)
+                }
+
                 firClass
             }
 

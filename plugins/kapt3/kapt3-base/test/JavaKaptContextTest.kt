@@ -5,11 +5,7 @@
 
 package org.jetbrains.kotlin.kapt.base.test
 
-import org.jetbrains.kotlin.base.kapt3.DetectMemoryLeaksMode
-import org.jetbrains.kotlin.base.kapt3.KaptFlag
-import org.jetbrains.kotlin.base.kapt3.KaptOptions
-import org.jetbrains.kotlin.kapt3.base.KaptContext
-import org.jetbrains.kotlin.kapt3.base.doAnnotationProcessing
+import org.jetbrains.kotlin.kapt3.base.*
 import org.jetbrains.kotlin.kapt3.base.incremental.DeclaredProcType
 import org.jetbrains.kotlin.kapt3.base.incremental.IncrementalProcessor
 import org.jetbrains.kotlin.kapt3.base.util.KaptBaseError
@@ -135,6 +131,9 @@ class JavaKaptContextTest {
         } catch (e: KaptBaseError) {
             assertEquals(KaptBaseError.Kind.EXCEPTION, e.kind)
             assertEquals("Here we are!", e.cause!!.message)
+            triggered = true
+        } catch (e: Throwable) { // AnnotationProcessorError
+            assertTrue(e.cause!!.message!!.contains("Here we are!"))
             triggered = true
         }
 

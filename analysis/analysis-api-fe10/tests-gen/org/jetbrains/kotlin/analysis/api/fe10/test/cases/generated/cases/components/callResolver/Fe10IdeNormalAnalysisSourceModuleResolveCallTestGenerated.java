@@ -665,6 +665,12 @@ public class Fe10IdeNormalAnalysisSourceModuleResolveCallTestGenerated extends A
     }
 
     @Test
+    @TestMetadata("noBuiltIns.kt")
+    public void testNoBuiltIns() throws Exception {
+        runTest("analysis/analysis-api/testData/components/callResolver/resolveCall/noBuiltIns.kt");
+    }
+
+    @Test
     @TestMetadata("postfixUnaryOperatorOnVar.kt")
     public void testPostfixUnaryOperatorOnVar() throws Exception {
         runTest("analysis/analysis-api/testData/components/callResolver/resolveCall/postfixUnaryOperatorOnVar.kt");
@@ -863,6 +869,12 @@ public class Fe10IdeNormalAnalysisSourceModuleResolveCallTestGenerated extends A
     }
 
     @Test
+    @TestMetadata("unsignedArrayOf.kt")
+    public void testUnsignedArrayOf() throws Exception {
+        runTest("analysis/analysis-api/testData/components/callResolver/resolveCall/unsignedArrayOf.kt");
+    }
+
+    @Test
     @TestMetadata("variableAsFunction.kt")
     public void testVariableAsFunction() throws Exception {
         runTest("analysis/analysis-api/testData/components/callResolver/resolveCall/variableAsFunction.kt");
@@ -1005,6 +1017,12 @@ public class Fe10IdeNormalAnalysisSourceModuleResolveCallTestGenerated extends A
         @TestMetadata("incorrectCodeJavaDeclaration.kt")
         public void testIncorrectCodeJavaDeclaration() throws Exception {
             runTest("analysis/analysis-api/testData/components/callResolver/resolveCall/invalidCode/incorrectCodeJavaDeclaration.kt");
+        }
+
+        @Test
+        @TestMetadata("invalidImplicitInvoke.kt")
+        public void testInvalidImplicitInvoke() throws Exception {
+            runTest("analysis/analysis-api/testData/components/callResolver/resolveCall/invalidCode/invalidImplicitInvoke.kt");
         }
 
         @Test

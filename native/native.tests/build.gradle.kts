@@ -14,11 +14,15 @@ dependencies {
     testImplementation(projectTests(":compiler:tests-common-new"))
     testImplementation(projectTests(":compiler:test-infrastructure"))
     testImplementation(projectTests(":generators:test-generator"))
+    testImplementation(project(":compiler:ir.serialization.native"))
+    testImplementation(project(":compiler:fir:native"))
     testImplementation(project(":native:kotlin-native-utils"))
     testImplementation(project(":native:executors"))
     testImplementation(project(":kotlin-util-klib-abi"))
     testImplementation(projectTests(":kotlin-util-klib-abi"))
-    testApiJUnit5()
+    testApi(platform(libs.junit.bom))
+    testImplementation(libs.junit.jupiter.api)
+    testRuntimeOnly(libs.junit.jupiter.engine)
     testImplementation(commonDependency("org.jetbrains.kotlinx", "kotlinx-metadata-klib"))
     testImplementation(commonDependency("org.jetbrains.kotlinx", "kotlinx-coroutines-core")) { isTransitive = false }
 
@@ -48,6 +52,7 @@ val cinteropTest = nativeTest("cinteropTest", "cinterop")
 val debuggerTest = nativeTest("debuggerTest", "debugger")
 val cachesTest = nativeTest("cachesTest", "caches")
 val klibTest = nativeTest("klibTest", "klib")
+val standaloneTest = nativeTest("standaloneTest", "standalone")
 
 val testTags = findProperty("kotlin.native.tests.tags")?.toString()
 // Note: arbitrary JUnit tag expressions can be used in this property.

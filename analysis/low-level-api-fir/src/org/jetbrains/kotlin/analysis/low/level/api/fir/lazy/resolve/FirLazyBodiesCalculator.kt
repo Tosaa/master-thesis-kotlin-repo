@@ -9,23 +9,40 @@ import com.intellij.psi.PsiElement
 import kotlinx.collections.immutable.PersistentList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toPersistentList
+import org.jetbrains.kotlin.KtFakeSourceElementKind
 import org.jetbrains.kotlin.analysis.low.level.api.fir.api.FirDesignation
+import org.jetbrains.kotlin.analysis.low.level.api.fir.util.forEachDependentDeclaration
 import org.jetbrains.kotlin.fir.*
 import org.jetbrains.kotlin.fir.builder.PsiRawFirBuilder
 import org.jetbrains.kotlin.fir.contracts.FirRawContractDescription
 import org.jetbrains.kotlin.fir.contracts.impl.FirEmptyContractDescription
 import org.jetbrains.kotlin.fir.declarations.*
+import org.jetbrains.kotlin.fir.declarations.annotationPlatformSupport
 import org.jetbrains.kotlin.fir.declarations.utils.getExplicitBackingField
 import org.jetbrains.kotlin.fir.expressions.*
 import org.jetbrains.kotlin.fir.expressions.impl.FirLazyDelegatedConstructorCall
+import org.jetbrains.kotlin.fir.expressions.impl.FirSingleExpressionBlock
 import org.jetbrains.kotlin.fir.extensions.registeredPluginAnnotations
-import org.jetbrains.kotlin.fir.resolve.transformers.plugin.CompilerRequiredAnnotationsHelper
+import org.jetbrains.kotlin.fir.references.FirDelegateFieldReference
+import org.jetbrains.kotlin.fir.references.FirResolvedNamedReference
+import org.jetbrains.kotlin.fir.references.builder.buildDelegateFieldReference
+import org.jetbrains.kotlin.fir.references.builder.buildImplicitThisReference
+import org.jetbrains.kotlin.fir.references.builder.buildResolvedNamedReference
 import org.jetbrains.kotlin.fir.scopes.kotlinScopeProvider
+import org.jetbrains.kotlin.fir.symbols.impl.FirClassSymbol
+import org.jetbrains.kotlin.fir.symbols.impl.FirPropertySymbol
 import org.jetbrains.kotlin.fir.types.*
+import org.jetbrains.kotlin.fir.types.builder.buildResolvedTypeRef
+import org.jetbrains.kotlin.fir.types.builder.buildTypeProjectionWithVariance
+import org.jetbrains.kotlin.fir.types.impl.ConeTypeParameterTypeImpl
+import org.jetbrains.kotlin.fir.utils.exceptions.withFirEntry
+import org.jetbrains.kotlin.fir.utils.exceptions.withFirSymbolEntry
 import org.jetbrains.kotlin.fir.visitors.FirTransformer
 import org.jetbrains.kotlin.fir.visitors.transformSingle
-import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.psi.*
+import org.jetbrains.kotlin.types.Variance
+import org.jetbrains.kotlin.utils.exceptions.errorWithAttachment
+import org.jetbrains.kotlin.utils.exceptions.requireWithAttachment
 
 internal object FirLazyBodiesCalculator {
     fun calculateBodies(designation: FirDesignation) {
@@ -79,7 +96,7 @@ internal object FirLazyBodiesCalculator {
 
 private inline fun <reified T : FirDeclaration> revive(
     designation: FirDesignation,
-    psiFactory: (FirDesignation) -> PsiElement? = { it.target.psi }
+    psi: PsiElement? = designation.target.psi,
 ): T {
     val session = designation.target.moduleData.session
 
@@ -87,7 +104,7 @@ private inline fun <reified T : FirDeclaration> revive(
         session = session,
         scopeProvider = session.kotlinScopeProvider,
         designation = designation,
-        rootNonLocalDeclaration = psiFactory(designation) as KtAnnotated,
+        rootNonLocalDeclaration = psi as KtAnnotated,
     ) as T
 }
 
@@ -158,7 +175,7 @@ private fun calculateLazyBodiesForFunction(designation: FirDesignation) {
     val simpleFunction = designation.target as FirSimpleFunction
     require(needCalculatingLazyBodyForFunction(simpleFunction))
 
-    val newSimpleFunction = revive<FirSimpleFunction>(designation)
+    val newSimpleFunction = revive<FirSimpleFunction>(designation, simpleFunction.unwrapFakeOverridesOrDelegated().psi)
 
     replaceLazyContractDescription(simpleFunction, newSimpleFunction)
     replaceLazyBody(simpleFunction, newSimpleFunction)
@@ -181,26 +198,363 @@ private fun calculateLazyBodyForProperty(designation: FirDesignation) {
     val firProperty = designation.target as FirProperty
     if (!needCalculatingLazyBodyForProperty(firProperty)) return
 
-    val newProperty = revive<FirProperty>(designation)
+    val recreatedProperty = revive<FirProperty>(designation, firProperty.unwrapFakeOverridesOrDelegated().psi)
 
     firProperty.getter?.let { getter ->
-        val newGetter = newProperty.getter!!
-        replaceLazyContractDescription(getter, newGetter)
-        replaceLazyBody(getter, newGetter)
+        val recreatedGetter = recreatedProperty.getter!!
+        replaceLazyContractDescription(getter, recreatedGetter)
+        replaceLazyBody(getter, recreatedGetter)
+        rebindDelegatedAccessorBody(newTarget = getter, oldTarget = recreatedGetter)
     }
 
     firProperty.setter?.let { setter ->
-        val newSetter = newProperty.setter!!
-        replaceLazyContractDescription(setter, newSetter)
-        replaceLazyBody(setter, newSetter)
+        val recreatedSetter = recreatedProperty.setter!!
+        replaceLazyContractDescription(setter, recreatedSetter)
+        replaceLazyBody(setter, recreatedSetter)
+        rebindDelegatedAccessorBody(newTarget = setter, oldTarget = recreatedSetter)
     }
 
-    replaceLazyInitializer(firProperty, newProperty)
-    replaceLazyDelegate(firProperty, newProperty)
+    replaceLazyInitializer(firProperty, recreatedProperty)
+    replaceLazyDelegate(firProperty, recreatedProperty)
+    rebindDelegate(newTarget = firProperty, oldTarget = recreatedProperty)
 
     firProperty.getExplicitBackingField()?.let { backingField ->
-        val newBackingField = newProperty.getExplicitBackingField()!!
+        val newBackingField = recreatedProperty.getExplicitBackingField()!!
         replaceLazyInitializer(backingField, newBackingField)
+    }
+}
+
+/**
+ * This function is required to correctly rebind symbols
+ * after [generateAccessorsByDelegate][org.jetbrains.kotlin.fir.builder.generateAccessorsByDelegate]
+ * for correct work
+ *
+ * @see org.jetbrains.kotlin.fir.builder.generateAccessorsByDelegate
+ */
+private fun rebindDelegate(newTarget: FirProperty, oldTarget: FirProperty) {
+    val delegate = newTarget.delegate ?: return
+    requireWithAttachment(
+        delegate is FirWrappedDelegateExpression,
+        { "Unexpected delegate type: ${delegate::class.simpleName}" },
+    ) {
+        withFirEntry("newTarget", newTarget)
+        withFirEntry("oldTarget", oldTarget)
+        withFirEntry("delegate", delegate)
+    }
+
+    val delegateProvider = delegate.delegateProvider
+    requireWithAttachment(
+        delegateProvider is FirFunctionCall,
+        { "Unexpected delegate provider type: ${delegateProvider::class.simpleName}" },
+    ) {
+        withFirEntry("newTarget", newTarget)
+        withFirEntry("oldTarget", oldTarget)
+        withFirEntry("expression", delegateProvider)
+    }
+
+    rebindArgumentList(
+        delegateProvider.argumentList,
+        newTarget = newTarget.symbol,
+        oldTarget = oldTarget.symbol,
+        isSetter = false,
+        canHavePropertySymbolAsThisReference = false,
+    )
+}
+
+/**
+ * This function is required to correctly rebind symbols
+ * after [generateAccessorsByDelegate][org.jetbrains.kotlin.fir.builder.generateAccessorsByDelegate]
+ * for correct work
+ *
+ * @see org.jetbrains.kotlin.fir.builder.generateAccessorsByDelegate
+ * @see rebindDelegate
+ */
+private fun rebindDelegatedAccessorBody(newTarget: FirPropertyAccessor, oldTarget: FirPropertyAccessor) {
+    if (newTarget.source?.kind != KtFakeSourceElementKind.DelegatedPropertyAccessor) return
+    val body = newTarget.body
+    requireWithAttachment(
+        body is FirSingleExpressionBlock,
+        { "Unexpected body for generated accessor ${body?.let { it::class.simpleName }}" },
+    ) {
+        withFirSymbolEntry("newTarget", newTarget.propertySymbol)
+        withFirSymbolEntry("oldTarget", oldTarget.propertySymbol)
+        body?.let { withFirEntry("body", it) } ?: withEntry("body", "null")
+    }
+
+    val returnExpression = body.statement
+    rebindReturnExpression(returnExpression = returnExpression, newTarget = newTarget, oldTarget = oldTarget)
+}
+
+private fun rebindReturnExpression(returnExpression: FirStatement, newTarget: FirPropertyAccessor, oldTarget: FirPropertyAccessor) {
+    requireWithAttachment(returnExpression is FirReturnExpression, { "Unexpected single statement" }) {
+        withFirSymbolEntry("newTarget", newTarget.propertySymbol)
+        withFirSymbolEntry("oldTarget", oldTarget.propertySymbol)
+        withFirEntry("expression", returnExpression)
+    }
+
+    val target = returnExpression.target
+    requireWithAttachment(target.labeledElement == oldTarget, { "Unexpected return target" }) {
+        withFirSymbolEntry("newTarget", newTarget.propertySymbol)
+        withFirSymbolEntry("oldTarget", oldTarget.propertySymbol)
+        withFirEntry("target", target.labeledElement)
+    }
+
+    target.bind(newTarget)
+
+    val functionCall = returnExpression.result
+    rebindFunctionCall(functionCall, newTarget, oldTarget)
+}
+
+private fun rebindFunctionCall(functionCall: FirExpression, newTarget: FirPropertyAccessor, oldTarget: FirPropertyAccessor) {
+    requireWithAttachment(functionCall is FirFunctionCall, { "Unexpected result expression ${functionCall::class.simpleName}" }) {
+        withFirSymbolEntry("newTarget", newTarget.propertySymbol)
+        withFirSymbolEntry("oldTarget", oldTarget.propertySymbol)
+        withFirEntry("functionCall", functionCall)
+    }
+
+    rebindDelegateAccess(
+        expression = functionCall.explicitReceiver,
+        newPropertySymbol = newTarget.propertySymbol,
+        oldPropertySymbol = oldTarget.propertySymbol,
+    )
+
+    rebindArgumentList(
+        argumentList = functionCall.argumentList,
+        newTarget = newTarget.propertySymbol,
+        oldTarget = oldTarget.propertySymbol,
+        isSetter = newTarget.isSetter,
+        canHavePropertySymbolAsThisReference = true,
+    )
+}
+
+/**
+ * To cover `thisRef` function
+ *
+ * @see org.jetbrains.kotlin.fir.builder.generateAccessorsByDelegate
+ */
+private fun rebindThisRef(
+    expression: FirExpression,
+    newTarget: FirPropertySymbol,
+    oldTarget: FirPropertySymbol,
+    canHavePropertySymbolAsThisReference: Boolean,
+) {
+    if (expression is FirConstExpression<*>) return
+
+    requireWithAttachment(
+        expression is FirThisReceiverExpression,
+        { "Unexpected this reference expression: ${expression::class.simpleName}" },
+    ) {
+        withFirSymbolEntry("newTarget", newTarget)
+        withFirSymbolEntry("oldTarget", oldTarget)
+        withFirEntry("expression", expression)
+    }
+
+    val boundSymbol = expression.calleeReference.boundSymbol
+    if (boundSymbol is FirClassSymbol<*>) return
+    requireWithAttachment(
+        canHavePropertySymbolAsThisReference,
+        { "Class bound symbol is not found: ${boundSymbol?.let { it::class.simpleName }}" },
+    ) {
+        withFirSymbolEntry("newTarget", newTarget)
+        withFirSymbolEntry("oldTarget", oldTarget)
+        boundSymbol?.let { withFirSymbolEntry("boundSymbol", boundSymbol) }
+    }
+
+    requireWithAttachment(boundSymbol == oldTarget, { "Unexpected bound symbol: ${boundSymbol?.let { it::class.simpleName }}" }) {
+        withFirSymbolEntry("newTarget", newTarget)
+        withFirSymbolEntry("oldTarget", oldTarget)
+        boundSymbol?.let { withFirSymbolEntry("boundSymbol", boundSymbol) }
+    }
+
+    expression.replaceCalleeReference(buildImplicitThisReference {
+        this.boundSymbol = newTarget
+    })
+}
+
+private fun rebindArgumentList(
+    argumentList: FirArgumentList,
+    newTarget: FirPropertySymbol,
+    oldTarget: FirPropertySymbol,
+    isSetter: Boolean,
+    canHavePropertySymbolAsThisReference: Boolean,
+) {
+    val arguments = argumentList.arguments
+    val expectedSize = 2 + if (isSetter) 1 else 0
+    requireWithAttachment(
+        arguments.size == expectedSize,
+        { "Unexpected arguments size. Expected: $expectedSize, actual: ${arguments.size}" },
+    ) {
+        withFirSymbolEntry("newTarget", newTarget)
+        withFirSymbolEntry("oldTarget", oldTarget)
+        withFirEntry("expression", argumentList)
+    }
+
+    rebindThisRef(
+        expression = arguments[0],
+        newTarget = newTarget,
+        oldTarget = oldTarget,
+        canHavePropertySymbolAsThisReference = canHavePropertySymbolAsThisReference,
+    )
+
+    rebindPropertyRef(expression = arguments[1], newPropertySymbol = newTarget, oldPropertySymbol = oldTarget)
+
+    if (isSetter) {
+        rebindSetterParameter(expression = arguments[2], newPropertySymbol = newTarget, oldPropertySymbol = oldTarget)
+    }
+}
+
+/**
+ * To cover third argument in setter body
+ *
+ * @see org.jetbrains.kotlin.fir.builder.generateAccessorsByDelegate
+ */
+private fun rebindSetterParameter(expression: FirExpression, newPropertySymbol: FirPropertySymbol, oldPropertySymbol: FirPropertySymbol) {
+    requireWithAttachment(
+        expression is FirPropertyAccessExpression,
+        { "Unexpected third argument: ${expression::class.simpleName}" }) {
+        withFirSymbolEntry("newTarget", newPropertySymbol)
+        withFirSymbolEntry("oldTarget", oldPropertySymbol)
+        withFirEntry("expression", expression)
+    }
+
+    val calleeReference = expression.resolvedCalleeReference(newPropertySymbol = newPropertySymbol, oldPropertySymbol = oldPropertySymbol)
+    val resolvedParameterSymbol = calleeReference.resolvedSymbol
+    val oldValueParameterSymbol = oldPropertySymbol.setterSymbol?.valueParameterSymbols?.first()
+    requireWithAttachment(
+        resolvedParameterSymbol == oldValueParameterSymbol,
+        { "Unexpected symbol: ${resolvedParameterSymbol::class.simpleName}" },
+    ) {
+        withFirEntry("expression", expression)
+        withFirSymbolEntry("actualOldParameter", resolvedParameterSymbol)
+        oldValueParameterSymbol?.let { withFirSymbolEntry("expectedOldParameter", it) }
+        withFirSymbolEntry("oldProperty", oldPropertySymbol)
+        withFirSymbolEntry("newProperty", newPropertySymbol)
+    }
+
+    expression.replaceCalleeReference(buildResolvedNamedReference {
+        source = calleeReference.source
+        name = calleeReference.name
+        resolvedSymbol = newPropertySymbol.setterSymbol?.valueParameterSymbols?.first() ?: errorWithAttachment("Parameter is not found") {
+            withFirSymbolEntry("oldProperty", oldPropertySymbol)
+            withFirSymbolEntry("newProperty", newPropertySymbol)
+        }
+    })
+}
+
+private fun FirQualifiedAccessExpression.resolvedCalleeReference(
+    newPropertySymbol: FirPropertySymbol,
+    oldPropertySymbol: FirPropertySymbol,
+): FirResolvedNamedReference {
+    val calleeReference = calleeReference
+    requireWithAttachment(
+        calleeReference is FirResolvedNamedReference,
+        { "Unexpected callee reference: ${calleeReference::class.simpleName}" },
+    ) {
+        withFirSymbolEntry("oldProperty", oldPropertySymbol)
+        withFirSymbolEntry("newProperty", newPropertySymbol)
+        withFirEntry("calleeReference", calleeReference)
+    }
+
+    return calleeReference
+}
+
+/**
+ * To cover `propertyRef` function
+ *
+ * @see org.jetbrains.kotlin.fir.builder.generateAccessorsByDelegate
+ */
+private fun rebindPropertyRef(
+    expression: FirExpression,
+    newPropertySymbol: FirPropertySymbol,
+    oldPropertySymbol: FirPropertySymbol,
+) {
+    requireWithAttachment(
+        expression is FirCallableReferenceAccess,
+        { "Unexpected second argument: ${expression::class.simpleName}" },
+    ) {
+        withFirSymbolEntry("newTarget", newPropertySymbol)
+        withFirSymbolEntry("oldTarget", oldPropertySymbol)
+        withFirEntry("expression", expression)
+    }
+
+    val calleeReference = expression.resolvedCalleeReference(newPropertySymbol = newPropertySymbol, oldPropertySymbol = oldPropertySymbol)
+    val resolvedPropertySymbol = calleeReference.resolvedSymbol
+    requireWithAttachment(
+        resolvedPropertySymbol == oldPropertySymbol,
+        { "Unexpected symbol: ${resolvedPropertySymbol::class.simpleName}" },
+    ) {
+        withFirEntry("expression", expression)
+        withFirSymbolEntry("actualOldProperty", resolvedPropertySymbol)
+        withFirSymbolEntry("expectedOldProperty", oldPropertySymbol)
+        withFirSymbolEntry("newProperty", newPropertySymbol)
+    }
+
+    expression.replaceCalleeReference(buildResolvedNamedReference {
+        source = calleeReference.source
+        name = calleeReference.name
+        resolvedSymbol = newPropertySymbol
+    })
+
+    expression.replaceTypeArguments(newPropertySymbol.fir.typeParameters.map {
+        buildTypeProjectionWithVariance {
+            source = expression.source
+            variance = Variance.INVARIANT
+            typeRef = buildResolvedTypeRef {
+                type = ConeTypeParameterTypeImpl(it.symbol.toLookupTag(), false)
+            }
+        }
+    })
+}
+
+/**
+ * To cover `delegateAccess` function
+ *
+ * @see org.jetbrains.kotlin.fir.builder.generateAccessorsByDelegate
+ */
+private fun rebindDelegateAccess(expression: FirExpression?, newPropertySymbol: FirPropertySymbol, oldPropertySymbol: FirPropertySymbol) {
+    requireWithAttachment(
+        expression is FirPropertyAccessExpression,
+        { "Unexpected delegate accessor expression: ${expression?.let { it::class.simpleName }}" },
+    ) {
+        withFirSymbolEntry("newTarget", newPropertySymbol)
+        withFirSymbolEntry("oldTarget", oldPropertySymbol)
+        expression?.let { withFirEntry("expression", it) }
+    }
+
+    val delegateFieldReference = expression.calleeReference
+    requireWithAttachment(
+        delegateFieldReference is FirDelegateFieldReference,
+        { "Unexpected callee reference: ${delegateFieldReference::class.simpleName}" },
+    ) {
+        withFirSymbolEntry("newTarget", newPropertySymbol)
+        withFirSymbolEntry("oldTarget", oldPropertySymbol)
+        withFirEntry("delegateFieldReference", delegateFieldReference)
+    }
+
+    requireWithAttachment(
+        delegateFieldReference.resolvedSymbol == oldPropertySymbol.delegateFieldSymbol,
+        { "Unexpected delegate field symbol" }
+    ) {
+        withFirSymbolEntry("newTarget", newPropertySymbol)
+        withFirSymbolEntry("oldTarget", oldPropertySymbol)
+        withFirSymbolEntry("field", delegateFieldReference.resolvedSymbol)
+    }
+
+    expression.replaceCalleeReference(buildDelegateFieldReference {
+        source = delegateFieldReference.source
+        resolvedSymbol = newPropertySymbol.delegateFieldSymbol ?: errorWithAttachment("Delegate field is missing") {
+            withFirSymbolEntry("newTarget", newPropertySymbol)
+            withFirSymbolEntry("oldTarget", oldPropertySymbol)
+        }
+    })
+
+    expression.dispatchReceiver?.let {
+        rebindThisRef(
+            expression = it,
+            newTarget = newPropertySymbol,
+            oldTarget = oldPropertySymbol,
+            canHavePropertySymbolAsThisReference = false,
+        )
     }
 }
 
@@ -239,7 +593,7 @@ private fun calculateLazyBodiesForField(designation: FirDesignation) {
     val field = designation.target as FirField
     require(field.initializer is FirLazyExpression)
 
-    val newField = revive<FirField>(designation) { it.path.last().psi }
+    val newField = revive<FirField>(designation, designation.path.last().psi)
     field.replaceInitializer(newField.initializer)
 }
 
@@ -307,9 +661,23 @@ private object FirTargetLazyAnnotationCalculatorTransformer : FirLazyAnnotationT
         return regularClass
     }
 
+    override fun transformScript(script: FirScript, data: FirLazyAnnotationTransformerData): FirScript {
+        script.transformAnnotations(this, data)
+        script.forEachDependentDeclaration {
+            it.transformSingle(this, data)
+        }
+
+        return script
+    }
+
     override fun transformBlock(block: FirBlock, data: FirLazyAnnotationTransformerData): FirStatement {
         // We shouldn't process blocks because there are no lazy annotations
         return block
+    }
+
+    override fun transformFile(file: FirFile, data: FirLazyAnnotationTransformerData): FirFile {
+        file.transformAnnotationsContainer(this, data)
+        return file
     }
 }
 
@@ -319,25 +687,30 @@ private abstract class FirLazyAnnotationTransformer : FirTransformer<FirLazyAnno
         return element
     }
 
-    private val COMPILER_ANNOTATION_NAMES: Set<Name> = CompilerRequiredAnnotationsHelper.REQUIRED_ANNOTATIONS
-        .mapTo(mutableSetOf()) { it.shortClassName }
-
     private fun canBeCompilerAnnotation(annotationCall: FirAnnotationCall, session: FirSession): Boolean {
         val annotationTypeRef = annotationCall.annotationTypeRef
         if (annotationTypeRef !is FirUserTypeRef) return false
         if (session.registeredPluginAnnotations.annotations.isNotEmpty()) return true
         val name = annotationTypeRef.qualifier.last().name
-        return name in COMPILER_ANNOTATION_NAMES
+        return name in session.annotationPlatformSupport.requiredAnnotationsShortClassNames
+    }
+
+    override fun transformErrorTypeRef(errorTypeRef: FirErrorTypeRef, data: FirLazyAnnotationTransformerData): FirTypeRef {
+        visitTypeAnnotations(errorTypeRef, data)
+        return super.transformErrorTypeRef(errorTypeRef, data)
     }
 
     override fun transformResolvedTypeRef(resolvedTypeRef: FirResolvedTypeRef, data: FirLazyAnnotationTransformerData): FirTypeRef {
+        visitTypeAnnotations(resolvedTypeRef, data)
+        return super.transformResolvedTypeRef(resolvedTypeRef, data)
+    }
+
+    private fun visitTypeAnnotations(resolvedTypeRef: FirResolvedTypeRef, data: FirLazyAnnotationTransformerData) {
         resolvedTypeRef.coneType.forEachType { coneType ->
             for (typeArgumentAnnotation in coneType.customAnnotations) {
                 typeArgumentAnnotation.accept(this, data)
             }
         }
-
-        return super.transformResolvedTypeRef(resolvedTypeRef, data)
     }
 
     override fun transformAnnotationCall(annotationCall: FirAnnotationCall, data: FirLazyAnnotationTransformerData): FirStatement {
@@ -447,6 +820,11 @@ private abstract class FirLazyBodiesCalculatorTransformer : FirTransformer<Persi
 
         return constructor
     }
+
+    override fun transformErrorPrimaryConstructor(
+        errorPrimaryConstructor: FirErrorPrimaryConstructor,
+        data: PersistentList<FirRegularClass>,
+    ) = transformConstructor(errorPrimaryConstructor, data)
 
     override fun transformProperty(property: FirProperty, data: PersistentList<FirRegularClass>): FirProperty {
         if (needCalculatingLazyBodyForProperty(property)) {

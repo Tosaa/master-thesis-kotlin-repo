@@ -12,7 +12,8 @@ import org.jetbrains.kotlin.ir.IrFileEntry
 import org.jetbrains.kotlin.ir.UNDEFINED_OFFSET
 import org.jetbrains.kotlin.ir.backend.js.JsLoweredDeclarationOrigin
 import org.jetbrains.kotlin.ir.backend.js.JsStatementOrigins
-import org.jetbrains.kotlin.ir.backend.js.lower.*
+import org.jetbrains.kotlin.ir.backend.js.lower.isBoxParameter
+import org.jetbrains.kotlin.ir.backend.js.lower.isEs6ConstructorReplacement
 import org.jetbrains.kotlin.ir.backend.js.sourceMapsInfo
 import org.jetbrains.kotlin.ir.backend.js.utils.*
 import org.jetbrains.kotlin.ir.declarations.*
@@ -48,7 +49,7 @@ fun <T : JsNode> IrWhen.toJsNode(
     tr: BaseIrElementToJsNodeTransformer<T, JsGenerationContext>,
     context: JsGenerationContext,
     node: (JsExpression, T, T?) -> T,
-    implicitElse: T? = null
+    implicitElse: T? = null,
 ): T? =
     branches.foldRight(implicitElse) { br, n ->
         val body = br.result.accept(tr, context)
@@ -136,20 +137,26 @@ fun translateFunction(declaration: IrFunction, name: JsName?, context: JsGenerat
 
 private fun isFunctionTypeInvoke(receiver: JsExpression?, call: IrCall): Boolean {
     if (receiver == null || receiver is JsThisRef) return false
-    val simpleFunction = call.symbol.owner as? IrSimpleFunction ?: return false
+    val simpleFunction = call.symbol.owner
     val receiverType = simpleFunction.dispatchReceiverParameter?.type ?: return false
 
     if (call.origin === JsStatementOrigins.EXPLICIT_INVOKE) return false
 
-    return simpleFunction.name == OperatorNameConventions.INVOKE
-            && receiverType.isFunctionTypeOrSubtype()
-            && (!receiverType.isSuspendFunctionTypeOrSubtype() || receiverType.isSuspendFunction())
+    val isInvokeFun = simpleFunction.name == OperatorNameConventions.INVOKE
+    if (!isInvokeFun) return false
+
+    val isNonSuspendFunction = receiverType.isFunctionTypeOrSubtype() && !receiverType.isSuspendFunctionTypeOrSubtype()
+    val isSuspendFunction = receiverType.isSuspendFunction()
+
+    // Dce can eliminate Function parent of SuspendFunctionN
+    // So we need to check them separately
+    return isNonSuspendFunction || isSuspendFunction
 }
 
 fun translateCall(
     expression: IrCall,
     context: JsGenerationContext,
-    transformer: IrElementToJsExpressionTransformer
+    transformer: IrElementToJsExpressionTransformer,
 ): JsExpression {
     val function = expression.symbol.owner.realOverrideTarget
     val currentDispatchReceiver = context.currentFunction?.parentClassOrNull
@@ -194,7 +201,7 @@ fun translateCall(
 
     expression.superQualifierSymbol?.let { superQualifier ->
         val (target: IrSimpleFunction, klass: IrClass) = if (superQualifier.owner.isInterface) {
-            val impl = function.resolveFakeOverride()!!
+            val impl = function.resolveFakeOverrideOrFail()
             Pair(impl, impl.parentAsClass)
         } else {
             Pair(function, superQualifier.owner)
@@ -386,7 +393,7 @@ fun translateCallArguments(
     expression: IrMemberAccessExpression<IrFunctionSymbol>,
     context: JsGenerationContext,
     transformer: IrElementToJsExpressionTransformer,
-    allowDropTailVoids: Boolean = true
+    allowDropTailVoids: Boolean = true,
 ): List<JsExpression> {
     val size = expression.valueArgumentsCount
 
@@ -449,7 +456,7 @@ object JsAstUtils {
     fun newJsIf(
         ifExpression: JsExpression,
         thenStatement: JsStatement,
-        elseStatement: JsStatement? = null
+        elseStatement: JsStatement? = null,
     ): JsIf {
         return JsIf(ifExpression, deBlockIfPossible(thenStatement), elseStatement?.let { deBlockIfPossible(it) })
     }
@@ -542,7 +549,7 @@ internal fun <T : JsNode> T.withSource(
     node: IrElement,
     context: JsGenerationContext,
     useNameOf: IrDeclarationWithName? = null,
-    container: IrDeclaration? = null
+    container: IrDeclaration? = null,
 ): T {
     addSourceInfoIfNeed(node, context, useNameOf, container)
     return this
@@ -553,7 +560,7 @@ private inline fun <T : JsNode> T.addSourceInfoIfNeed(
     node: IrElement,
     context: JsGenerationContext,
     useNameOf: IrDeclarationWithName?,
-    container: IrDeclaration?
+    container: IrDeclaration?,
 ) {
     val sourceMapsInfo = context.staticContext.backendContext.sourceMapsInfo ?: return
     val originalName = useNameOf?.originalNameForUseInSourceMap(sourceMapsInfo.namesPolicy)
@@ -587,7 +594,7 @@ private inline fun <T : JsNode> T.addSourceInfoIfNeed(
 
 private fun JsLocation.withEmbeddedSource(
     @Suppress("UNUSED_PARAMETER")
-    context: JsGenerationContext
+    context: JsGenerationContext,
 ): JsLocationWithEmbeddedSource {
     // FIXME: fileIdentity is used to distinguish between different files with the same paths.
     // For now we use the file's path to read its content, which makes fileIdentity useless.
@@ -618,8 +625,7 @@ inline fun IrElement.getSourceLocation(fileEntry: IrFileEntry, offsetSelector: I
     if (startOffset == UNDEFINED_OFFSET || endOffset == UNDEFINED_OFFSET) return null
     val path = fileEntry.name
     val offset = offsetSelector()
-    val startLine = fileEntry.getLineNumber(offset)
-    val startColumn = fileEntry.getColumnNumber(offset)
+    val (startLine, startColumn) = fileEntry.getLineAndColumnNumbers(offset)
     return JsLocation(path, startLine, startColumn)
 }
 

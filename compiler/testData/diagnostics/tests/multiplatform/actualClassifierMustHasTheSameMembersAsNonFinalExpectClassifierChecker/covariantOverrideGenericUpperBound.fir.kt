@@ -4,15 +4,15 @@
 interface I
 
 open class Base {
-    <!INCOMPATIBLE_MATCHING{JVM}!>open fun foo(): I = null!!<!>
+    open fun foo(): I = null!!
 }
 
-<!INCOMPATIBLE_MATCHING{JVM}!>expect open class Foo<T : I> : Base {
+<!EXPECT_ACTUAL_INCOMPATIBILITY{JVM}, EXPECT_ACTUAL_INCOMPATIBILITY{JVM}!>expect open class Foo<T : I> : Base {
 }<!>
 
 // MODULE: m2-jvm()()(m1-common)
 // FILE: jvm.kt
 
 actual open class Foo<T : I> : Base() {
-    override fun foo(): T = null!!
+    override fun <!ACTUAL_WITHOUT_EXPECT!>foo<!>(): T = null!!
 }

@@ -226,7 +226,6 @@ public fun CharRange.random(random: Random): Char {
  * Returns a random element from this range, or `null` if this range is empty.
  */
 @SinceKotlin("1.4")
-@WasExperimental(ExperimentalStdlibApi::class)
 @kotlin.internal.InlineOnly
 public inline fun IntRange.randomOrNull(): Int? {
     return randomOrNull(Random)
@@ -236,7 +235,6 @@ public inline fun IntRange.randomOrNull(): Int? {
  * Returns a random element from this range, or `null` if this range is empty.
  */
 @SinceKotlin("1.4")
-@WasExperimental(ExperimentalStdlibApi::class)
 @kotlin.internal.InlineOnly
 public inline fun LongRange.randomOrNull(): Long? {
     return randomOrNull(Random)
@@ -246,7 +244,6 @@ public inline fun LongRange.randomOrNull(): Long? {
  * Returns a random element from this range, or `null` if this range is empty.
  */
 @SinceKotlin("1.4")
-@WasExperimental(ExperimentalStdlibApi::class)
 @kotlin.internal.InlineOnly
 public inline fun CharRange.randomOrNull(): Char? {
     return randomOrNull(Random)
@@ -256,7 +253,6 @@ public inline fun CharRange.randomOrNull(): Char? {
  * Returns a random element from this range using the specified source of randomness, or `null` if this range is empty.
  */
 @SinceKotlin("1.4")
-@WasExperimental(ExperimentalStdlibApi::class)
 public fun IntRange.randomOrNull(random: Random): Int? {
     if (isEmpty())
         return null
@@ -267,7 +263,6 @@ public fun IntRange.randomOrNull(random: Random): Int? {
  * Returns a random element from this range using the specified source of randomness, or `null` if this range is empty.
  */
 @SinceKotlin("1.4")
-@WasExperimental(ExperimentalStdlibApi::class)
 public fun LongRange.randomOrNull(random: Random): Long? {
     if (isEmpty())
         return null
@@ -278,7 +273,6 @@ public fun LongRange.randomOrNull(random: Random): Long? {
  * Returns a random element from this range using the specified source of randomness, or `null` if this range is empty.
  */
 @SinceKotlin("1.4")
-@WasExperimental(ExperimentalStdlibApi::class)
 public fun CharRange.randomOrNull(random: Random): Char? {
     if (isEmpty())
         return null
@@ -961,6 +955,8 @@ public fun CharProgression.reversed(): CharProgression {
 
 /**
  * Returns a progression that goes over the same range with the given step.
+ * 
+ * @sample samples.ranges.Ranges.stepInt
  */
 public infix fun IntProgression.step(step: Int): IntProgression {
     checkStepIsPositive(step > 0, step)
@@ -969,6 +965,8 @@ public infix fun IntProgression.step(step: Int): IntProgression {
 
 /**
  * Returns a progression that goes over the same range with the given step.
+ * 
+ * @sample samples.ranges.Ranges.stepLong
  */
 public infix fun LongProgression.step(step: Long): LongProgression {
     checkStepIsPositive(step > 0, step)
@@ -977,6 +975,8 @@ public infix fun LongProgression.step(step: Long): LongProgression {
 
 /**
  * Returns a progression that goes over the same range with the given step.
+ * 
+ * @sample samples.ranges.Ranges.stepChar
  */
 public infix fun CharProgression.step(step: Int): CharProgression {
     checkStepIsPositive(step > 0, step)

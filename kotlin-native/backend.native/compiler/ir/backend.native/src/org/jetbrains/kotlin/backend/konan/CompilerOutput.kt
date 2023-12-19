@@ -9,10 +9,8 @@ import org.jetbrains.kotlin.backend.konan.driver.PhaseContext
 import org.jetbrains.kotlin.backend.konan.llvm.*
 import org.jetbrains.kotlin.backend.konan.llvm.objc.patchObjCRuntimeModule
 import org.jetbrains.kotlin.konan.file.isBitcode
-import org.jetbrains.kotlin.konan.library.KONAN_STDLIB_NAME
 import org.jetbrains.kotlin.konan.target.CompilerOutputKind
-import org.jetbrains.kotlin.library.BaseKotlinLibrary
-import org.jetbrains.kotlin.library.uniqueName
+import org.jetbrains.kotlin.library.isNativeStdlib
 import org.jetbrains.kotlin.utils.addToStdlib.ifNotEmpty
 import java.io.File
 
@@ -64,10 +62,6 @@ internal fun produceCStubs(generationState: NativeGenerationState) {
     }
 }
 
-private val BaseKotlinLibrary.isStdlib: Boolean
-    get() = uniqueName == KONAN_STDLIB_NAME
-
-
 private data class LlvmModules(
         val runtimeModules: List<LLVMModuleRef>,
         val additionalModules: List<LLVMModuleRef>
@@ -82,7 +76,7 @@ private fun collectLlvmModules(generationState: NativeGenerationState, generated
     val config = generationState.config
 
     val (bitcodePartOfStdlib, bitcodeLibraries) = generationState.dependenciesTracker.bitcodeToLink
-            .partition { it.isStdlib && generationState.producedLlvmModuleContainsStdlib }
+            .partition { it.isNativeStdlib && generationState.producedLlvmModuleContainsStdlib }
             .toList()
             .map { libraries ->
                 libraries.flatMap { it.bitcodePaths }.filter { it.isBitcode }
@@ -93,11 +87,14 @@ private fun collectLlvmModules(generationState: NativeGenerationState, generated
     val additionalBitcodeFilesToLink = generationState.llvm.additionalProducedBitcodeFiles
     val exceptionsSupportNativeLibrary = listOf(config.exceptionsSupportNativeLibrary)
             .takeIf { config.produce == CompilerOutputKind.DYNAMIC_CACHE }.orEmpty()
+    val xcTestRunnerNativeLibrary = listOf(config.xcTestLauncherNativeLibrary)
+            .takeIf { config.produce == CompilerOutputKind.TEST_BUNDLE }.orEmpty()
     val additionalBitcodeFiles = nativeLibraries +
             generatedBitcodeFiles +
             additionalBitcodeFilesToLink +
             bitcodeLibraries +
-            exceptionsSupportNativeLibrary
+            exceptionsSupportNativeLibrary +
+            xcTestRunnerNativeLibrary
 
     val runtimeNativeLibraries = config.runtimeNativeLibraries
 
@@ -126,10 +123,19 @@ private fun linkAllDependencies(generationState: NativeGenerationState, generate
     // TODO: Possibly slow, maybe to a separate phase?
     val optimizedRuntimeModules = RuntimeLinkageStrategy.pick(generationState, runtimeModules).run()
 
-    (optimizedRuntimeModules + additionalModules).forEach {
-        val failed = llvmLinkModules2(generationState, generationState.llvm.module, it)
+    // When the main module `generationState.llvmModule` is very large it is much faster to
+    // link all the auxiliary modules together first before linking with the main module.
+    val linkedModules = (optimizedRuntimeModules + additionalModules).reduceOrNull { acc, module ->
+        val failed = llvmLinkModules2(generationState, acc, module)
         if (failed != 0) {
-            error("Failed to link ${it.getName()}")
+            error("Failed to link ${module.getName()}")
+        }
+        return@reduceOrNull acc
+    }
+    linkedModules?.let {
+        val failed = llvmLinkModules2(generationState, generationState.llvmModule, it)
+        if (failed != 0) {
+            error("Failed to link runtime and additional modules into main module")
         }
     }
 }

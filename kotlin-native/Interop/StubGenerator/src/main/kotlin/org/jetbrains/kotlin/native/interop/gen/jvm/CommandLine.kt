@@ -49,8 +49,16 @@ open class CommonInteropArguments(val argParser: ArgParser) {
             .multiple()
     val libraryVersion by argParser.option(ArgType.String, shortName = "lv", description = "resulting interop library version")
             .default("unspecified")
-    val repo by argParser.option(ArgType.String, shortName = "r", description = "repository to resolve dependencies")
-            .multiple()
+
+    // TODO: remove after 2.0, KT-61098
+    val repo by argParser.option(
+            ArgType.String,
+            shortName = "r",
+            description = "repository to resolve dependencies",
+            // Use the name of the option directly in the deprecation message. This message is automatically printed to the console
+            // if the option has been specified. Without option name in the message it would be unclear which exactly option is deprecated.
+            deprecatedWarning = "'-repo' ('-r') option is deprecated and will be removed in one of the future releases. Please use library paths instead of library names in all options such as '-library' ('-l')."
+    ).multiple()
     val nodefaultlibs by argParser.option(ArgType.Boolean, NODEFAULTLIBS,
             description = "don't link the libraries from dist/klib automatically").default(false)
     val nodefaultlibsDeprecated by argParser.option(ArgType.Boolean, NODEFAULTLIBS_DEPRECATED,
@@ -139,17 +147,6 @@ open class CInteropArguments(argParser: ArgParser =
 
     val disableExperimentalAnnotation by argParser.option(ArgType.Boolean, "Xdisable-experimental-annotation",
             description = "Don't add @ExperimentalForeignApi to generated Kotlin declarations")
-}
-
-class JSInteropArguments(argParser: ArgParser = ArgParser("jsinterop",
-        prefixStyle = ArgParser.OptionPrefixStyle.JVM)): CommonInteropArguments(argParser) {
-    enum class TargetType {
-        WASM32;
-
-        override fun toString() = name.lowercase()
-    }
-    val target by argParser.option(ArgType.Choice<TargetType>(),
-            description = "wasm target to compile to").default(TargetType.WASM32)
 }
 
 internal fun warn(msg: String) {

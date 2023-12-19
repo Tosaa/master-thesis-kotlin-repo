@@ -33,6 +33,7 @@ import org.jetbrains.kotlin.resolve.calls.inference.model.VariableWithConstraint
 import org.jetbrains.kotlin.resolve.calls.model.PostponedAtomWithRevisableExpectedType
 import org.jetbrains.kotlin.types.model.TypeConstructorMarker
 import org.jetbrains.kotlin.types.model.TypeVariableMarker
+import org.jetbrains.kotlin.types.model.TypeVariableTypeConstructorMarker
 import org.jetbrains.kotlin.utils.addIfNotNull
 import org.jetbrains.kotlin.utils.addToStdlib.filterIsInstanceWithChecker
 
@@ -194,14 +195,43 @@ class ConstraintSystemCompleter(components: BodyResolveComponents, private val c
 
         val lambdaArguments = postponedArguments.filterIsInstance<ResolvedLambdaAtom>().takeIf { it.isNotEmpty() } ?: return false
 
+        fun ResolvedLambdaAtom.notFixedInputTypeVariables(): List<TypeVariableTypeConstructorMarker> =
+            inputTypes.flatMap { it.extractTypeVariables() }.filter { it !in fixedTypeVariables }
+
+        val checkForDangerousBuilderInference =
+            !languageVersionSettings.supportsFeature(LanguageFeature.NoBuilderInferenceWithoutAnnotationRestriction)
+
+        // Let's call builder lambda (BL) a lambda that has non-zero not fixed input type variables in
+        // type arguments of it's input types
+        // ex: MutableList<T>.() -> Unit
+        // During type inference of call-site such lambda will be considered BL, if
+        // T not fixed yet
+        // Given we have two or more builder lambdas among postponed arguments, it could result in incorrect type inference due to
+        // incorrect constraint propagation into common system
+        // See KT-53740
+        // Constraint propagation into common system happens at
+        // org.jetbrains.kotlin.resolve.calls.components.PostponedArgumentsAnalyzer.applyResultsOfAnalyzedLambdaToCandidateSystem
+        val dangerousBuilderInferenceWithoutAnnotation =
+            lambdaArguments.size >= 2 && lambdaArguments.count { it.notFixedInputTypeVariables().isNotEmpty() } >= 2
+
         // We assume useBuilderInferenceWithoutAnnotation = true for FIR
 
         val builder = getBuilder()
         for (argument in lambdaArguments) {
-            val notFixedInputTypeVariables = argument.inputTypes
-                .flatMap { it.extractTypeVariables() }.filter { it !in fixedTypeVariables }
+            val reallyHasBuilderInferenceAnnotation = argument.isCorrespondingParameterAnnotatedWithBuilderInference
+
+            val notFixedInputTypeVariables = argument.notFixedInputTypeVariables()
 
             if (notFixedInputTypeVariables.isEmpty()) continue
+
+            // we have dangerous inference situation
+            // if lambda annotated with BuilderInference it's probably safe, due to type shape
+            // otherwise report multi-lambda builder inference restriction diagnostic
+            if (checkForDangerousBuilderInference && dangerousBuilderInferenceWithoutAnnotation && !reallyHasBuilderInferenceAnnotation) {
+                for (variable in notFixedInputTypeVariables) {
+                    addError(AnonymousFunctionBasedMultiLambdaBuilderInferenceRestriction(argument.atom, variable.typeParameter!!))
+                }
+            }
 
             for (variable in notFixedInputTypeVariables) {
                 builder.markPostponedVariable(notFixedTypeVariables.getValue(variable).typeVariable)
@@ -256,17 +286,7 @@ class ConstraintSystemCompleter(components: BodyResolveComponents, private val c
         ) ?: return false
 
         val variableWithConstraints = notFixedTypeVariables.getValue(variableForFixation.variable)
-        if (!variableForFixation.hasProperConstraint) {
-            if (context.inferenceSession.isSyntheticTypeVariable(variableWithConstraints.typeVariable)) {
-                context.inferenceSession.fixSyntheticTypeVariableWithNotEnoughInformation(
-                    variableWithConstraints.typeVariable as ConeTypeVariable,
-                    this
-                )
-                return true
-            }
-
-            return false
-        }
+        if (!variableForFixation.hasProperConstraint) return false
 
         fixVariable(this, variableWithConstraints)
 
@@ -379,16 +399,28 @@ class ConstraintSystemCompleter(components: BodyResolveComponents, private val c
             topLevelAtom.collectAllTypeVariables()
         }
 
-        if (context.inferenceSession.hasSyntheticTypeVariables()) {
-            result.addAll(notFixedTypeVariables.filter { context.inferenceSession.isSyntheticTypeVariable(it.value.typeVariable) }.keys.asIterable())
-        }
-
-        require(result.size == notFixedTypeVariables.size) {
-            val notFoundTypeVariables = notFixedTypeVariables.keys.toMutableSet().apply { removeAll(result) }
-            "Not all type variables found: $notFoundTypeVariables"
-        }
+        checkNotFixedTypeVariablesCountConsistency(result)
 
         return result.toList()
+    }
+
+    private fun ConstraintSystemCompletionContext.checkNotFixedTypeVariablesCountConsistency(
+        result: LinkedHashSet<TypeConstructorMarker>,
+    ) {
+        val notFixedTypeVariablesToUse =
+            when (outerSystemVariablesPrefixSize) {
+                0 -> notFixedTypeVariables.keys
+                else -> notFixedTypeVariables.keys.toMutableSet().apply {
+                    removeAll(allTypeVariables.keys.take(outerSystemVariablesPrefixSize).toSet())
+                }
+            }
+
+        require(result.size == notFixedTypeVariablesToUse.size) {
+            val notFoundTypeVariables = notFixedTypeVariablesToUse.toMutableSet().apply {
+                removeAll(result)
+            }
+            "Not all type variables found: $notFoundTypeVariables"
+        }
     }
 
     private fun fixVariable(
@@ -419,7 +451,7 @@ class ConstraintSystemCompleter(components: BodyResolveComponents, private val c
                     processBlocks = true
                 ) { candidate ->
                     candidate.postponedAtoms.forEach { atom ->
-                        notAnalyzedArguments.addIfNotNull((atom as? PostponedResolvedAtom)?.takeUnless { it.analyzed })
+                        notAnalyzedArguments.addIfNotNull(atom.takeUnless { it.analyzed })
                     }
                 }
             }

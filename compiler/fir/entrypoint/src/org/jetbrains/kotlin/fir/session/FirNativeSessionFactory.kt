@@ -6,22 +6,26 @@
 package org.jetbrains.kotlin.fir.session
 
 import org.jetbrains.kotlin.config.LanguageVersionSettings
-import org.jetbrains.kotlin.fir.*
-import org.jetbrains.kotlin.fir.analysis.FirEmptyOverridesBackwardCompatibilityHelper
-import org.jetbrains.kotlin.fir.analysis.FirOverridesBackwardCompatibilityHelper
+import org.jetbrains.kotlin.fir.BinaryModuleData
+import org.jetbrains.kotlin.fir.FirModuleData
+import org.jetbrains.kotlin.fir.FirSession
+import org.jetbrains.kotlin.fir.SessionConfiguration
+import org.jetbrains.kotlin.fir.backend.native.FirNativeClassMapper
 import org.jetbrains.kotlin.fir.checkers.registerNativeCheckers
 import org.jetbrains.kotlin.fir.deserialization.ModuleDataProvider
 import org.jetbrains.kotlin.fir.extensions.FirExtensionRegistrar
 import org.jetbrains.kotlin.fir.java.FirProjectSessionProvider
-import org.jetbrains.kotlin.fir.resolve.calls.ConeCallConflictResolverFactory
 import org.jetbrains.kotlin.fir.resolve.providers.impl.FirBuiltinSyntheticFunctionInterfaceProvider
 import org.jetbrains.kotlin.fir.scopes.FirKotlinScopeProvider
 import org.jetbrains.kotlin.fir.scopes.FirPlatformClassMapper
+import org.jetbrains.kotlin.fir.session.FirSessionFactoryHelper.registerDefaultComponents
 import org.jetbrains.kotlin.library.isNativeStdlib
+import org.jetbrains.kotlin.library.metadata.impl.KlibResolvedModuleDescriptorsFactoryImpl.Companion.FORWARD_DECLARATIONS_MODULE_NAME
 import org.jetbrains.kotlin.library.metadata.resolver.KotlinResolvedLibrary
 import org.jetbrains.kotlin.name.Name
 
 object FirNativeSessionFactory : FirAbstractSessionFactory() {
+    @OptIn(SessionConfiguration::class)
     fun createLibrarySession(
         mainModuleName: Name,
         resolvedLibraries: List<KotlinResolvedLibrary>,
@@ -38,12 +42,14 @@ object FirNativeSessionFactory : FirAbstractSessionFactory() {
             languageVersionSettings,
             extensionRegistrars,
             registerExtraComponents = { session ->
+                session.registerDefaultComponents()
+                session.register(FirPlatformClassMapper::class, FirNativeClassMapper())
                 registerExtraComponents(session)
             },
             createKotlinScopeProvider = { FirKotlinScopeProvider() },
             createProviders = { session, builtinsModuleData, kotlinScopeProvider, syntheticFunctionInterfaceProvider ->
                 val forwardDeclarationsModuleData = BinaryModuleData.createDependencyModuleData(
-                    Name.special("<forward declarations>"),
+                    FORWARD_DECLARATIONS_MODULE_NAME,
                     moduleDataProvider.platform,
                     moduleDataProvider.analyzerServices,
                 ).apply {
@@ -82,10 +88,8 @@ object FirNativeSessionFactory : FirAbstractSessionFactory() {
             null,
             init,
             registerExtraComponents = {
-                it.register(FirVisibilityChecker::class, FirVisibilityChecker.Default)
-                it.register(ConeCallConflictResolverFactory::class, DefaultCallConflictResolverFactory)
-                it.register(FirPlatformClassMapper::class, FirPlatformClassMapper.Default)
-                it.register(FirOverridesBackwardCompatibilityHelper::class, FirEmptyOverridesBackwardCompatibilityHelper)
+                it.registerDefaultComponents()
+                it.register(FirPlatformClassMapper::class, FirNativeClassMapper())
                 registerExtraComponents(it)
             },
             registerExtraCheckers = { it.registerNativeCheckers() },

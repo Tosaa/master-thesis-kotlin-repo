@@ -13,7 +13,9 @@ dependencies {
     api(intellijCore())
     implementation(project(":analysis:analysis-internal-utils"))
 
-    testApiJUnit5()
+    testApi(platform(libs.junit.bom))
+    testImplementation(libs.junit.jupiter.api)
+    testRuntimeOnly(libs.junit.jupiter.engine)
     testImplementation(project(":kotlin-test:kotlin-test-junit"))
     testImplementation(project(":analysis:analysis-api"))
     testImplementation(project(":analysis:analysis-api-standalone:analysis-api-standalone-base"))
@@ -27,6 +29,7 @@ dependencies {
     testImplementation(project(":analysis:decompiled:decompiler-to-file-stubs"))
     testImplementation(project(":analysis:decompiled:light-classes-for-decompiled"))
     testImplementation(project(":analysis:decompiled:decompiler-to-psi"))
+    testImplementation(project(":analysis:decompiled:decompiler-native"))
     testImplementation(projectTests(":analysis:analysis-test-framework"))
     testImplementation(commonDependency("org.jetbrains.kotlin:kotlin-reflect")) { isTransitive = false }
     testImplementation(toolsJar())

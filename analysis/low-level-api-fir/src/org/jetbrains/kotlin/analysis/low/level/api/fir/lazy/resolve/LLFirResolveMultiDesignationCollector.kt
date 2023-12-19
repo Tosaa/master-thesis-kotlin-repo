@@ -5,10 +5,10 @@
 
 package org.jetbrains.kotlin.analysis.low.level.api.fir.lazy.resolve
 
-import org.jetbrains.kotlin.analysis.low.level.api.fir.api.collectDesignationWithFile
 import org.jetbrains.kotlin.analysis.low.level.api.fir.api.targets.LLFirClassWithAllCallablesResolveTarget
 import org.jetbrains.kotlin.analysis.low.level.api.fir.api.targets.LLFirResolveTarget
-import org.jetbrains.kotlin.analysis.low.level.api.fir.api.targets.LLFirWholeFileResolveTarget
+import org.jetbrains.kotlin.analysis.low.level.api.fir.api.targets.LLFirSingleResolveTarget
+import org.jetbrains.kotlin.analysis.low.level.api.fir.api.targets.LLFirWholeElementResolveTarget
 import org.jetbrains.kotlin.analysis.low.level.api.fir.api.targets.asResolveTarget
 import org.jetbrains.kotlin.analysis.low.level.api.fir.api.throwUnexpectedFirElementError
 import org.jetbrains.kotlin.analysis.low.level.api.fir.api.tryCollectDesignationWithFile
@@ -19,26 +19,26 @@ import org.jetbrains.kotlin.fir.declarations.synthetic.FirSyntheticProperty
 import org.jetbrains.kotlin.fir.declarations.synthetic.FirSyntheticPropertyAccessor
 
 internal object LLFirResolveMultiDesignationCollector {
-    fun getDesignationsToResolve(target: FirElementWithResolveState): List<LLFirResolveTarget> {
-        return when (target) {
-            is FirFile -> listOf(LLFirWholeFileResolveTarget(target))
-            else -> getMainDesignationToResolve(target)?.withAnnotationContainer()
-        } ?: emptyList()
+    fun getDesignationsToResolve(target: FirElementWithResolveState): List<LLFirResolveTarget> = when (target) {
+        is FirFile -> listOf(LLFirSingleResolveTarget(target))
+        is FirSyntheticPropertyAccessor -> getDesignationsToResolve(target.delegate)
+        is FirSyntheticProperty -> getDesignationsToResolve(target.getter) + target.setter?.let(::getDesignationsToResolve).orEmpty()
+        else -> listOfNotNull(getMainDesignationToResolve(target))
     }
 
     fun getDesignationsToResolveWithCallableMembers(target: FirRegularClass): List<LLFirResolveTarget> {
         val designation = target.tryCollectDesignationWithFile() ?: return emptyList()
         val resolveTarget = LLFirClassWithAllCallablesResolveTarget(designation.firFile, designation.path, target)
-        return resolveTarget.withAnnotationContainer()
+        return listOf(resolveTarget)
     }
 
-    private fun LLFirResolveTarget.withAnnotationContainer(): List<LLFirResolveTarget> {
-        val annotationsContainer = firFile.annotationsContainer
-        if (annotationsContainer?.shouldBeResolved() != true) return listOf(this)
-        return buildList {
-            add(annotationsContainer.collectDesignationWithFile().asResolveTarget())
-            add(this@withAnnotationContainer)
-        }
+    fun getDesignationsToResolveRecursively(target: FirElementWithResolveState): List<LLFirResolveTarget> {
+        if (target is FirFile) return listOf(LLFirWholeElementResolveTarget(target))
+
+        if (!target.shouldBeResolved()) return emptyList()
+        val designation = target.tryCollectDesignationWithFile() ?: return emptyList()
+        val resolveTarget = LLFirWholeElementResolveTarget(designation.firFile, designation.path, target)
+        return listOf(resolveTarget)
     }
 
     private fun getMainDesignationToResolve(target: FirElementWithResolveState): LLFirResolveTarget? {
@@ -68,12 +68,11 @@ internal object LLFirResolveMultiDesignationCollector {
         is FirDeclarationOrigin.SamConstructor,
         is FirDeclarationOrigin.WrappedIntegerOperator,
         is FirDeclarationOrigin.IntersectionOverride,
-        is FirDeclarationOrigin.ScriptCustomization
+        is FirDeclarationOrigin.ScriptCustomization,
         -> {
             when (this) {
                 is FirFile -> true
-                is FirSyntheticProperty -> false
-                is FirSyntheticPropertyAccessor -> false
+                is FirSyntheticProperty, is FirSyntheticPropertyAccessor -> false
                 is FirSimpleFunction,
                 is FirProperty,
                 is FirPropertyAccessor,

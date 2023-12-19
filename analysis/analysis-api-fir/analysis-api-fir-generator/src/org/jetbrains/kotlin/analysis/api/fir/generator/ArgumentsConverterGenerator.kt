@@ -6,8 +6,6 @@
 package org.jetbrains.kotlin.analysis.api.fir.generator
 
 import org.jetbrains.kotlin.fir.checkers.generator.printImports
-import org.jetbrains.kotlin.fir.tree.generator.printer.printCopyright
-import org.jetbrains.kotlin.fir.tree.generator.printer.printGeneratedMessage
 import org.jetbrains.kotlin.fir.tree.generator.util.writeToFileUsingSmartPrinterIfFileContentChanged
 import org.jetbrains.kotlin.utils.SmartPrinter
 import org.jetbrains.kotlin.utils.withIndent
@@ -80,7 +78,7 @@ object ArgumentsConverterGenerator {
     private fun SmartPrinter.generateSingleConverter(type: KClass<*>, converter: HLParameterConversion) {
         println("private fun $CONVERT_ARGUMENT(argument: ${type.typeWithStars}, firSymbolBuilder: KtSymbolByFirBuilder): Any? {")
         withIndent {
-            println("return ${converter.convertExpression("argument", ConversionContext(getCurrentIndentInUnits(), getIndentUnit()))}")
+            println("return ${converter.convertExpression("argument", ConversionContext(currentIndentLengthInUnits, indentUnitLength))}")
         }
         println("}")
         println()

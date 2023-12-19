@@ -19,15 +19,20 @@ plugins {
     id("kotlin-daemon-config")
 }
 
+dependencyResolutionManagement {
+    versionCatalogs {
+        create("libs") {
+            from(files("../../gradle/libs.versions.toml"))
+        }
+    }
+}
+
 buildscript {
     val buildGradlePluginVersion = extra["kotlin.build.gradlePlugin.version"]
     dependencies {
         classpath("org.jetbrains.kotlin:kotlin-build-gradle-plugin:$buildGradlePluginVersion")
     }
 }
-
-include(":kotlin-native-shared")
-project(":kotlin-native-shared").projectDir = File("$rootDir/../shared")
 
 // This code could potentially remove the need of bootstrapping code that use util-klib and util-io
 // by building them, but it's not possible right now, because they use buildSrc plugins (like JPS) and methods (like commonDependency).

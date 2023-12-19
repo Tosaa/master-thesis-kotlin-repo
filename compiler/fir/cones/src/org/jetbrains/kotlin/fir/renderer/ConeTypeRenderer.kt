@@ -7,12 +7,13 @@ package org.jetbrains.kotlin.fir.renderer
 
 import org.jetbrains.kotlin.builtins.functions.FunctionTypeKind
 import org.jetbrains.kotlin.fir.types.*
+import org.jetbrains.kotlin.utils.addToStdlib.ifNotEmpty
 
-open class ConeTypeRenderer {
-
+open class ConeTypeRenderer(
+    private val attributeRenderer: ConeAttributeRenderer = ConeAttributeRenderer.ToString
+) {
     lateinit var builder: StringBuilder
     lateinit var idRenderer: ConeIdRenderer
-    var attributeRenderer: ConeAttributeRenderer = ConeAttributeRenderer.ToString
 
     open fun renderAsPossibleFunctionType(
         type: ConeKotlinType,
@@ -62,6 +63,9 @@ open class ConeTypeRenderer {
     }
 
     fun render(type: ConeKotlinType) {
+        type.abbreviatedType?.let {
+            return render(it)
+        }
         if (type !is ConeFlexibleType && type !is ConeDefinitelyNotNullType) {
             // We don't render attributes for flexible/definitely not null types here,
             // because bounds duplicate these attributes often
@@ -70,7 +74,7 @@ open class ConeTypeRenderer {
         when (type) {
             is ConeTypeVariableType -> {
                 builder.append("TypeVariable(")
-                builder.append(type.lookupTag.name)
+                builder.append(type.typeConstructor.name)
                 builder.append(")")
             }
 
@@ -177,16 +181,16 @@ open class ConeTypeRenderer {
         builder.append(">")
     }
 
-    private fun ConeKotlinType.renderAttributes() {
+    protected open fun ConeKotlinType.renderAttributes() {
         if (!attributes.any()) return
         builder.append(attributeRenderer.render(attributes))
     }
 
-    private fun ConeKotlinType.renderNonCompilerAttributes() {
+    protected fun ConeKotlinType.renderNonCompilerAttributes() {
         val compilerAttributes = CompilerConeAttributes.classIdByCompilerAttributeKey
-        if (attributes.any { it.key !in compilerAttributes }) {
-            builder.append(attributeRenderer.render(attributes))
-        }
+        attributes
+            .filter { it.key !in compilerAttributes }
+            .ifNotEmpty { builder.append(attributeRenderer.render(this)) }
     }
 
     private fun ConeTypeProjection.render() {

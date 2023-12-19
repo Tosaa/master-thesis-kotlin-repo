@@ -15,6 +15,8 @@ import org.jetbrains.kotlin.fir.declarations.FirFunction
 import org.jetbrains.kotlin.fir.declarations.FirResolvePhase
 import org.jetbrains.kotlin.fir.declarations.builder.buildContextReceiver
 import org.jetbrains.kotlin.fir.declarations.builder.buildValueParameter
+import org.jetbrains.kotlin.fir.diagnostics.ConeCannotInferReceiverParameterType
+import org.jetbrains.kotlin.fir.diagnostics.ConeCannotInferValueParameterType
 import org.jetbrains.kotlin.fir.expressions.*
 import org.jetbrains.kotlin.fir.resolve.ResolutionMode
 import org.jetbrains.kotlin.fir.resolve.calls.*
@@ -30,6 +32,7 @@ import org.jetbrains.kotlin.fir.resolve.transformers.replaceLambdaArgumentInvoca
 import org.jetbrains.kotlin.fir.resolve.typeFromCallee
 import org.jetbrains.kotlin.fir.symbols.impl.FirValueParameterSymbol
 import org.jetbrains.kotlin.fir.types.*
+import org.jetbrains.kotlin.fir.types.builder.buildErrorTypeRef
 import org.jetbrains.kotlin.fir.types.builder.buildResolvedTypeRef
 import org.jetbrains.kotlin.fir.types.impl.ConeClassLikeTypeImpl
 import org.jetbrains.kotlin.fir.visitors.transformSingle
@@ -62,9 +65,8 @@ class FirCallCompleter(
         val initialType = typeRef.initialTypeOfCandidate(candidate)
 
         if (call is FirExpression) {
-            val resolvedTypeRef = typeRef.resolvedTypeFromPrototype(initialType)
-            call.resultType = resolvedTypeRef
-            session.lookupTracker?.recordTypeResolveAsLookup(resolvedTypeRef, call.source, components.context.file.source)
+            call.resultType = initialType
+            session.lookupTracker?.recordTypeResolveAsLookup(initialType, call.source, components.context.file.source)
         }
 
         addConstraintFromExpectedType(
@@ -75,7 +77,20 @@ class FirCallCompleter(
 
         val completionMode = candidate.computeCompletionMode(
             session.inferenceComponents, resolutionMode, initialType
-        )
+        ).let {
+            // The difference between `shouldAvoidFullCompletion` and `!shouldRunCompletion` is very subtle:
+            // we don't run even partial completion for `!inferenceSession.shouldRunCompletion(call)`, while actually
+            // do that for `shouldAvoidFullCompletion`
+            //
+            // As for implementations, `shouldRunCompletion` only works for Builder inference, while `shouldAvoidFullCompletion` is for
+            // delegate inference where it's assumed to have partially completed intermediate calls.
+            //
+            // Ideally, we should get rid of `shouldRunCompletion` once Builder inference is rewritten (see KT-61041 for tracking)
+            if (it == ConstraintSystemCompletionMode.FULL && inferenceSession.shouldAvoidFullCompletion(call))
+                ConstraintSystemCompletionMode.PARTIAL
+            else
+                it
+        }
 
         val analyzer = createPostponedArgumentsAnalyzer(transformer.resolutionContext)
         if (call is FirFunctionCall) {
@@ -90,7 +105,7 @@ class FirCallCompleter(
                         .buildAbstractResultingSubstitutor(session.typeContext) as ConeSubstitutor
                     val completedCall = call.transformSingle(
                         FirCallCompletionResultsWriterTransformer(
-                            session, finalSubstitutor,
+                            session, components.scopeSession, finalSubstitutor,
                             components.returnTypeCalculator,
                             session.typeApproximator,
                             components.dataFlowAnalyzer,
@@ -103,18 +118,15 @@ class FirCallCompleter(
                     inferenceSession.addCompletedCall(completedCall, candidate)
                     completedCall
                 } else {
-                    inferenceSession.addPartiallyResolvedCall(call)
+                    inferenceSession.processPartiallyResolvedCall(call, resolutionMode)
                     call
                 }
             }
 
             ConstraintSystemCompletionMode.PARTIAL -> {
                 runCompletionForCall(candidate, completionMode, call, initialType, analyzer)
-
-                // Add top-level delegate call as partially resolved to inference session
-                if (resolutionMode is ResolutionMode.ContextDependent.Delegate) {
-                    require(inferenceSession is FirDelegatedPropertyInferenceSession)
-                    inferenceSession.addPartiallyResolvedCall(call)
+                if (inferenceSession is FirDelegatedPropertyInferenceSession) {
+                    inferenceSession.processPartiallyResolvedCall(call, resolutionMode)
                 }
 
                 call
@@ -210,7 +222,7 @@ class FirCallCompleter(
         mode: FirCallCompletionResultsWriterTransformer.Mode = FirCallCompletionResultsWriterTransformer.Mode.Normal
     ): FirCallCompletionResultsWriterTransformer {
         return FirCallCompletionResultsWriterTransformer(
-            session, substitutor, components.returnTypeCalculator,
+            session, components.scopeSession, substitutor, components.returnTypeCalculator,
             session.typeApproximator,
             components.dataFlowAnalyzer,
             components.integerLiteralAndOperatorApproximationTransformer,
@@ -265,9 +277,9 @@ class FirCallCompleter(
                         containingFunctionSymbol = lambdaArgument.symbol
                         moduleData = session.moduleData
                         origin = FirDeclarationOrigin.Source
-                        returnTypeRef = itType.approximateLambdaInputType().toFirResolvedTypeRef()
                         this.name = name
                         symbol = FirValueParameterSymbol(name)
+                        returnTypeRef = itType.approximateLambdaInputType(symbol).toFirResolvedTypeRef()
                         defaultValue = null
                         isCrossinline = false
                         isNoinline = false
@@ -283,7 +295,7 @@ class FirCallCompleter(
                 receiverType == null -> lambdaArgument.replaceReceiverParameter(null)
                 !lambdaAtom.coerceFirstParameterToExtensionReceiver -> {
                     lambdaArgument.receiverParameter?.apply {
-                        val type = receiverType.approximateLambdaInputType()
+                        val type = receiverType.approximateLambdaInputType(valueParameter = null)
                         val source = source?.fakeElement(KtFakeSourceElementKind.ImplicitTypeRef)
                         replaceTypeRef(typeRef.resolvedTypeFromPrototype(type, source))
                     }
@@ -313,7 +325,20 @@ class FirCallCompleter(
                 else -> parameters
             }
             lambdaArgument.valueParameters.forEachIndexed { index, parameter ->
-                val newReturnType = theParameters[index].approximateLambdaInputType()
+                if (index >= theParameters.size) {
+                    // May happen in erroneous code, see KT-60450
+                    // In test forEachOnZip.kt we have two declared parameters, but in fact forEach expects only one
+                    parameter.replaceReturnTypeRef(
+                        buildErrorTypeRef {
+                            diagnostic = ConeCannotInferValueParameterType(
+                                parameter.symbol, "Lambda or anonymous function has more parameters than expected"
+                            )
+                            source = parameter.source
+                        }
+                    )
+                    return@forEachIndexed
+                }
+                val newReturnType = theParameters[index].approximateLambdaInputType(parameter.symbol)
                 val newReturnTypeRef = if (parameter.returnTypeRef is FirImplicitTypeRef) {
                     newReturnType.toFirResolvedTypeRef(parameter.source?.fakeElement(KtFakeSourceElementKind.ImplicitReturnTypeOfLambdaValueParameter))
                 } else parameter.returnTypeRef.resolvedTypeFromPrototype(newReturnType)
@@ -354,10 +379,19 @@ class FirCallCompleter(
         }
     }
 
-    private fun ConeKotlinType.approximateLambdaInputType(): ConeKotlinType =
-        session.typeApproximator.approximateToSuperType(
+    private fun ConeKotlinType.approximateLambdaInputType(valueParameter: FirValueParameterSymbol?): ConeKotlinType {
+        // We only run lambda completion from ConstraintSystemCompletionContext.analyzeRemainingNotAnalyzedPostponedArgument when they are
+        // left uninferred.
+        // Currently, we use stub types for builder inference, so CANNOT_INFER_PARAMETER_TYPE is the only possible result here.
+        if (this is ConeTypeVariableType) {
+            val diagnostic = valueParameter?.let(::ConeCannotInferValueParameterType) ?: ConeCannotInferReceiverParameterType()
+            return ConeErrorType(diagnostic)
+        }
+
+        return session.typeApproximator.approximateToSuperType(
             this, TypeApproximatorConfiguration.FinalApproximationAfterResolutionAndInference
         ) ?: this
+    }
 }
 
 private fun Candidate.isFunctionForExpectTypeFromCastFeature(): Boolean {

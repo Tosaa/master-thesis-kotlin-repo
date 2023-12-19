@@ -5,20 +5,13 @@
 
 package org.jetbrains.kotlin.analysis.project.structure.impl
 
-import com.google.common.io.Files.getFileExtension
 import com.intellij.ide.highlighter.JavaFileType
-import com.intellij.openapi.project.Project
-import com.intellij.openapi.vfs.StandardFileSystems
-import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.psi.PsiFileSystemItem
 import com.intellij.psi.PsiManager
-import com.intellij.psi.search.GlobalSearchScope
-import com.intellij.psi.search.ProjectScope
-import com.intellij.util.io.URLUtil
-import org.jetbrains.kotlin.analysis.api.impl.base.util.LibraryUtils
+import org.jetbrains.kotlin.analysis.api.standalone.base.project.structure.KtStaticProjectStructureProvider
 import org.jetbrains.kotlin.analysis.project.structure.builder.*
 import org.jetbrains.kotlin.analyzer.common.CommonPlatformAnalyzerServices
-import org.jetbrains.kotlin.cli.jvm.compiler.TopDownAnalyzerFacadeForJVM
+import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreProjectEnvironment
 import org.jetbrains.kotlin.cli.jvm.config.javaSourceRoots
 import org.jetbrains.kotlin.cli.jvm.config.jvmClasspathRoots
 import org.jetbrains.kotlin.cli.jvm.config.jvmModularRoots
@@ -43,7 +36,7 @@ import org.jetbrains.kotlin.wasm.resolve.WasmJsPlatformAnalyzerServices
 import java.io.IOException
 import java.nio.file.*
 import java.nio.file.attribute.BasicFileAttributes
-import org.jetbrains.kotlin.analysis.api.standalone.base.project.structure.KtStaticProjectStructureProvider
+import kotlin.io.path.extension
 
 internal fun TargetPlatform.getAnalyzerServices(): PlatformDependentAnalyzerServices {
     return when {
@@ -65,38 +58,36 @@ internal fun TargetPlatform.getAnalyzerServices(): PlatformDependentAnalyzerServ
 internal fun getSourceFilePaths(
     compilerConfig: CompilerConfiguration,
     includeDirectoryRoot: Boolean = false,
-): Set<String> {
+): Set<Path> {
     return buildSet {
         compilerConfig.javaSourceRoots.forEach { srcRoot ->
             val path = Paths.get(srcRoot)
             if (Files.isDirectory(path)) {
                 // E.g., project/app/src
-                collectSourceFilePaths(path, this)
+                addAll(collectSourceFilePaths(path))
                 if (includeDirectoryRoot) {
-                    add(srcRoot)
+                    add(path)
                 }
             } else {
                 // E.g., project/app/src/some/pkg/main.kt
-                add(srcRoot)
+                add(path)
             }
         }
     }
 }
 
 /**
- * Collect source file path from the given [root] store them in [result].
+ * Collect source file path from the given [root]
  *
  * E.g., for `project/app/src` as a [root], this will walk the file tree and
  * collect all `.kt`, `.kts`, and `.java` files under that folder.
  *
  * Note that this util gracefully skips [IOException] during file tree traversal.
  */
-private fun collectSourceFilePaths(
-    root: Path,
-    result: MutableSet<String>
-) {
+internal fun collectSourceFilePaths(root: Path): List<Path> {
     // NB: [Files#walk] throws an exception if there is an issue during IO.
     // With [Files#walkFileTree] with a custom visitor, we can take control of exception handling.
+    val result = mutableListOf<Path>()
     Files.walkFileTree(
         root,
         object : SimpleFileVisitor<Path>() {
@@ -110,12 +101,8 @@ private fun collectSourceFilePaths(
             override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
                 if (!Files.isRegularFile(file) || !Files.isReadable(file))
                     return FileVisitResult.CONTINUE
-                val ext = getFileExtension(file.fileName.toString())
-                if (ext == KotlinFileType.EXTENSION ||
-                    ext == KotlinParserDefinition.STD_SCRIPT_SUFFIX ||
-                    ext == JavaFileType.DEFAULT_EXTENSION
-                ) {
-                    result.add(file.toString())
+                if (file.hasSuitableExtensionToAnalyse()) {
+                    result.add(file)
                 }
                 return FileVisitResult.CONTINUE
             }
@@ -129,17 +116,26 @@ private fun collectSourceFilePaths(
             }
         }
     )
+    return result
+}
+
+internal fun Path.hasSuitableExtensionToAnalyse(): Boolean {
+    val extension = extension
+
+    return extension == KotlinFileType.EXTENSION ||
+            extension == KotlinParserDefinition.STD_SCRIPT_SUFFIX ||
+            extension == JavaFileType.DEFAULT_EXTENSION
 }
 
 internal inline fun <reified T : PsiFileSystemItem> getPsiFilesFromPaths(
-    project: Project,
-    paths: Collection<String>,
+    kotlinCoreProjectEnvironment: KotlinCoreProjectEnvironment,
+    paths: Collection<Path>,
 ): List<T> {
-    val fs = StandardFileSystems.local()
-    val psiManager = PsiManager.getInstance(project)
+    val fs = kotlinCoreProjectEnvironment.environment.localFileSystem
+    val psiManager = PsiManager.getInstance(kotlinCoreProjectEnvironment.project)
     return buildList {
         for (path in paths) {
-            val vFile = fs.findFileByPath(path) ?: continue
+            val vFile = fs.findFileByPath(path.toString()) ?: continue
             val psiFileSystemItem =
                 if (vFile.isDirectory)
                     psiManager.findDirectory(vFile) as? T
@@ -151,37 +147,27 @@ internal inline fun <reified T : PsiFileSystemItem> getPsiFilesFromPaths(
 }
 
 internal fun buildKtModuleProviderByCompilerConfiguration(
+    kotlinCoreProjectEnvironment: KotlinCoreProjectEnvironment,
     compilerConfig: CompilerConfiguration,
-    project: Project,
     ktFiles: List<KtFile>,
-): KtStaticProjectStructureProvider = buildProjectStructureProvider {
-    val (scriptFiles, ordinaryFiles) = ktFiles.partition { it.isScript() }
+): KtStaticProjectStructureProvider = buildProjectStructureProvider(kotlinCoreProjectEnvironment) {
+    val (scriptFiles, _) = ktFiles.partition { it.isScript() }
     val platform = JvmPlatforms.defaultJvmPlatform
 
     fun KtModuleBuilder.addModuleDependencies(moduleName: String) {
         val libraryRoots = compilerConfig.jvmModularRoots + compilerConfig.jvmClasspathRoots
         addRegularDependency(
             buildKtLibraryModule {
-                contentScope = ProjectScope.getLibrariesScope(project)
                 this.platform = platform
-                this.project = project
-                binaryRoots = libraryRoots.map { it.toPath() }
+                addBinaryRoots(libraryRoots.map { it.toPath() })
                 libraryName = "Library for $moduleName"
             }
         )
         compilerConfig.get(JVMConfigurationKeys.JDK_HOME)?.let { jdkHome ->
-            val vfm = VirtualFileManager.getInstance()
-            val jdkHomePath = jdkHome.toPath()
-            val jdkHomeVirtualFile = vfm.findFileByNioPath(jdkHomePath)
-            val binaryRoots = LibraryUtils.findClassesFromJdkHome(jdkHomePath).map {
-                Paths.get(URLUtil.extractPath(it))
-            }
             addRegularDependency(
                 buildKtSdkModule {
-                    contentScope = GlobalSearchScope.fileScope(project, jdkHomeVirtualFile)
                     this.platform = platform
-                    this.project = project
-                    this.binaryRoots = binaryRoots
+                    addBinaryRootsFromJdkHome(jdkHome.toPath(), isJre = false)
                     sdkName = "JDK for $moduleName"
                 }
             )
@@ -193,7 +179,6 @@ internal fun buildKtModuleProviderByCompilerConfiguration(
     for (scriptFile in scriptFiles) {
         buildKtScriptModule {
             configLanguageVersionSettings?.let { this.languageVersionSettings = it }
-            this.project = project
             this.platform = platform
             this.file = scriptFile
 
@@ -203,22 +188,14 @@ internal fun buildKtModuleProviderByCompilerConfiguration(
 
     buildKtSourceModule {
         configLanguageVersionSettings?.let { this.languageVersionSettings = it }
-        this.project = project
         this.platform = platform
         this.moduleName = compilerConfig.get(CommonConfigurationKeys.MODULE_NAME) ?: "<no module name provided>"
 
         addModuleDependencies(moduleName)
 
-        contentScope = TopDownAnalyzerFacadeForJVM.newModuleSearchScope(project, ordinaryFiles)
-        addSourceRoots(
-            getPsiFilesFromPaths(
-                project,
-                getSourceFilePaths(compilerConfig, includeDirectoryRoot = true)
-            )
-        )
+        addSourceRoots(compilerConfig.javaSourceRoots.map { Paths.get(it) })
     }.apply(::addModule)
 
 
     this.platform = platform
-    this.project = project
 }

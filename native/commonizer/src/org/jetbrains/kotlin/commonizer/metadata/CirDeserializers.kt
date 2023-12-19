@@ -5,7 +5,6 @@
 
 package org.jetbrains.kotlin.commonizer.metadata
 
-import gnu.trove.THashMap
 import kotlinx.metadata.*
 import kotlinx.metadata.Modality as KmModality
 import kotlinx.metadata.Visibility as KmVisibility
@@ -54,8 +53,8 @@ object CirDeserializers {
         if (allValueArguments.isEmpty())
             return CirAnnotation.createInterned(type = type, constantValueArguments = emptyMap(), annotationValueArguments = emptyMap())
 
-        val constantValueArguments: MutableMap<CirName, CirConstantValue> = THashMap(allValueArguments.size)
-        val annotationValueArguments: MutableMap<CirName, CirAnnotation> = THashMap(allValueArguments.size)
+        val constantValueArguments: MutableMap<CirName, CirConstantValue> = CommonizerMap(allValueArguments.size)
+        val annotationValueArguments: MutableMap<CirName, CirAnnotation> = CommonizerMap(allValueArguments.size)
 
         allValueArguments.forEach { (name, constantValue) ->
             val cirName = CirName.create(name)
@@ -123,9 +122,6 @@ object CirDeserializers {
     }
 
     private fun propertyGetter(source: KmProperty, typeResolver: CirTypeResolver): CirPropertyGetter? {
-        if (!source.hasGetter)
-            return null
-
         val isDefault = !source.getter.isNotDefault
         val annotations = annotations(source.getter.hasAnnotations, typeResolver, source::getterAnnotations)
 
@@ -140,9 +136,6 @@ object CirDeserializers {
     }
 
     private fun propertySetter(source: KmProperty, typeResolver: CirTypeResolver): CirPropertySetter? {
-        if (!source.hasSetter)
-            return null
-
         val setter = source.setter ?: return null
 
         return CirPropertySetter.createInterned(

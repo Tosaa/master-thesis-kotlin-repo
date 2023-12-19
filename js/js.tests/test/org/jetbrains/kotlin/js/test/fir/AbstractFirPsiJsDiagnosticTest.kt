@@ -6,13 +6,19 @@
 package org.jetbrains.kotlin.js.test.fir
 
 import org.jetbrains.kotlin.js.test.JsAdditionalSourceProvider
+import org.jetbrains.kotlin.js.test.converters.FirJsKlibBackendFacade
+import org.jetbrains.kotlin.js.test.handlers.JsBackendDiagnosticsHandler
 import org.jetbrains.kotlin.platform.js.JsPlatforms
 import org.jetbrains.kotlin.test.FirParser
+import org.jetbrains.kotlin.test.TargetBackend
+import org.jetbrains.kotlin.test.backend.BlackBoxCodegenSuppressor
 import org.jetbrains.kotlin.test.builders.TestConfigurationBuilder
 import org.jetbrains.kotlin.test.builders.firHandlersStep
+import org.jetbrains.kotlin.test.builders.klibArtifactsHandlersStep
 import org.jetbrains.kotlin.test.directives.ConfigurationDirectives
 import org.jetbrains.kotlin.test.directives.DiagnosticsDirectives
 import org.jetbrains.kotlin.test.directives.configureFirParser
+import org.jetbrains.kotlin.test.frontend.fir.Fir2IrJsResultsConverter
 import org.jetbrains.kotlin.test.frontend.fir.FirFrontendFacade
 import org.jetbrains.kotlin.test.frontend.fir.handlers.*
 import org.jetbrains.kotlin.test.model.DependencyKind
@@ -25,16 +31,18 @@ import org.jetbrains.kotlin.test.services.configuration.JsEnvironmentConfigurato
 import org.jetbrains.kotlin.test.services.sourceProviders.CoroutineHelpersSourceFilesProvider
 
 abstract class AbstractFirJsDiagnosticTestBase(val parser: FirParser) : AbstractKotlinCompilerTest() {
-    override fun TestConfigurationBuilder.configuration() {
+    protected open fun configureTestBuilder(builder: TestConfigurationBuilder) = builder.apply {
         globalDefaults {
             frontend = FrontendKinds.FIR
             targetPlatform = JsPlatforms.defaultJsPlatform
+            targetBackend = TargetBackend.JS_IR
             dependencyKind = DependencyKind.Source
         }
 
+        useAfterAnalysisCheckers(::BlackBoxCodegenSuppressor)
+
         defaultDirectives {
             +ConfigurationDirectives.WITH_STDLIB
-            DiagnosticsDirectives.DIAGNOSTICS with listOf("-warnings", "-infos")
         }
 
         configureFirParser(parser)
@@ -67,6 +75,29 @@ abstract class AbstractFirJsDiagnosticTestBase(val parser: FirParser) : Abstract
             )
         }
     }
+
+    final override fun TestConfigurationBuilder.configuration() {
+        configureTestBuilder(this@configuration)
+    }
+}
+
+abstract class AbstractFirJsDiagnosticWithBackendTestBase(parser: FirParser) : AbstractFirJsDiagnosticTestBase(parser) {
+    override fun configureTestBuilder(builder: TestConfigurationBuilder) = builder.apply {
+        super.configureTestBuilder(builder)
+
+        facadeStep(::Fir2IrJsResultsConverter)
+        facadeStep { FirJsKlibBackendFacade(it, true) }
+
+        // TODO: Currently do not run lowerings, because they don't report anything;
+        //      see KT-61881, KT-61882
+        // facadeStep { JsIrBackendFacade(it, firstTimeCompilation = true) }
+
+        klibArtifactsHandlersStep {
+            useHandlers(::JsBackendDiagnosticsHandler)
+        }
+    }
 }
 
 abstract class AbstractFirPsiJsDiagnosticTest : AbstractFirJsDiagnosticTestBase(FirParser.Psi)
+
+abstract class AbstractFirPsiJsDiagnosticWithBackendTest : AbstractFirJsDiagnosticWithBackendTestBase(FirParser.Psi)

@@ -6,7 +6,6 @@
 package org.jetbrains.kotlin.fir.backend.jvm
 
 import org.jetbrains.kotlin.KtFakeSourceElementKind
-import org.jetbrains.kotlin.backend.common.actualizer.IrActualizedResult
 import org.jetbrains.kotlin.backend.jvm.JvmBackendContext
 import org.jetbrains.kotlin.backend.jvm.JvmLoweredDeclarationOrigin
 import org.jetbrains.kotlin.backend.jvm.metadata.MetadataSerializer
@@ -16,7 +15,6 @@ import org.jetbrains.kotlin.config.*
 import org.jetbrains.kotlin.fir.*
 import org.jetbrains.kotlin.fir.backend.Fir2IrComponents
 import org.jetbrains.kotlin.fir.backend.FirMetadataSource
-import org.jetbrains.kotlin.fir.backend.extractFirDeclarations
 import org.jetbrains.kotlin.fir.declarations.*
 import org.jetbrains.kotlin.fir.declarations.builder.*
 import org.jetbrains.kotlin.fir.resolve.ScopeSession
@@ -46,7 +44,7 @@ fun makeFirMetadataSerializerForIrClass(
     serializationBindings: JvmSerializationBindings,
     components: Fir2IrComponents,
     parent: MetadataSerializer?,
-    irActualizedResult: IrActualizedResult?
+    actualizedExpectDeclarations: Set<FirDeclaration>?
 ): FirMetadataSerializer {
     val approximator = TypeApproximatorForMetadataSerializer(session)
     val localDelegatedProperties = context.localDelegatedProperties[irClass.attributeOwnerId]?.mapNotNull {
@@ -62,9 +60,9 @@ fun makeFirMetadataSerializerForIrClass(
         approximator,
         makeElementSerializer(
             irClass.metadata, components.session, components.scopeSession, firSerializerExtension, approximator, parent,
-            context.state.configuration.languageVersionSettings,
+            context.config.languageVersionSettings,
         ),
-        irActualizedResult
+        actualizedExpectDeclarations
     )
 }
 
@@ -76,7 +74,7 @@ fun makeLocalFirMetadataSerializerForMetadataSource(
     parent: MetadataSerializer?,
     targetId: TargetId,
     configuration: CompilerConfiguration,
-    irActualizedResult: IrActualizedResult?
+    actualizedExpectDeclarations: Set<FirDeclaration>?
 ): FirMetadataSerializer {
     val serializationBindings = JvmSerializationBindings()
     val approximator = TypeApproximatorForMetadataSerializer(session)
@@ -100,7 +98,7 @@ fun makeLocalFirMetadataSerializerForMetadataSource(
         session.languageVersionSettings.getFlag(JvmAnalysisFlags.jvmDefaultMode),
         stringTable,
         constValueProvider = null,
-        additionalAnnotationsProvider = null
+        additionalMetadataProvider = null
     )
     return FirMetadataSerializer(
         globalSerializationBindings,
@@ -110,7 +108,7 @@ fun makeLocalFirMetadataSerializerForMetadataSource(
             metadata, session, scopeSession, firSerializerExtension, approximator, parent,
             configuration.languageVersionSettings
         ),
-        irActualizedResult
+        actualizedExpectDeclarations
     )
 }
 
@@ -119,9 +117,8 @@ class FirMetadataSerializer(
     private val serializationBindings: JvmSerializationBindings,
     private val approximator: AbstractTypeApproximator,
     internal val serializer: FirElementSerializer?,
-    irActualizedResult: IrActualizedResult?
+    private val actualizedExpectDeclarations: Set<FirDeclaration>?
 ) : MetadataSerializer {
-    private val actualizedExpectDeclarations = irActualizedResult.extractFirDeclarations()
 
     override fun serialize(metadata: MetadataSource): Pair<MessageLite, JvmStringTable>? {
         val message = when (metadata) {
@@ -135,6 +132,7 @@ class FirMetadataSerializer(
                 }
                 serializer!!.functionProto(withTypeParameters)?.build()
             }
+            is FirMetadataSource.Script -> serializer!!.scriptProto(metadata.fir).build()
             else -> null
         } ?: return null
         return message to serializer!!.stringTable as JvmStringTable
@@ -204,6 +202,13 @@ internal fun makeElementSerializer(
             serializerExtension,
             approximator,
             languageVersionSettings,
+        )
+        is FirMetadataSource.Script -> FirElementSerializer.createForScript(
+            session, scopeSession,
+            metadata.fir,
+            serializerExtension,
+            approximator,
+            languageVersionSettings
         )
         else -> null
     }

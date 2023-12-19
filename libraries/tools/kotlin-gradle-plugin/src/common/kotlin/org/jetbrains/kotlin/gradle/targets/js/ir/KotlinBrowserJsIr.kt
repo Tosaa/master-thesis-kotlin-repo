@@ -15,7 +15,7 @@ import org.gradle.language.base.plugins.LifecycleBasePlugin
 import org.jetbrains.kotlin.gradle.dsl.JsModuleKind
 import org.jetbrains.kotlin.gradle.dsl.KotlinJsDce
 import org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType
-import org.jetbrains.kotlin.gradle.plugin.mpp.pm20.util.archivesName
+import org.jetbrains.kotlin.gradle.utils.archivesName
 import org.jetbrains.kotlin.gradle.targets.js.dsl.ExperimentalDceDsl
 import org.jetbrains.kotlin.gradle.targets.js.dsl.KotlinJsBinaryMode
 import org.jetbrains.kotlin.gradle.targets.js.dsl.KotlinJsBrowserDsl
@@ -61,11 +61,7 @@ abstract class KotlinBrowserJsIr @Inject constructor(target: KotlinJsIrTarget) :
     override fun configureDefaultTestFramework(test: KotlinJsTest) {
         if (test.testFramework == null) {
             test.useKarma {
-                if (compilation.platformType == KotlinPlatformType.wasm) {
-                    useChromeHeadlessWasmGc()
-                } else {
-                    useChromeHeadless()
-                }
+                useChromeHeadless()
             }
         }
 
@@ -187,13 +183,43 @@ abstract class KotlinBrowserJsIr @Inject constructor(target: KotlinJsIrTarget) :
                 val mode = binary.mode
                 val archivesName = project.archivesName
 
-                val distributeResourcesTask = registerSubTargetTask<Copy>(
+                val webpackTask = registerSubTargetTask<KotlinWebpack>(
                     disambiguateCamelCased(
-                        binary.name,
-                        DISTRIBUTE_RESOURCES_TASK_NAME
+                        binary.executeTaskBaseName,
+                        WEBPACK_TASK_NAME
+                    ),
+                    listOf(compilation)
+                ) { task ->
+                    task.description = "build webpack ${mode.name.toLowerCaseAsciiOnly()} bundle"
+                    val buildDirectory = project.layout.buildDirectory
+                    val targetName = target.name
+                    task.outputDirectory.convention(
+                        binary.distribution.distributionName.flatMap {
+                            buildDirectory.dir("kotlin-webpack/$targetName/$it")
+                        }
+                    ).finalizeValueOnRead()
+
+                    task.dependsOn(binary.linkSyncTask)
+
+                    task.commonConfigure(
+                        binary = binary,
+                        mode = mode,
+                        inputFilesDirectory = task.project.provider { binary.linkSyncTask.get().destinationDirectory.get() },
+                        entryModuleName = binary.linkTask.flatMap { it.compilerOptions.moduleName },
+                        configurationActions = webpackTaskConfigurations,
+                        nodeJs = nodeJs,
+                        defaultArchivesName = archivesName,
+                    )
+                }
+
+                val distributionTask = registerSubTargetTask<Copy>(
+                    disambiguateCamelCased(
+                        if (binary.mode == KotlinJsBinaryMode.PRODUCTION) "" else binary.name,
+                        DISTRIBUTION_TASK_NAME
                     )
                 ) { copy ->
                     copy.from(processResourcesTask)
+                    copy.from(webpackTask.flatMap { it.outputDirectory })
 
                     if (binary.compilation.platformType == KotlinPlatformType.wasm) {
                         copy.from(
@@ -210,46 +236,6 @@ abstract class KotlinBrowserJsIr @Inject constructor(target: KotlinJsIrTarget) :
                     }
 
                     copy.into(binary.distribution.directory)
-                }
-
-                val webpackTask = registerSubTargetTask<KotlinWebpack>(
-                    disambiguateCamelCased(
-                        binary.executeTaskBaseName,
-                        WEBPACK_TASK_NAME
-                    ),
-                    listOf(compilation)
-                ) { task ->
-                    task.description = "build webpack ${mode.name.toLowerCaseAsciiOnly()} bundle"
-                    task.outputDirectory.fileValue(binary.distribution.directory).finalizeValueOnRead()
-
-
-                    task.dependsOn(
-                        distributeResourcesTask
-                    )
-
-                    task.dependsOn(binary.linkSyncTask)
-
-                    task.commonConfigure(
-                        binary = binary,
-                        mode = mode,
-                        inputFilesDirectory = task.project.provider { binary.linkSyncTask.get().destinationDirectory.get() },
-                        entryModuleName = binary.linkTask.flatMap { it.compilerOptions.moduleName },
-                        configurationActions = webpackTaskConfigurations,
-                        nodeJs = nodeJs,
-                        defaultArchivesName = archivesName,
-                    )
-                }
-
-                val distributionTask = registerSubTargetTask<Task>(
-                    disambiguateCamelCased(
-                        if (binary.mode == KotlinJsBinaryMode.PRODUCTION) "" else binary.name,
-                        DISTRIBUTION_TASK_NAME
-                    )
-                ) {
-                    it.dependsOn(webpackTask)
-                    it.dependsOn(distributeResourcesTask)
-
-                    it.outputs.dir(project.newFileProperty { binary.distribution.directory })
                 }
 
                 if (mode == KotlinJsBinaryMode.PRODUCTION) {

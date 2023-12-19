@@ -44,9 +44,21 @@ public class KotlinKapt4ContextTestGenerated extends AbstractKotlinKapt4ContextT
     }
 
     @Test
+    @TestMetadata("annotationInAnnotationParameters.kt")
+    public void testAnnotationInAnnotationParameters() throws Exception {
+        runTest("plugins/kapt4/../kapt3/kapt3-compiler/testData/converter/annotationInAnnotationParameters.kt");
+    }
+
+    @Test
     @TestMetadata("annotationWithFqNames.kt")
     public void testAnnotationWithFqNames() throws Exception {
         runTest("plugins/kapt4/../kapt3/kapt3-compiler/testData/converter/annotationWithFqNames.kt");
+    }
+
+    @Test
+    @TestMetadata("annotationWithVaragArguments.kt")
+    public void testAnnotationWithVaragArguments() throws Exception {
+        runTest("plugins/kapt4/../kapt3/kapt3-compiler/testData/converter/annotationWithVaragArguments.kt");
     }
 
     @Test
@@ -194,6 +206,12 @@ public class KotlinKapt4ContextTestGenerated extends AbstractKotlinKapt4ContextT
     }
 
     @Test
+    @TestMetadata("enumConstructorCallWithErrorType.kt")
+    public void testEnumConstructorCallWithErrorType() throws Exception {
+        runTest("plugins/kapt4/../kapt3/kapt3-compiler/testData/converter/enumConstructorCallWithErrorType.kt");
+    }
+
+    @Test
     @TestMetadata("enumImports.kt")
     public void testEnumImports() throws Exception {
         runTest("plugins/kapt4/../kapt3/kapt3-compiler/testData/converter/enumImports.kt");
@@ -293,6 +311,12 @@ public class KotlinKapt4ContextTestGenerated extends AbstractKotlinKapt4ContextT
     @TestMetadata("importsKt22083.kt")
     public void testImportsKt22083() throws Exception {
         runTest("plugins/kapt4/../kapt3/kapt3-compiler/testData/converter/importsKt22083.kt");
+    }
+
+    @Test
+    @TestMetadata("importsWithUnresolvedAnnotations.kt")
+    public void testImportsWithUnresolvedAnnotations() throws Exception {
+        runTest("plugins/kapt4/../kapt3/kapt3-compiler/testData/converter/importsWithUnresolvedAnnotations.kt");
     }
 
     @Test

@@ -1,15 +1,19 @@
+/*
+ * Copyright 2010-2023 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license
+ * that can be found in the LICENSE file.
+ */
+
 #pragma once
 
-#include <mutex>
 #include <condition_variable>
+#include <mutex>
 
 #include "GCStatistics.hpp"
-#include "MarkStack.hpp"
-#include "std_support/Vector.hpp"
+#include "ManuallyScoped.hpp"
+#include "ObjectData.hpp"
+#include "ParallelProcessor.hpp"
 #include "ThreadRegistry.hpp"
 #include "Utils.hpp"
-#include "ParallelProcessor.hpp"
-#include "ManuallyScoped.hpp"
 
 namespace kotlin::gc::mark {
 
@@ -70,14 +74,16 @@ private:
  * Mark workers are able to balance work between each other through sharing/stealing.
  */
 class ParallelMark : private Pinned {
-    using MarkStackImpl = intrusive_forward_list<ObjectData>;
+    using MarkStackImpl = intrusive_forward_list<GC::ObjectData>;
     // work balancing parameters were chosen pretty arbitrary
     using ParallelProcessor = ParallelProcessor<MarkStackImpl, 512, 4096>;
 public:
+
+    using MutatorQueue = ParallelProcessor::WorkSource;
+
     class MarkTraits {
     public:
         using MarkQueue = ParallelProcessor::Worker;
-        using ObjectFactory = ObjectData::ObjectFactory;
 
         static void clear(MarkQueue& queue) noexcept {
             RuntimeAssert(queue.localEmpty(), "Mark queue must be empty");
@@ -86,19 +92,18 @@ public:
         static ALWAYS_INLINE ObjHeader* tryDequeue(MarkQueue& queue) noexcept {
             auto* obj = compiler::gcMarkSingleThreaded() ? queue.tryPopLocal() : queue.tryPop();
             if (obj) {
-                auto node = ObjectFactory::NodeRef::From(*obj);
-                return node->GetObjHeader();
+                return alloc::objectForObjectData(*obj);
             }
             return nullptr;
         }
 
         static ALWAYS_INLINE bool tryEnqueue(MarkQueue& queue, ObjHeader* object) noexcept {
-            auto& objectData = ObjectFactory::NodeRef::From(object).ObjectData();
+            auto& objectData = alloc::objectDataForObject(object);
             return compiler::gcMarkSingleThreaded() ? queue.tryPushLocal(objectData) : queue.tryPush(objectData);
         }
 
         static ALWAYS_INLINE bool tryMark(ObjHeader* object) noexcept {
-            auto& objectData = ObjectFactory::NodeRef::From(object).ObjectData();
+            auto& objectData = alloc::objectDataForObject(object);
             return objectData.tryMark();
         }
 
@@ -112,7 +117,6 @@ public:
     ParallelMark(bool mutatorsCooperate);
 
     void beginMarkingEpoch(gc::GCHandle gcHandle);
-    void waitForThreadsPauseMutation() noexcept;
     void endMarkingEpoch();
 
     /** To be run by a single "main" GC thread during STW. */

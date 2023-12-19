@@ -5,6 +5,7 @@
 
 package org.jetbrains.kotlin.light.classes.symbol.classes
 
+import com.intellij.openapi.util.ModificationTracker
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiManager
 import com.intellij.psi.PsiModifier
@@ -22,6 +23,7 @@ import org.jetbrains.kotlin.analysis.api.types.KtType
 import org.jetbrains.kotlin.analysis.api.types.KtTypeMappingMode
 import org.jetbrains.kotlin.analysis.project.structure.KtModule
 import org.jetbrains.kotlin.analysis.project.structure.KtSourceModule
+import org.jetbrains.kotlin.analysis.providers.createProjectWideOutOfBlockModificationTracker
 import org.jetbrains.kotlin.analysis.utils.errors.requireIsInstance
 import org.jetbrains.kotlin.analysis.utils.printer.parentOfType
 import org.jetbrains.kotlin.asJava.builder.LightMemberOriginForDeclaration
@@ -47,6 +49,7 @@ import org.jetbrains.kotlin.light.classes.symbol.isJvmField
 import org.jetbrains.kotlin.light.classes.symbol.mapType
 import org.jetbrains.kotlin.light.classes.symbol.methods.*
 import org.jetbrains.kotlin.load.java.JvmAbi
+import org.jetbrains.kotlin.name.JvmStandardClassIds
 import org.jetbrains.kotlin.name.StandardClassIds
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.containingClass
@@ -66,6 +69,16 @@ internal fun createLightClassNoCache(ktClassOrObject: KtClassOrObject, ktModule:
     ktClassOrObject is KtClass && ktClassOrObject.isAnnotation() -> SymbolLightClassForAnnotationClass(ktClassOrObject, ktModule)
     ktClassOrObject is KtClass && ktClassOrObject.isInterface() -> SymbolLightClassForInterface(ktClassOrObject, ktModule)
     else -> SymbolLightClassForClassOrObject(ktClassOrObject, ktModule)
+}
+
+internal fun KtClassOrObject.modificationTrackerForClassInnerStuff(): List<ModificationTracker> {
+    val outOfBlockTracker = project.createProjectWideOutOfBlockModificationTracker()
+    return if (isLocal) {
+        val file = containingKtFile
+        listOf(outOfBlockTracker, ModificationTracker { file.modificationStamp })
+    } else {
+        listOf(outOfBlockTracker)
+    }
 }
 
 context(KtAnalysisSession)
@@ -528,7 +541,7 @@ internal fun KtSymbolWithMembers.createInnerClasses(
     // inner classes with null names can't be searched for and can't be used from java anyway
     // we can't prohibit creating light classes with null names either since they can contain members
 
-    getDeclaredMemberScope().getClassifierSymbols().filterIsInstance<KtNamedClassOrObjectSymbol>().mapTo(result) {
+    getStaticDeclaredMemberScope().getClassifierSymbols().filterIsInstance<KtNamedClassOrObjectSymbol>().mapTo(result) {
         val classOrObjectDeclaration = it.psiSafe<KtClassOrObject>()
         if (classOrObjectDeclaration != null) {
             createLightClassNoCache(classOrObjectDeclaration, containingClass.ktModule)
@@ -553,7 +566,7 @@ internal fun KtSymbolWithMembers.createInnerClasses(
     if (containingClass is SymbolLightClassForAnnotationClass &&
         this is KtNamedClassOrObjectSymbol &&
         hasAnnotation(StandardClassIds.Annotations.Repeatable) &&
-        !hasAnnotation(StandardClassIds.Annotations.Java.Repeatable)
+        !hasAnnotation(JvmStandardClassIds.Annotations.Java.Repeatable)
     ) {
         result.add(SymbolLightClassForRepeatableAnnotationContainer(containingClass))
     }
@@ -607,8 +620,9 @@ context(KtAnalysisSession)
 internal fun SymbolLightClassBase.addPropertyBackingFields(
     result: MutableList<KtLightField>,
     symbolWithMembers: KtSymbolWithMembers,
+    forceIsStaticTo: Boolean? = null,
 ) {
-    val propertySymbols = symbolWithMembers.getDeclaredMemberScope().getCallableSymbols()
+    val propertySymbols = symbolWithMembers.getCombinedDeclaredMemberScope().getCallableSymbols()
         .filterIsInstance<KtPropertySymbol>()
         .applyIf(symbolWithMembers is KtClassOrObjectSymbol && symbolWithMembers.classKind == KtClassKind.COMPANION_OBJECT) {
             // All fields for companion object of classes are generated to the containing class
@@ -621,7 +635,7 @@ internal fun SymbolLightClassBase.addPropertyBackingFields(
 
     val nameGenerator = SymbolLightField.FieldNameGenerator()
 
-    val isStatic = symbolWithMembers is KtClassOrObjectSymbol && symbolWithMembers.classKind.isObject
+    val isStatic = forceIsStaticTo ?: (symbolWithMembers is KtClassOrObjectSymbol && symbolWithMembers.classKind.isObject)
     fun addPropertyBackingField(propertySymbol: KtPropertySymbol) {
         createField(
             declaration = propertySymbol,

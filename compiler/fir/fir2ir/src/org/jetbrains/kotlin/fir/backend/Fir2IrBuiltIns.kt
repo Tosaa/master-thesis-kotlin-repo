@@ -7,12 +7,12 @@ package org.jetbrains.kotlin.fir.backend
 
 import org.jetbrains.kotlin.fir.resolve.providers.symbolProvider
 import org.jetbrains.kotlin.fir.scopes.getDeclaredConstructors
-import org.jetbrains.kotlin.fir.scopes.unsubstitutedScope
 import org.jetbrains.kotlin.fir.symbols.impl.FirRegularClassSymbol
 import org.jetbrains.kotlin.ir.declarations.IrConstructor
 import org.jetbrains.kotlin.ir.expressions.IrConstructorCall
 import org.jetbrains.kotlin.ir.expressions.impl.IrConstructorCallImpl
 import org.jetbrains.kotlin.ir.symbols.IrClassSymbol
+import org.jetbrains.kotlin.ir.symbols.UnsafeDuringIrConstructionAPI
 import org.jetbrains.kotlin.ir.types.defaultType
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.StandardClassIds
@@ -81,14 +81,10 @@ class Fir2IrBuiltIns(
 
     private fun IrClassSymbol.toConstructorCall(firSymbol: FirRegularClassSymbol? = null): IrConstructorCallImpl? {
         val constructorSymbol = if (firSymbol == null) {
+            @OptIn(UnsafeDuringIrConstructionAPI::class)
             owner.declarations.firstIsInstance<IrConstructor>().symbol
         } else {
-            val firConstructorSymbol = firSymbol.unsubstitutedScope(
-                session,
-                scopeSession,
-                withForcedTypeCalculator = true,
-                memberRequiredPhase = null,
-            ).getDeclaredConstructors().singleOrNull() ?: return null
+            val firConstructorSymbol = firSymbol.unsubstitutedScope().getDeclaredConstructors().singleOrNull() ?: return null
 
             declarationStorage.getIrConstructorSymbol(firConstructorSymbol)
         }

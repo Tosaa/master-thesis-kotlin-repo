@@ -7,10 +7,10 @@ fun <T : Any> myBuilder(block: Foo<T>.() -> Unit) : Foo<T> = Foo<T>().apply(bloc
 
 fun main(arg: Any) {
     val x = 57
-    val value = myBuilder {
+    val value = <!TYPE_MISMATCH, TYPE_MISMATCH!>myBuilder {
         doSmthng("one ")
         run { a; this }.a = 10
-        a += 1
+        <!BUILDER_INFERENCE_STUB_RECEIVER!>a += 1<!>
         this.a = 57
         this.<!ILLEGAL_SELECTOR, VARIABLE_EXPECTED!>(a)<!> = 57
         a = x
@@ -19,6 +19,6 @@ fun main(arg: Any) {
         if (arg is String) {
             a = arg
         }
-    }
+    }<!>
     <!OVERLOAD_RESOLUTION_AMBIGUITY!>println<!>(value.a?.<!UNRESOLVED_REFERENCE!>count<!> { <!UNRESOLVED_REFERENCE!>it<!> in 'l' .. 'q' })
 }

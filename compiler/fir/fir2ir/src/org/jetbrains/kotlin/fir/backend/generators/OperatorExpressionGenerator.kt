@@ -7,10 +7,13 @@ package org.jetbrains.kotlin.fir.backend.generators
 
 import org.jetbrains.kotlin.fir.backend.*
 import org.jetbrains.kotlin.fir.expressions.*
+import org.jetbrains.kotlin.fir.resolve.providers.getRegularClassSymbolByClassId
+import org.jetbrains.kotlin.fir.resolve.providers.symbolProvider
+import org.jetbrains.kotlin.fir.scopes.getFunctions
 import org.jetbrains.kotlin.fir.types.ConeDynamicType
-import org.jetbrains.kotlin.fir.types.coneType
 import org.jetbrains.kotlin.fir.types.isMarkedNullable
 import org.jetbrains.kotlin.fir.types.isNullable
+import org.jetbrains.kotlin.fir.types.resolvedType
 import org.jetbrains.kotlin.ir.builders.primitiveOp1
 import org.jetbrains.kotlin.ir.builders.primitiveOp2
 import org.jetbrains.kotlin.ir.expressions.*
@@ -18,7 +21,7 @@ import org.jetbrains.kotlin.ir.expressions.impl.*
 import org.jetbrains.kotlin.ir.symbols.IrClassifierSymbol
 import org.jetbrains.kotlin.ir.symbols.IrSimpleFunctionSymbol
 import org.jetbrains.kotlin.ir.types.*
-import org.jetbrains.kotlin.ir.util.getSimpleFunction
+import org.jetbrains.kotlin.name.Name
 
 internal class OperatorExpressionGenerator(
     private val components: Fir2IrComponents,
@@ -45,7 +48,7 @@ internal class OperatorExpressionGenerator(
         val operation = comparisonExpression.operation
         val receiver = comparisonExpression.compareToCall.explicitReceiver
 
-        if (receiver?.typeRef?.coneType is ConeDynamicType) {
+        if (receiver?.resolvedType is ConeDynamicType) {
             val dynamicOperator = operation.toIrDynamicOperator()
                 ?: throw Exception("Can't convert to the corresponding IrDynamicOperator")
             val argument = comparisonExpression.compareToCall.dynamicVarargArguments?.firstOrNull()
@@ -125,10 +128,10 @@ internal class OperatorExpressionGenerator(
     }
 
     private fun IrStatementOrigin.toIrDynamicOperator() = when (this) {
-        is IrStatementOrigin.EQEQ -> IrDynamicOperator.EQEQ
-        is IrStatementOrigin.EXCLEQ -> IrDynamicOperator.EXCLEQ
-        is IrStatementOrigin.EQEQEQ -> IrDynamicOperator.EQEQEQ
-        is IrStatementOrigin.EXCLEQEQ -> IrDynamicOperator.EXCLEQEQ
+        IrStatementOrigin.EQEQ -> IrDynamicOperator.EQEQ
+        IrStatementOrigin.EXCLEQ -> IrDynamicOperator.EXCLEQ
+        IrStatementOrigin.EQEQEQ -> IrDynamicOperator.EQEQEQ
+        IrStatementOrigin.EXCLEQEQ -> IrDynamicOperator.EXCLEQEQ
         else -> null
     }
 
@@ -239,7 +242,7 @@ internal class OperatorExpressionGenerator(
         comparisonInfo: PrimitiveConeNumericComparisonInfo?,
         isLeftType: Boolean
     ): IrExpression {
-        val isOriginalNullable = (this as? FirSmartCastExpression)?.originalExpression?.typeRef?.isMarkedNullable ?: false
+        val isOriginalNullable = (this as? FirSmartCastExpression)?.originalExpression?.resolvedType?.isMarkedNullable ?: false
         val irExpression = visitor.convertToIrExpression(this)
         val operandType = if (isLeftType) comparisonInfo?.leftType else comparisonInfo?.rightType
         val targetType = comparisonInfo?.comparisonType
@@ -283,14 +286,17 @@ internal class OperatorExpressionGenerator(
         val operandClassId = operandType.lookupTag.classId
         val targetClassId = targetType.lookupTag.classId
         if (operandClassId == targetClassId) return eraseImplicitCast()
-        val conversionFunction =
-            typeConverter.classIdToSymbolMap[operandClassId]?.getSimpleFunction("to${targetType.lookupTag.classId.shortClassName.asString()}")
-                ?: error("No conversion function for $operandType ~> $targetType")
+        val operandFirClass = session.symbolProvider.getRegularClassSymbolByClassId(operandClassId) ?: error("No symbol for $operandClassId")
+        val conversionFirFunction = operandFirClass.unsubstitutedScope()
+            .getFunctions(Name.identifier("to${targetType.lookupTag.classId.shortClassName.asString()}"))
+            .singleOrNull()
+            ?: error("No conversion function for $operandType ~> $targetType")
+        val conversionFunctionSymbol = declarationStorage.getIrFunctionSymbol(conversionFirFunction, operandFirClass.toLookupTag())
 
         val unsafeIrCall = IrCallImpl(
             irExpression.startOffset, irExpression.endOffset,
-            conversionFunction.owner.returnType,
-            conversionFunction,
+            conversionFirFunction.resolvedReturnType.toIrType(),
+            conversionFunctionSymbol as IrSimpleFunctionSymbol,
             valueArgumentsCount = 0,
             typeArgumentsCount = 0
         ).also {

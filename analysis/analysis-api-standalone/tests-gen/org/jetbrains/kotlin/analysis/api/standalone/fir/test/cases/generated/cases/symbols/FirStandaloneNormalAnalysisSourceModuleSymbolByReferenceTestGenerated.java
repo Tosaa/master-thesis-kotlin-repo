@@ -137,6 +137,18 @@ public class FirStandaloneNormalAnalysisSourceModuleSymbolByReferenceTestGenerat
     }
 
     @Test
+    @TestMetadata("javaMethodWithExternalNotNullAnnotation.kt")
+    public void testJavaMethodWithExternalNotNullAnnotation() throws Exception {
+        runTest("analysis/analysis-api/testData/symbols/symbolByReference/javaMethodWithExternalNotNullAnnotation.kt");
+    }
+
+    @Test
+    @TestMetadata("javaMethodWithNotNullAnnotation.kt")
+    public void testJavaMethodWithNotNullAnnotation() throws Exception {
+        runTest("analysis/analysis-api/testData/symbols/symbolByReference/javaMethodWithNotNullAnnotation.kt");
+    }
+
+    @Test
     @TestMetadata("javaStaticField.kt")
     public void testJavaStaticField() throws Exception {
         runTest("analysis/analysis-api/testData/symbols/symbolByReference/javaStaticField.kt");
@@ -185,6 +197,12 @@ public class FirStandaloneNormalAnalysisSourceModuleSymbolByReferenceTestGenerat
     }
 
     @Test
+    @TestMetadata("syntheticProperty.kt")
+    public void testSyntheticProperty() throws Exception {
+        runTest("analysis/analysis-api/testData/symbols/symbolByReference/syntheticProperty.kt");
+    }
+
+    @Test
     @TestMetadata("typeAnnotationOnBackingField.kt")
     public void testTypeAnnotationOnBackingField() throws Exception {
         runTest("analysis/analysis-api/testData/symbols/symbolByReference/typeAnnotationOnBackingField.kt");
@@ -200,5 +218,33 @@ public class FirStandaloneNormalAnalysisSourceModuleSymbolByReferenceTestGenerat
     @TestMetadata("valueParameter.kt")
     public void testValueParameter() throws Exception {
         runTest("analysis/analysis-api/testData/symbols/symbolByReference/valueParameter.kt");
+    }
+
+    @Nested
+    @TestMetadata("analysis/analysis-api/testData/symbols/symbolByReference/js")
+    @TestDataPath("$PROJECT_ROOT")
+    public class Js {
+        @Test
+        public void testAllFilesPresentInJs() throws Exception {
+            KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("analysis/analysis-api/testData/symbols/symbolByReference/js"), Pattern.compile("^(.+)\\.kt$"), null, true, "withTestCompilerPluginEnabled");
+        }
+
+        @Test
+        @TestMetadata("functionFromJsDynamicScopeNoArguments.kt")
+        public void testFunctionFromJsDynamicScopeNoArguments() throws Exception {
+            runTest("analysis/analysis-api/testData/symbols/symbolByReference/js/functionFromJsDynamicScopeNoArguments.kt");
+        }
+
+        @Test
+        @TestMetadata("functionFromJsDynamicScopeWithArguments.kt")
+        public void testFunctionFromJsDynamicScopeWithArguments() throws Exception {
+            runTest("analysis/analysis-api/testData/symbols/symbolByReference/js/functionFromJsDynamicScopeWithArguments.kt");
+        }
+
+        @Test
+        @TestMetadata("propertyFromJsDynamicScope.kt")
+        public void testPropertyFromJsDynamicScope() throws Exception {
+            runTest("analysis/analysis-api/testData/symbols/symbolByReference/js/propertyFromJsDynamicScope.kt");
+        }
     }
 }

@@ -12,6 +12,7 @@ import org.jetbrains.kotlin.fir.symbols.ConeClassifierLookupTag
 import org.jetbrains.kotlin.fir.types.*
 import org.jetbrains.kotlin.load.java.typeEnhancement.*
 import org.jetbrains.kotlin.name.ClassId
+import org.jetbrains.kotlin.utils.addToStdlib.applyIf
 
 internal fun ConeKotlinType.enhance(session: FirSession, qualifiers: IndexedJavaTypeQualifiers): ConeKotlinType? =
     enhanceConeKotlinType(session, qualifiers, 0, mutableListOf<Int>().apply { computeSubtreeSizes(this) })
@@ -40,14 +41,10 @@ private fun ConeKotlinType.enhanceConeKotlinType(
 ): ConeKotlinType? {
     return when (this) {
         is ConeFlexibleType -> {
-            // Currently, the warnings are left unsupported in K2 (see KT-57307)
-            // But modulo information for warnings, we reproduce the K1 behavior: if head type qualifier is for warnings, we totally ignore
+            // We reproduce the K1 behavior: if head type qualifier is for warnings, we totally ignore
             // enhancement on its arguments, too (see JavaTypeEnhancement.enhancePossiblyFlexible).
             // It's not totally correct, but tolerable since we would like to avoid excessive breaking changes and the warnings should be
             // anyway reported.
-            // TODO: support not loosing information for warnings here, too
-            if (qualifiers(index).isNullabilityQualifierForWarning) return null
-
             val lowerResult = lowerBound.enhanceInflexibleType(
                 session, TypeComponentPosition.FLEXIBLE_LOWER, qualifiers, index, subtreeSizes
             )
@@ -96,9 +93,49 @@ private fun ConeSimpleKotlinType.enhanceInflexibleType(
     val effectiveQualifiers = qualifiers(index)
     val enhancedTag = lookupTag.enhanceMutability(effectiveQualifiers, position)
 
-    // TODO: implement warnings (see KT-57307)
-    val nullabilityFromQualifiers = effectiveQualifiers.nullability
-        .takeIf { shouldEnhance && !effectiveQualifiers.isNullabilityQualifierForWarning }
+    val nullabilityFromQualifiers = effectiveQualifiers.nullability.takeIf { shouldEnhance }
+
+    val enhanced = enhanceInflexibleType(
+        session,
+        qualifiers,
+        index,
+        subtreeSizes,
+        isFromDefinitelyNotNullType,
+        effectiveQualifiers.definitelyNotNull,
+        nullabilityFromQualifiers,
+        enhancedTag
+    )
+
+    return if (effectiveQualifiers.isNullabilityQualifierForWarning && enhanced != null) {
+        val newAttributes = attributes.plus(EnhancedTypeForWarningAttribute(enhanced))
+
+        // TODO if the arguments of `enhanced` are error-level annotated, we're losing them here for compatibility with K1,
+        // a fix requires a deprecation cycle, see KT-63208
+        if (enhancedTag != lookupTag) {
+            // Handle case when mutability was enhanced and nullability was enhanced for warning.
+            enhancedTag.constructType(typeArguments, isNullable, newAttributes)
+        } else {
+            this.withAttributes(newAttributes)
+        }.applyIf(isFromDefinitelyNotNullType) {
+            // If the original type was DNN, we need to wrap the result in a DNN type because `this` is the non-DNN part of the original.
+            // In the non-warning case, this happens in the nested call and so `enhanced` is already DNN.
+            ConeDefinitelyNotNullType.create(this, session.typeContext)
+        }
+    } else {
+        enhanced
+    }
+}
+
+private fun ConeLookupTagBasedType.enhanceInflexibleType(
+    session: FirSession,
+    qualifiers: IndexedJavaTypeQualifiers,
+    index: Int,
+    subtreeSizes: List<Int>,
+    isFromDefinitelyNotNullType: Boolean,
+    isDefinitelyNotNull: Boolean,
+    nullabilityFromQualifiers: NullabilityQualifier?,
+    enhancedTag: ConeClassifierLookupTag,
+): ConeSimpleKotlinType? {
     val enhancedIsNullable = when (nullabilityFromQualifiers) {
         NullabilityQualifier.NULLABLE -> true
         NullabilityQualifier.NOT_NULL -> false
@@ -126,7 +163,7 @@ private fun ConeSimpleKotlinType.enhanceInflexibleType(
     val mergedArguments = Array(typeArguments.size) { enhancedArguments[it] ?: typeArguments[it] }
     val mergedAttributes = if (shouldAddAttribute) attributes + CompilerConeAttributes.EnhancedNullability else attributes
     val enhancedType = enhancedTag.constructType(mergedArguments, enhancedIsNullable, mergedAttributes)
-    return if (effectiveQualifiers.definitelyNotNull || (isFromDefinitelyNotNullType && nullabilityFromQualifiers == null))
+    return if (isDefinitelyNotNull || (isFromDefinitelyNotNullType && nullabilityFromQualifiers == null))
         ConeDefinitelyNotNullType.create(enhancedType, session.typeContext) ?: enhancedType
     else
         enhancedType

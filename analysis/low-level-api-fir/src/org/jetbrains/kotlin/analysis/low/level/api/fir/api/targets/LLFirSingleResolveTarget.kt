@@ -6,28 +6,24 @@
 package org.jetbrains.kotlin.analysis.low.level.api.fir.api.targets
 
 import org.jetbrains.kotlin.fir.FirElementWithResolveState
-import org.jetbrains.kotlin.fir.FirFileAnnotationsContainer
 import org.jetbrains.kotlin.fir.declarations.*
 
 /**
  * [LLFirResolveTarget] representing single target to resolve. The [target] can be any of [FirElementWithResolveState]
  */
-class LLFirSingleResolveTarget(
+internal class LLFirSingleResolveTarget(
     firFile: FirFile,
-    classPath: List<FirRegularClass>,
+    containerClasses: List<FirRegularClass>,
     target: FirElementWithResolveState,
-) : LLFirResolveTargetWithDedicatedElement<FirElementWithResolveState>(firFile, classPath, target) {
-    override fun forEachTarget(action: (FirElementWithResolveState) -> Unit) {
-        action(target)
-    }
+) : LLFirResolveTarget(firFile, containerClasses, target) {
+    constructor(firFile: FirFile) : this(firFile, emptyList(), firFile)
 
-    override fun toStringForTarget(): String = when (target) {
-        is FirConstructor -> "constructor"
-        is FirClassLikeDeclaration -> target.symbol.name.asString()
-        is FirCallableDeclaration -> target.symbol.name.asString()
-        is FirAnonymousInitializer -> ("<init-block>")
-        is FirFileAnnotationsContainer -> "<file annotations>"
-        is FirScript -> target.name.asString()
-        else -> "???"
+    override fun visitTargetElement(
+        element: FirElementWithResolveState,
+        visitor: LLFirResolveTargetVisitor,
+    ) {
+        if (element !is FirFile) {
+            visitor.performAction(element)
+        }
     }
 }

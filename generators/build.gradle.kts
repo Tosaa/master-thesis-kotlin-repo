@@ -79,7 +79,9 @@ dependencies {
     testImplementation(projectTests(":js:js.tests"))
     testImplementation(project(":kotlin-gradle-compiler-types"))
     testImplementation(project(":jps:jps-common"))
-    testApiJUnit5()
+    testApi(platform(libs.junit.bom))
+    testImplementation(libs.junit.jupiter.api)
+    testRuntimeOnly(libs.junit.jupiter.engine)
 
     if (Ide.IJ()) {
         testCompileOnly(jpsBuildTest())

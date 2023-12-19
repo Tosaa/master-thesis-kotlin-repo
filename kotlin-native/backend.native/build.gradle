@@ -11,7 +11,6 @@ import org.jetbrains.kotlin.tools.NativePluginKt
 
 buildscript {
     apply from: "../../kotlin-native/gradle/kotlinGradlePlugin.gradle"
-    apply plugin: 'project-report'
 }
 
 apply plugin: 'java'
@@ -38,8 +37,11 @@ compileCompilerKotlin {
             '-opt-in=kotlin.RequiresOptIn',
             "-opt-in=kotlinx.cinterop.BetaInteropApi",
             "-opt-in=kotlinx.cinterop.ExperimentalForeignApi",
+            "-opt-in=org.jetbrains.kotlin.backend.konan.InternalKotlinNativeApi",
             '-Xskip-prerelease-check']
 }
+
+TasksKt.optInToUnsafeDuringIrConstructionAPI(project)
 
 compileCli_bcKotlin {
     kotlinOptions.freeCompilerArgs += ['-Xskip-prerelease-check']
@@ -85,7 +87,7 @@ kotlinNativeInterop {
             // For some reason, this worked fine before macOS 12.3.
             //
             // To enforce linking with proper libc++, pass the default path explicitly:
-            linkerOpts "-L${platformManager.hostPlatform.absoluteTargetSysRoot}/usr/lib"
+            linkerOpts "-L${hostPlatform.absoluteTargetSysRoot}/usr/lib"
         }
         linkerOpts "-L$llvmDir/lib", "-L${rootProject.project(':kotlin-native:llvmDebugInfoC').buildDir}", "-L${rootProject.project(':kotlin-native:libllvmext').buildDir}"
     }
@@ -117,7 +119,6 @@ kotlinNativeInterop {
         pkg 'org.jetbrains.kotlin.backend.konan.env'
     }
 }
-
 
 configurations {
     compilerApi {
@@ -153,6 +154,8 @@ dependencies {
     kotlin_script_runtime_jar project(":kotlin-script-runtime")
 
     compilerApi project(":kotlin-native:utilities:basic-utils")
+    compilerApi project(":native:objcexport-header-generator")
+    compilerApi project(":native:base")
 
     compilerImplementation project(":kotlin-compiler")
     compilerApi project(":native:kotlin-native-utils")
@@ -160,6 +163,7 @@ dependencies {
     compilerApi project(":core:compiler.common.native")
     compilerApi project(":compiler:ir.tree")
     compilerApi project(":compiler:ir.backend.common")
+    compilerApi project(":compiler:ir.objcinterop")
     compilerApi project(":compiler:util")
     compilerApi project(":native:frontend.native")
     compilerApi project(":compiler:cli-common")
@@ -168,9 +172,10 @@ dependencies {
     compilerApi project(":kotlin-util-klib")
     compilerApi project(":kotlin-util-klib-metadata")
     compilerApi project(":compiler:ir.serialization.common")
+    compilerApi project(":compiler:ir.serialization.native")
     compilerApi project(":compiler:fir:fir-serialization")
+    compilerApi project(":compiler:fir:native")
     compilerApi project(":compiler:ir.psi2ir")
-    compilerApi project(":kotlin-native-shared")
     use(IntellijDependenciesKt) {
         compilerApi(intellijCore())
         compileOnly(jpsModel())
@@ -180,7 +185,6 @@ dependencies {
 
     cli_bcApiElements sourceSets.cli_bc.output
 }
-
 
 classes.dependsOn 'compilerClasses', 'cli_bcClasses'
 
@@ -234,23 +238,9 @@ tasks.register("debugCompiler", JavaExec) {
     args = findProperty("konan.debug.args").toString().tokenize() ?: []
 }
 
-publishing {
-    repositories {
-        maven { url = "$buildDir/repo" }
-    }
-
-    publications {
-        maven(MavenPublication) {
-            groupId = 'org.jetbrains.kotlin'
-            artifactId = 'backend.native'
-            version = kotlinVersion
-
-            from components.java
-        }
-    }
-}
-
 RepoArtifacts.sourcesJar(project) {
     it.from(sourceSets["cli_bc"].allSource)
     it.from(sourceSets["compiler"].allSource)
 }
+
+RepoArtifacts.javadocJar(project)

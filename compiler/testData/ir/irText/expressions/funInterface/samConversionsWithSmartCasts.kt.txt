@@ -83,7 +83,6 @@ fun <T> test7b(a: T) where T : Function1<Int, Unit>, T : Function0<Unit> {
 }
 
 interface Unrelated {
-
 }
 
 fun <T> test7c(a: T) where T : Unrelated, T : Function0<Unit> {
@@ -96,4 +95,15 @@ fun test8(a: Function0<Unit>) {
 
 fun test9() {
   run1(r = ::test9 /*-> KRunnable */)
+}
+
+fun test10(a: Any) {
+  when {
+    when {
+      a is Unrelated -> a is Function0<Unit>
+      else -> false
+    } -> { // BLOCK
+      run1(r = a /*as Function0<Unit> */ /*-> KRunnable */)
+    }
+  }
 }

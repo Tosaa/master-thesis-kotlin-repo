@@ -101,14 +101,6 @@ fun KonanTarget.supportsExceptions(): Boolean = when(this) {
     else -> true
 }
 
-fun KonanTarget.suportsMemMem(): Boolean = when (this) {
-    is KonanTarget.WASM32 -> false
-    is KonanTarget.MINGW_X86 -> false
-    is KonanTarget.MINGW_X64 -> false
-    is KonanTarget.ZEPHYR -> false
-    else -> true
-}
-
 fun KonanTarget.supportsObjcInterop(): Boolean = family.isAppleFamily
 fun KonanTarget.hasFoundationFramework(): Boolean = family.isAppleFamily
 fun KonanTarget.hasUIKitFramework(): Boolean = family == Family.IOS || family == Family.TVOS
@@ -176,30 +168,7 @@ fun KonanTarget.hasAddressDependencyInMemoryModel(): Boolean =
      }
 
 val KonanTarget.supportsGrandCentralDispatch
-    get() = when(family) {
-        Family.WATCHOS, Family.IOS, Family.TVOS, Family.OSX -> true
-        else -> false
-    }
+    get() = family.isAppleFamily
 
-// TODO: this is bad function. It should be replaced by capabilities functions like above
-// but two affected targets are too strange, so we postpone it
-fun KonanTarget.customArgsForKonanSources() = when (this) {
-    KonanTarget.WASM32 -> listOf(
-            "KONAN_NO_FFI=1",
-            "KONAN_INTERNAL_DLMALLOC=1",
-            "KONAN_INTERNAL_SNPRINTF=1",
-            "KONAN_INTERNAL_NOW=1",
-            "KONAN_NO_CTORS_SECTION=1",
-            "KONAN_NO_BACKTRACE=1",
-            "KONAN_NO_EXTERNAL_CALLS_CHECKER=1",
-    )
-    is KonanTarget.ZEPHYR -> listOf(
-            "KONAN_NO_FFI=1",
-            "KONAN_NO_MATH=1",
-            "KONAN_INTERNAL_SNPRINTF=1",
-            "KONAN_INTERNAL_NOW=1",
-            "KONAN_NO_CTORS_SECTION=1",
-            "KONAN_NO_BACKTRACE=1"
-    )
-    else -> emptyList()
-}
+val KonanTarget.supportsSignposts
+    get() = family.isAppleFamily

@@ -26,7 +26,7 @@ import org.jetbrains.kotlin.utils.addToStdlib.ifTrue
 fun IrElement.render(options: DumpIrTreeOptions = DumpIrTreeOptions()) =
     accept(RenderIrElementVisitor(options), null)
 
-class RenderIrElementVisitor(private val options: DumpIrTreeOptions = DumpIrTreeOptions()) :
+open class RenderIrElementVisitor(private val options: DumpIrTreeOptions = DumpIrTreeOptions()) :
     IrElementVisitor<String, Nothing?> {
 
     private val variableNameData = VariableNameData(options.normalizeNames)
@@ -241,14 +241,22 @@ class RenderIrElementVisitor(private val options: DumpIrTreeOptions = DumpIrTree
     override fun visitDeclaration(declaration: IrDeclarationBase, data: Nothing?): String =
         "?DECLARATION? ${declaration::class.java.simpleName} $declaration"
 
-    override fun visitModuleFragment(declaration: IrModuleFragment, data: Nothing?): String =
-        "MODULE_FRAGMENT name:${declaration.name}"
+    override fun visitModuleFragment(declaration: IrModuleFragment, data: Nothing?): String {
+        return buildString {
+            append("MODULE_FRAGMENT")
+            if (options.printModuleName) {
+                append(" name:").append(declaration.name)
+            }
+        }
+    }
 
     override fun visitExternalPackageFragment(declaration: IrExternalPackageFragment, data: Nothing?): String =
         "EXTERNAL_PACKAGE_FRAGMENT fqName:${declaration.packageFqName}"
 
-    override fun visitFile(declaration: IrFile, data: Nothing?): String =
-        "FILE fqName:${declaration.packageFqName} fileName:${declaration.path}"
+    override fun visitFile(declaration: IrFile, data: Nothing?): String {
+        val fileName = if (options.printFilePath) declaration.path else declaration.name
+        return "FILE fqName:${declaration.packageFqName} fileName:$fileName"
+    }
 
     override fun visitFunction(declaration: IrFunction, data: Nothing?): String =
         declaration.runTrimEnd {
@@ -742,12 +750,12 @@ private val IrFunction.safeReturnType: IrType?
 private fun IrLocalDelegatedProperty.renderLocalDelegatedPropertyFlags() =
     if (isVar) "var" else "val"
 
-private class VariableNameData(val normalizeNames: Boolean) {
+internal class VariableNameData(val normalizeNames: Boolean) {
     val nameMap: MutableMap<IrVariableSymbol, String> = mutableMapOf()
     var temporaryIndex: Int = 0
 }
 
-private fun IrVariable.normalizedName(data: VariableNameData): String {
+internal fun IrVariable.normalizedName(data: VariableNameData): String {
     if (data.normalizeNames && (origin == IrDeclarationOrigin.IR_TEMPORARY_VARIABLE || origin == IrDeclarationOrigin.FOR_LOOP_ITERATOR)) {
         return data.nameMap.getOrPut(symbol) { "tmp_${data.temporaryIndex++}" }
     }
@@ -783,9 +791,10 @@ private fun IrType.renderTypeInner(renderer: RenderIrElementVisitor?, options: D
             } else if (isMarkedNullable()) {
                 append('?')
             }
-            abbreviation?.let {
-                append(it.renderTypeAbbreviation(renderer, options))
-            }
+            if (options.printTypeAbbreviations)
+                abbreviation?.let {
+                    append(it.renderTypeAbbreviation(renderer, options))
+                }
         }
 
         else -> "{${javaClass.simpleName} $this}"
@@ -862,9 +871,7 @@ private fun StringBuilder.renderAsAnnotationArgument(irElement: IrElement?, rend
         null -> append("<null>")
         is IrConstructorCall -> renderAsAnnotation(irElement, renderer, options)
         is IrConst<*> -> {
-            append('\'')
-            append(irElement.value.toString())
-            append('\'')
+            renderIrConstAsAnnotationArgument(irElement)
         }
         is IrVararg -> {
             appendIterableWith(irElement.elements, prefix = "[", postfix = "]", separator = ", ") {
@@ -877,6 +884,17 @@ private fun StringBuilder.renderAsAnnotationArgument(irElement: IrElement?, rend
             append("...")
         }
     }
+}
+
+private fun StringBuilder.renderIrConstAsAnnotationArgument(const: IrConst<*>) {
+    val quotes = when (const.kind) {
+        IrConstKind.String -> "\""
+        IrConstKind.Char -> "'"
+        else -> ""
+    }
+    append(quotes)
+    append(const.value.toString())
+    append(quotes)
 }
 
 private fun renderClassWithRenderer(declaration: IrClass, renderer: RenderIrElementVisitor?, options: DumpIrTreeOptions) =

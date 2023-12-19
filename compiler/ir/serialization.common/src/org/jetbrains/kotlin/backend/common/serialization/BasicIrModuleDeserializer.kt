@@ -69,25 +69,6 @@ abstract class BasicIrModuleDeserializer(
         if (shouldSaveDeserializationState) {
             this.fileDeserializationStates = fileDeserializationStates
         }
-
-        fileToDeserializerMap.values.forEach { it.symbolDeserializer.deserializeExpectActualMapping() }
-    }
-
-    private fun IrSymbolDeserializer.deserializeExpectActualMapping() {
-        actuals.forEach {
-            val expectSymbol = parseSymbolData(it.expectSymbol)
-            val actualSymbol = parseSymbolData(it.actualSymbol)
-
-            val expect = deserializeIdSignature(expectSymbol.signatureId)
-            val actual = deserializeIdSignature(actualSymbol.signatureId)
-
-            assert(linker.expectIdSignatureToActualIdSignature[expect] == null) {
-                "Expect signature $expect is already actualized by ${linker.expectIdSignatureToActualIdSignature[expect]}, while we try to record $actual"
-            }
-            linker.expectIdSignatureToActualIdSignature[expect] = actual
-            // Non-null only for topLevel declarations.
-            findModuleDeserializerForTopLevelId(actual)?.let { md -> linker.topLevelActualIdSignatureToModuleDeserializer[actual] = md }
-        }
     }
 
     override fun referenceSimpleFunctionByLocalSignature(file: IrFile, idSignature: IdSignature) : IrSimpleFunctionSymbol =
@@ -137,18 +118,16 @@ abstract class BasicIrModuleDeserializer(
 
         fileToDeserializerMap[file] = fileDeserializationState.fileDeserializer
 
-        if (!fileStrategy.onDemand) {
-            val topLevelDeclarations = fileDeserializationState.fileDeserializer.reversedSignatureIndex.keys
-            topLevelDeclarations.forEach {
-                moduleReversedFileIndex.putIfAbsent(it, fileDeserializationState) // TODO Why not simple put?
-            }
+        val topLevelDeclarations = fileDeserializationState.fileDeserializer.reversedSignatureIndex.keys
+        topLevelDeclarations.forEach {
+            moduleReversedFileIndex.putIfAbsent(it, fileDeserializationState) // TODO Why not simple put?
+        }
 
-            if (fileStrategy.theWholeWorld) {
-                fileDeserializationState.enqueueAllDeclarations()
-            }
-            if (fileStrategy.theWholeWorld || fileStrategy.explicitlyExported) {
-                moduleDeserializationState.enqueueFile(fileDeserializationState)
-            }
+        if (fileStrategy.theWholeWorld) {
+            fileDeserializationState.enqueueAllDeclarations()
+        }
+        if (fileStrategy.theWholeWorld || fileStrategy.explicitlyExported) {
+            moduleDeserializationState.enqueueFile(fileDeserializationState)
         }
 
         return fileDeserializationState

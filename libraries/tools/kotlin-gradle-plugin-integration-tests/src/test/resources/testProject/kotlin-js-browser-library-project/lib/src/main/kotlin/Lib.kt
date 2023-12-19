@@ -5,6 +5,14 @@
 
 package com.example
 
+<<<<<<<< HEAD:libraries/tools/kotlin-gradle-plugin-integration-tests/src/test/resources/testProject/kotlin-js-browser-library-project/app/src/main/kotlin/App.kt
+fun main() {
+    require("css/main.css")
+    println("Sheldon: ${sheldon()}")
+}
+
+external fun require(o: String)
+========
 fun answer(): Int {
     return best()
 }
@@ -12,3 +20,4 @@ fun answer(): Int {
 fun sheldon(): Int {
     return simpleBest()
 }
+>>>>>>>> jetbrains/2.0.0-Beta2:libraries/tools/kotlin-gradle-plugin-integration-tests/src/test/resources/testProject/kotlin-js-browser-library-project/lib/src/main/kotlin/Lib.kt

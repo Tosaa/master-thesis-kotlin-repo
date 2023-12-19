@@ -11,15 +11,18 @@ import org.jetbrains.kotlin.config.CompilerConfiguration
 import org.jetbrains.kotlin.config.JVMConfigurationKeys
 import org.jetbrains.kotlin.config.JvmSerializeIrMode
 import org.jetbrains.kotlin.config.languageVersionSettings
+import org.jetbrains.kotlin.fir.FirSession
 import org.jetbrains.kotlin.fir.backend.Fir2IrComponents
 import org.jetbrains.kotlin.fir.backend.Fir2IrConversionScope
 import org.jetbrains.kotlin.fir.backend.Fir2IrExtensions
 import org.jetbrains.kotlin.fir.backend.InjectedValue
+import org.jetbrains.kotlin.fir.declarations.FirProperty
 import org.jetbrains.kotlin.fir.references.FirReference
 import org.jetbrains.kotlin.ir.IrBuiltIns
 import org.jetbrains.kotlin.ir.declarations.*
 import org.jetbrains.kotlin.ir.declarations.impl.IrExternalPackageFragmentImpl
 import org.jetbrains.kotlin.ir.declarations.impl.IrFactoryImpl
+import org.jetbrains.kotlin.ir.overrides.IrExternalOverridabilityCondition
 import org.jetbrains.kotlin.ir.symbols.impl.DescriptorlessExternalPackageFragmentSymbol
 import org.jetbrains.kotlin.ir.util.*
 import org.jetbrains.kotlin.load.java.JvmAnnotationNames
@@ -32,6 +35,7 @@ class JvmFir2IrExtensions(
     private val irDeserializer: JvmIrDeserializer,
     private val mangler: KotlinMangler.IrMangler,
 ) : Fir2IrExtensions, JvmGeneratorExtensions {
+    override val externalOverridabilityConditions: List<IrExternalOverridabilityCondition> = emptyList() // TODO: KT-61370, KT-61804
     override val classNameOverride: MutableMap<IrClass, JvmClassName> = mutableMapOf()
     override val cachedFields = CachedFieldsForObjectInstances(IrFactoryImpl, configuration.languageVersionSettings)
 
@@ -93,4 +97,8 @@ class JvmFir2IrExtensions(
         irDeserializer.deserializeTopLevelClass(
             irClass, components.irBuiltIns, components.symbolTable, components.irProviders, this
         )
+
+    override fun hasBackingField(property: FirProperty, session: FirSession): Boolean =
+        // NOTE maybe there might be platform-specific logic, similar to JvmGeneratorExtensionsImpl.isPropertyWithPlatformField()
+        Fir2IrExtensions.Default.hasBackingField(property, session)
 }

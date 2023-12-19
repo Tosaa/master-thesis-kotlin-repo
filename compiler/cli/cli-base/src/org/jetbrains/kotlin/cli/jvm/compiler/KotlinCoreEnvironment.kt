@@ -52,7 +52,6 @@ import org.jetbrains.kotlin.cli.common.CliModuleVisibilityManagerImpl
 import org.jetbrains.kotlin.cli.common.CompilerSystemProperties
 import org.jetbrains.kotlin.cli.common.config.ContentRoot
 import org.jetbrains.kotlin.cli.common.config.KotlinSourceRoot
-import org.jetbrains.kotlin.cli.common.config.kotlinSourceRoots
 import org.jetbrains.kotlin.cli.common.environment.setIdeaIoUseFallback
 import org.jetbrains.kotlin.cli.common.extensions.ScriptEvaluationExtension
 import org.jetbrains.kotlin.cli.common.extensions.ShellExtension
@@ -141,11 +140,28 @@ class KotlinCoreEnvironment private constructor(
                     val fastJarFs = applicationEnvironment.fastJarFileSystem
                     if (fastJarFs == null) {
                         messageCollector?.report(
-                            CompilerMessageSeverity.STRONG_WARNING,
+                            STRONG_WARNING,
                             "Your JDK doesn't seem to support mapped buffer unmapping, so the slower (old) version of JAR FS will be used"
                         )
                         applicationEnvironment.jarFileSystem
-                    } else fastJarFs
+                    } else {
+                        val outputJar = configuration.get(JVMConfigurationKeys.OUTPUT_JAR)
+                        if (outputJar == null) {
+                            fastJarFs
+                        } else {
+                            val contentRoots = configuration.get(CLIConfigurationKeys.CONTENT_ROOTS)
+                            if (contentRoots?.any { it is JvmClasspathRoot && it.file.path == outputJar.path } == true) {
+                                // See KT-61883
+                                messageCollector?.report(
+                                    STRONG_WARNING,
+                                    "JAR from the classpath ${outputJar.path} is reused as output JAR, so the slower (old) version of JAR FS will be used"
+                                )
+                                applicationEnvironment.jarFileSystem
+                            } else {
+                                fastJarFs
+                            }
+                        }
+                    }
                 }
 
                 else -> applicationEnvironment.jarFileSystem
@@ -195,7 +211,10 @@ class KotlinCoreEnvironment private constructor(
         val project = projectEnvironment.project
         project.registerService(DeclarationProviderFactoryService::class.java, CliDeclarationProviderFactoryService(sourceFiles))
 
-        sourceFiles += createSourceFilesFromSourceRoots(configuration, project, getSourceRootsCheckingForDuplicates())
+        sourceFiles += createSourceFilesFromSourceRoots(
+            configuration, project,
+            getSourceRootsCheckingForDuplicates(configuration, configuration[CLIConfigurationKeys.MESSAGE_COLLECTOR_KEY])
+        )
 
         collectAdditionalSources(project)
 
@@ -402,20 +421,6 @@ class KotlinCoreEnvironment private constructor(
     private fun findJarRoot(file: File): VirtualFile? =
         projectEnvironment.jarFileSystem.findFileByPath("$file${URLUtil.JAR_SEPARATOR}")
 
-    private fun getSourceRootsCheckingForDuplicates(): List<KotlinSourceRoot> {
-        val uniqueSourceRoots = hashSetOf<String>()
-        val result = mutableListOf<KotlinSourceRoot>()
-
-        for (root in configuration.kotlinSourceRoots) {
-            if (!uniqueSourceRoots.add(root.path)) {
-                report(STRONG_WARNING, "Duplicate source root: ${root.path}")
-            }
-            result.add(root)
-        }
-
-        return result
-    }
-
     fun getSourceFiles(): List<KtFile> =
         ProcessSourcesBeforeCompilingExtension.getInstances(project)
             .fold(sourceFiles as Collection<KtFile>) { files, extension ->
@@ -464,7 +469,9 @@ class KotlinCoreEnvironment private constructor(
             // Tests are supposed to create a single project and dispose it right after use
             val appEnv =
                 createApplicationEnvironment(
-                    parentDisposable, configuration, unitTestMode = true
+                    parentDisposable,
+                    configuration,
+                    KotlinCoreApplicationEnvironmentMode.UnitTest,
                 )
             val projectEnv = ProjectEnvironment(parentDisposable, appEnv, configuration)
             return KotlinCoreEnvironment(projectEnv, configuration, extensionConfigs)
@@ -494,7 +501,7 @@ class KotlinCoreEnvironment private constructor(
             val appEnv = createApplicationEnvironment(
                 parentDisposable,
                 configuration,
-                unitTestMode = true
+                KotlinCoreApplicationEnvironmentMode.UnitTest,
             )
             return ProjectEnvironment(parentDisposable, appEnv, configuration)
         }
@@ -504,14 +511,25 @@ class KotlinCoreEnvironment private constructor(
 
         fun getOrCreateApplicationEnvironmentForProduction(
             parentDisposable: Disposable, configuration: CompilerConfiguration
-        ): KotlinCoreApplicationEnvironment = getOrCreateApplicationEnvironment(parentDisposable, configuration, unitTestMode = false)
+        ): KotlinCoreApplicationEnvironment = getOrCreateApplicationEnvironment(
+            parentDisposable,
+            configuration,
+            KotlinCoreApplicationEnvironmentMode.Production,
+        )
 
         fun getOrCreateApplicationEnvironmentForTests(
-            parentDisposable: Disposable, configuration: CompilerConfiguration
-        ): KotlinCoreApplicationEnvironment = getOrCreateApplicationEnvironment(parentDisposable, configuration, unitTestMode = true)
+            parentDisposable: Disposable,
+            configuration: CompilerConfiguration,
+        ): KotlinCoreApplicationEnvironment = getOrCreateApplicationEnvironment(
+            parentDisposable,
+            configuration,
+            KotlinCoreApplicationEnvironmentMode.UnitTest,
+        )
 
-        private fun getOrCreateApplicationEnvironment(
-            parentDisposable: Disposable, configuration: CompilerConfiguration, unitTestMode: Boolean
+        fun getOrCreateApplicationEnvironment(
+            parentDisposable: Disposable,
+            configuration: CompilerConfiguration,
+            environmentMode: KotlinCoreApplicationEnvironmentMode,
         ): KotlinCoreApplicationEnvironment {
             synchronized(APPLICATION_LOCK) {
                 if (ourApplicationEnvironment == null) {
@@ -520,7 +538,7 @@ class KotlinCoreEnvironment private constructor(
                         createApplicationEnvironment(
                             disposable,
                             configuration,
-                            unitTestMode
+                            environmentMode,
                         )
                     ourProjectCount = 0
                     Disposer.register(disposable, Disposable {
@@ -601,11 +619,11 @@ class KotlinCoreEnvironment private constructor(
         }
 
         private fun createApplicationEnvironment(
-            parentDisposable: Disposable, configuration: CompilerConfiguration, unitTestMode: Boolean
+            parentDisposable: Disposable,
+            configuration: CompilerConfiguration,
+            environmentMode: KotlinCoreApplicationEnvironmentMode,
         ): KotlinCoreApplicationEnvironment {
-            val applicationEnvironment = KotlinCoreApplicationEnvironment.create(
-                parentDisposable, unitTestMode
-            )
+            val applicationEnvironment = KotlinCoreApplicationEnvironment.create(parentDisposable, environmentMode)
 
             registerApplicationExtensionPointsAndExtensionsFrom(configuration, "extensions/compiler.xml")
 

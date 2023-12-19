@@ -22,7 +22,7 @@ import org.jetbrains.kotlin.gradle.plugin.statistics.KotlinBuildStatHandler.Comp
 import org.jetbrains.kotlin.statistics.BuildSessionLogger
 import org.jetbrains.kotlin.statistics.BuildSessionLogger.Companion.STATISTICS_FOLDER_NAME
 import org.jetbrains.kotlin.statistics.metrics.BooleanMetrics
-import org.jetbrains.kotlin.statistics.metrics.IStatisticsValuesConsumer
+import org.jetbrains.kotlin.statistics.metrics.StatisticsValuesConsumer
 import org.jetbrains.kotlin.statistics.metrics.NumericalMetrics
 import org.jetbrains.kotlin.statistics.metrics.StringMetrics
 import java.io.Closeable
@@ -45,7 +45,7 @@ interface KotlinBuildStatsMXBean {
     fun reportString(name: String, value: String, subprojectName: String?, weight: Long?): Boolean
 }
 
-internal abstract class KotlinBuildStatsService internal constructor() : IStatisticsValuesConsumer, Closeable {
+internal abstract class KotlinBuildStatsService internal constructor() : StatisticsValuesConsumer, Closeable {
     companion object {
         // Property name for disabling saving statistical information
         private const val ENABLE_STATISTICS_PROPERTY_NAME = "enable_kotlin_performance_profile"
@@ -102,7 +102,8 @@ internal abstract class KotlinBuildStatsService internal constructor() : IStatis
                         kotlinBuildStatsServicesRegistry = it
                     }
 
-                    val defaultServiceName = KotlinBuildStatsServicesRegistry.getBeanName(KotlinBuildStatsServicesRegistry.DEFAULT_SERVICE_QUALIFIER)
+                    val defaultServiceName =
+                        KotlinBuildStatsServicesRegistry.getBeanName(KotlinBuildStatsServicesRegistry.DEFAULT_SERVICE_QUALIFIER)
                     val instance = kotlinBuildStatsServicesRegistry?.getDefaultService()
                     if (instance != null) {
                         registry.logger.debug("$defaultServiceName is already instantiated. Current instance is $instance")
@@ -186,16 +187,7 @@ internal abstract class KotlinBuildStatsService internal constructor() : IStatis
 
     override fun close() {
     }
-
-    /**
-     * Collects metrics at the end of a build
-     */
-    open fun recordBuildFinish(action: String?, buildFailed: Boolean, configurationTimeMetrics: MetricContainer) {}
-
-    /**
-     * Collect project general and configuration metrics at the start of a build
-     */
-    open fun collectStartMetrics(project: Project, isProjectIsolationEnabled: Boolean): MetricContainer = MetricContainer()
+    open fun recordBuildFinish(action: String?, buildFailed: Boolean, metric: NonSynchronizedMetricsContainer) {}
 
     open fun recordProjectsEvaluated(gradle: Gradle) {}
 }
@@ -307,12 +299,7 @@ internal class DefaultKotlinBuildStatsService internal constructor(
         report(StringMetrics.valueOf(name), value, subprojectName, weight)
 
     //only one jmx bean service should report global metrics
-    override fun recordBuildFinish(action: String?, buildFailed: Boolean, configurationTimeMetrics: MetricContainer) {
-        KotlinBuildStatHandler().reportGlobalMetrics(sessionLogger)
-        KotlinBuildStatHandler().reportBuildFinished(sessionLogger, action, buildFailed, configurationTimeMetrics)
+    override fun recordBuildFinish(action: String?, buildFailed: Boolean, metrics: NonSynchronizedMetricsContainer) {
+        KotlinBuildStatHandler().reportBuildFinished(sessionLogger, action, buildFailed, metrics)
     }
-
-    override fun collectStartMetrics(project: Project, isProjectIsolationEnabled: Boolean) =
-        KotlinBuildStatHandler().collectConfigurationTimeMetrics(project, sessionLogger, isProjectIsolationEnabled)
-
 }

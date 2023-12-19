@@ -5,7 +5,6 @@
 
 package org.jetbrains.kotlin.fir.types
 
-import org.jetbrains.kotlin.fir.symbols.ConeClassifierLookupTag
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.types.model.*
 
@@ -13,16 +12,16 @@ import org.jetbrains.kotlin.types.model.*
 
 class ConeTypeVariableType(
     override val nullability: ConeNullability,
-    override val lookupTag: ConeTypeVariableTypeConstructor,
+    val typeConstructor: ConeTypeVariableTypeConstructor,
     override val attributes: ConeAttributes = ConeAttributes.Empty,
-) : ConeLookupTagBasedType() {
-    override val typeArguments: Array<out ConeTypeProjection> get() = emptyArray()
+) : ConeSimpleKotlinType() {
+    override val typeArguments: Array<out ConeTypeProjection> get() = EMPTY_ARRAY
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is ConeTypeVariableType) return false
 
         if (nullability != other.nullability) return false
-        if (lookupTag != other.lookupTag) return false
+        if (typeConstructor != other.typeConstructor) return false
 
         return true
     }
@@ -30,7 +29,7 @@ class ConeTypeVariableType(
     override fun hashCode(): Int {
         var result = 0
         result = 31 * result + nullability.hashCode()
-        result = 31 * result + lookupTag.hashCode()
+        result = 31 * result + typeConstructor.hashCode()
         return result
     }
 }
@@ -38,8 +37,8 @@ class ConeTypeVariableType(
 class ConeTypeVariableTypeConstructor(
     val debugName: String,
     val originalTypeParameter: TypeParameterMarker?
-) : ConeClassifierLookupTag(), TypeVariableTypeConstructorMarker {
-    override val name: Name get() = Name.identifier(debugName)
+) : TypeVariableTypeConstructorMarker {
+    val name: Name get() = Name.identifier(debugName)
 
     var isContainedInInvariantOrContravariantPositions: Boolean = false
         private set
@@ -65,7 +64,7 @@ sealed class ConeStubType(val constructor: ConeStubTypeConstructor, override val
     ConeSimpleKotlinType() {
 
     override val typeArguments: Array<out ConeTypeProjection>
-        get() = emptyArray()
+        get() = EMPTY_ARRAY
 
     override val attributes: ConeAttributes
         get() = ConeAttributes.Empty

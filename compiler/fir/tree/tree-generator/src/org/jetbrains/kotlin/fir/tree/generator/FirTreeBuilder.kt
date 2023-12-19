@@ -64,7 +64,7 @@ object FirTreeBuilder : AbstractFirTreeBuilder() {
     val propertyAccessor by element(Declaration, function, contractDescriptionOwner, typeParametersOwner)
     val backingField by element(Declaration, variable, typeParametersOwner, statement)
     val constructor by element(Declaration, function, typeParameterRefsOwner, contractDescriptionOwner)
-    val file by element(Declaration, declaration)
+    val file by element(Declaration, declaration, controlFlowGraphOwner)
     val script by element(Declaration, declaration)
     val codeFragment by element(Declaration, declaration)
     val packageDirective by element(Other)
@@ -79,7 +79,6 @@ object FirTreeBuilder : AbstractFirTreeBuilder() {
 
     val import by element(Declaration)
     val resolvedImport by element(Declaration, import)
-    val errorImport by element(Declaration, import, diagnosticHolder)
 
     val loop by sealedElement(Expression, statement, targetElement)
     val errorLoop by element(Expression, loop, diagnosticHolder)
@@ -124,6 +123,7 @@ object FirTreeBuilder : AbstractFirTreeBuilder() {
     val errorExpression by element(Expression, expression, diagnosticHolder)
     val errorFunction by element(Declaration, function, diagnosticHolder)
     val errorProperty by element(Declaration, variable, diagnosticHolder)
+    val errorPrimaryConstructor by element(Declaration, constructor, diagnosticHolder)
     val danglingModifierList by element(Declaration, declaration, diagnosticHolder)
     val qualifiedAccessExpression by element(Expression, expression, resolvable, contextReceiverArgumentListOwner)
     val qualifiedErrorAccessExpression by element(Expression, expression, diagnosticHolder)
@@ -148,6 +148,7 @@ object FirTreeBuilder : AbstractFirTreeBuilder() {
     val spreadArgumentExpression by element(Expression, wrappedArgumentExpression)
     val namedArgumentExpression by element(Expression, wrappedArgumentExpression)
     val varargArgumentsExpression by element(Expression, expression)
+    val samConversionExpression by element(Expression, expression)
 
     val resolvedQualifier by element(Expression, expression)
     val errorResolvedQualifier by element(Expression, resolvedQualifier, diagnosticHolder)

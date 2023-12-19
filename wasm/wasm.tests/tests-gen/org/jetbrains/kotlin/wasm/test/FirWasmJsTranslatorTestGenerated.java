@@ -356,6 +356,128 @@ public class FirWasmJsTranslatorTestGenerated extends AbstractFirWasmJsTranslato
                 runTest("js/js.translator/testData/box/esModules/jsName/jsTopLevelClashes.kt");
             }
         }
+
+        @Nested
+        @TestMetadata("js/js.translator/testData/box/esModules/kotlin.test")
+        @TestDataPath("$PROJECT_ROOT")
+        public class Kotlin_test {
+            @Test
+            public void testAllFilesPresentInKotlin_test() throws Exception {
+                KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("js/js.translator/testData/box/esModules/kotlin.test"), Pattern.compile("^([^_](.+))\\.kt$"), null, TargetBackend.WASM, true);
+            }
+
+            @Test
+            @TestMetadata("beforeAfter.kt")
+            public void testBeforeAfter() throws Exception {
+                runTest("js/js.translator/testData/box/esModules/kotlin.test/beforeAfter.kt");
+            }
+
+            @Test
+            @TestMetadata("ignore.kt")
+            public void testIgnore() throws Exception {
+                runTest("js/js.translator/testData/box/esModules/kotlin.test/ignore.kt");
+            }
+
+            @Test
+            @TestMetadata("illegalParameters.kt")
+            public void testIllegalParameters() throws Exception {
+                runTest("js/js.translator/testData/box/esModules/kotlin.test/illegalParameters.kt");
+            }
+
+            @Test
+            @TestMetadata("incremental.kt")
+            public void testIncremental() throws Exception {
+                runTest("js/js.translator/testData/box/esModules/kotlin.test/incremental.kt");
+            }
+
+            @Test
+            @TestMetadata("inherited.kt")
+            public void testInherited() throws Exception {
+                runTest("js/js.translator/testData/box/esModules/kotlin.test/inherited.kt");
+            }
+
+            @Test
+            @TestMetadata("mpp.kt")
+            public void testMpp() throws Exception {
+                runTest("js/js.translator/testData/box/esModules/kotlin.test/mpp.kt");
+            }
+
+            @Test
+            @TestMetadata("nested.kt")
+            public void testNested() throws Exception {
+                runTest("js/js.translator/testData/box/esModules/kotlin.test/nested.kt");
+            }
+
+            @Test
+            @TestMetadata("returnTestResult.kt")
+            public void testReturnTestResult() throws Exception {
+                runTest("js/js.translator/testData/box/esModules/kotlin.test/returnTestResult.kt");
+            }
+
+            @Test
+            @TestMetadata("simple.kt")
+            public void testSimple() throws Exception {
+                runTest("js/js.translator/testData/box/esModules/kotlin.test/simple.kt");
+            }
+        }
+
+        @Nested
+        @TestMetadata("js/js.translator/testData/box/esModules/main")
+        @TestDataPath("$PROJECT_ROOT")
+        public class Main {
+            @Test
+            public void testAllFilesPresentInMain() throws Exception {
+                KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("js/js.translator/testData/box/esModules/main"), Pattern.compile("^([^_](.+))\\.kt$"), null, TargetBackend.WASM, true);
+            }
+
+            @Test
+            @TestMetadata("differentMains.kt")
+            public void testDifferentMains() throws Exception {
+                runTest("js/js.translator/testData/box/esModules/main/differentMains.kt");
+            }
+
+            @Test
+            @TestMetadata("incremental.kt")
+            public void testIncremental() throws Exception {
+                runTest("js/js.translator/testData/box/esModules/main/incremental.kt");
+            }
+
+            @Test
+            @TestMetadata("noArgs.kt")
+            public void testNoArgs() throws Exception {
+                runTest("js/js.translator/testData/box/esModules/main/noArgs.kt");
+            }
+
+            @Test
+            @TestMetadata("simple.kt")
+            public void testSimple() throws Exception {
+                runTest("js/js.translator/testData/box/esModules/main/simple.kt");
+            }
+
+            @Test
+            @TestMetadata("suspendMain.kt")
+            public void testSuspendMain() throws Exception {
+                runTest("js/js.translator/testData/box/esModules/main/suspendMain.kt");
+            }
+
+            @Test
+            @TestMetadata("suspendMainNoArgs.kt")
+            public void testSuspendMainNoArgs() throws Exception {
+                runTest("js/js.translator/testData/box/esModules/main/suspendMainNoArgs.kt");
+            }
+
+            @Test
+            @TestMetadata("suspendMainThrows.kt")
+            public void testSuspendMainThrows() throws Exception {
+                runTest("js/js.translator/testData/box/esModules/main/suspendMainThrows.kt");
+            }
+
+            @Test
+            @TestMetadata("twoMains.kt")
+            public void testTwoMains() throws Exception {
+                runTest("js/js.translator/testData/box/esModules/main/twoMains.kt");
+            }
+        }
     }
 
     @Nested

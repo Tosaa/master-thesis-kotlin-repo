@@ -5,7 +5,7 @@
     <parent>
         <artifactId>kotlin-project</artifactId>
         <groupId>org.jetbrains.kotlin</groupId>
-        <version>1.9.255-SNAPSHOT</version>
+        <version>2.0.255-SNAPSHOT</version>
         <relativePath>../../pom.xml</relativePath>
     </parent>
     <modelVersion>4.0.0</modelVersion>
@@ -126,7 +126,7 @@
                                 <artifact>org.jetbrains.kotlin:kotlin-script-runtime:${project.version}</artifact>
                                 <artifact>org.jetbrains.kotlin:kotlin-stdlib:${project.version}</artifact>
                                 <artifact>org.jetbrains.kotlin:kotlin-stdlib-common:${project.version}</artifact>
-                                <artifact>org.jetbrains.kotlin:kotlin-stdlib-js:${project.version}</artifact>
+                                <artifact>org.jetbrains.kotlin:kotlin-stdlib-js:${project.version}:klib</artifact>
                                 <artifact>org.jetbrains.kotlin:kotlin-stdlib-jdk7:${project.version}</artifact>
                                 <artifact>org.jetbrains.kotlin:kotlin-stdlib-jdk8:${project.version}</artifact>
                                 <artifact>org.jetbrains.kotlin:kotlin-reflect:${project.version}</artifact>
@@ -136,7 +136,7 @@
                                 <artifact>org.jetbrains.kotlin:kotlin-test-junit:${project.version}</artifact>
                                 <artifact>org.jetbrains.kotlin:kotlin-test-junit5:${project.version}</artifact>
                                 <artifact>org.jetbrains.kotlin:kotlin-test-testng:${project.version}</artifact>
-                                <artifact>org.jetbrains.kotlin:kotlin-test-js:${project.version}</artifact>
+                                <artifact>org.jetbrains.kotlin:kotlin-test-js:${project.version}:klib</artifact>
                                 <artifact>org.jetbrains.kotlin:kotlin-bom:${project.version}:pom</artifact>
                             </extraArtifacts>
                             <showErrors>true</showErrors>
@@ -211,8 +211,6 @@
                                         <pomExclude>test-enable-extensions/pom.xml</pomExclude>
                                         <pomExclude>test-kapt-allopen/pom.xml</pomExclude>
                                         <pomExclude>test-lombok-with-kapt/pom.xml</pomExclude>
-                                        <!-- exclude mpp -->
-                                        <pomExclude>test-multiplatform/pom.xml</pomExclude>
                                         <!-- exclude kts -->
                                         <pomExclude>test-helloworld-kts/pom.xml</pomExclude>
                                         <!-- exclude test, that depends on lv as they will be automatically fixed, when current lv goes to 2.0 -->

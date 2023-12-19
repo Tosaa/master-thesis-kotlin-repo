@@ -7,7 +7,6 @@ class Host {
   //   Public signature: /Host.y|3625903257357557171[0]
   //   Public signature debug description: {}y
   val y: Int
-    field
     // CHECK JVM_IR:
     //   Mangled name: Host#<get-y>(){}kotlin.Int
     //   Public signature: /Host.y.<get-y>|-6745575372101973707[0]
@@ -33,41 +32,6 @@ class Host {
   //   Public signature: /Host.test|-3179256530033214921[0]
   //   Public signature debug description: test@Outer(){}
   fun Outer.test(): Inner
-    // CHECK JVM_IR:
-    //   Mangled name: Host#test@Outer(){}Outer.Inner.<no name provided>
-    // CHECK JS_IR NATIVE:
-    //   Mangled name: Host#test@Outer(){}.<no name provided>
-    local class <no name provided> : Inner {
-      // CHECK JVM_IR:
-      //   Mangled name: Host#test@Outer(){}Outer.Inner.<no name provided>{}xx
-      // CHECK JS_IR NATIVE:
-      //   Mangled name: Host#test@Outer(){}.<no name provided>{}xx
-      val xx: Int
-        field
-        // CHECK JVM_IR:
-        //   Mangled name: Host#test@Outer(){}Outer.Inner.<no name provided>#<get-xx>(){}kotlin.Int
-        // CHECK JS_IR NATIVE:
-        //   Mangled name: Host#test@Outer(){}.<no name provided>#<get-xx>(){}
-        get
-
-      // CHECK JVM_IR:
-      //   Mangled name: Host#test@Outer(){}Outer.Inner.<no name provided>#<init>(){}
-      // CHECK JS_IR NATIVE:
-      //   Mangled name: Host#test@Outer(){}.<no name provided>#<init>(){}
-      constructor() /* primary */
-
-      // CHECK JVM_IR:
-      //   Mangled name: Host#test@Outer(){}Outer.Inner.<no name provided>{}x
-      // CHECK JS_IR NATIVE:
-      //   Mangled name: Host#test@Outer(){}.<no name provided>{}x
-      /* fake */ override val x: Int
-        // CHECK JVM_IR:
-        //   Mangled name: Host#test@Outer(){}Outer.Inner.<no name provided>#<get-x>(){}kotlin.Int
-        // CHECK JS_IR NATIVE:
-        //   Mangled name: Host#test@Outer(){}.<no name provided>#<get-x>(){}
-        /* fake */ override get(): Int
-
-    }
 
 }
 
@@ -84,7 +48,6 @@ class Outer {
     //   Public signature: /Outer.Inner.x|-8060530855978347579[0]
     //   Public signature debug description: {}x
     val x: Int
-      field
       // CHECK JVM_IR:
       //   Mangled name: Outer.Inner#<get-x>(){}kotlin.Int
       //   Public signature: /Outer.Inner.x.<get-x>|4966956098150895696[0]

@@ -27,6 +27,7 @@ data class Counter {
   //   Public signature: /Counter.<init>|-5182794243525578284[0]
   //   Public signature debug description: <init>(kotlin.Int){}
   constructor(i: Int) /* primary */
+
   // CHECK JVM_IR:
   //   Mangled name: Counter#component1(){}kotlin.Int
   //   Public signature: /Counter.component1|-8217597213800111288[0]
@@ -103,6 +104,7 @@ data class CounterConfig {
   //   Public signature: /CounterConfig.<init>|-5182794243525578284[0]
   //   Public signature debug description: <init>(kotlin.Int){}
   constructor(max: Int) /* primary */
+
   // CHECK JVM_IR:
   //   Mangled name: CounterConfig#component1(){}kotlin.Int
   //   Public signature: /CounterConfig.component1|-8217597213800111288[0]
@@ -179,13 +181,6 @@ class CounterIterator : Iterator<Int> {
   //   Public signature: /CounterIterator.<init>|4731448293962665986[0]
   //   Public signature debug description: <init>!CounterConfig(Counter){}
   constructor($context_receiver_0: CounterConfig, counter: Counter) /* primary */
-  // CHECK JVM_IR:
-  //   Mangled name computed from Ir:         CounterIterator.contextReceiverField0
-  //   Mangled name computed from Descriptor: CounterIterator{}contextReceiverField0#jf
-  // CHECK JS_IR NATIVE:
-  //   Mangled name computed from Ir:         CounterIterator.contextReceiverField0
-  //   Mangled name computed from Descriptor: CounterIterator{}contextReceiverField0
-  private /* final field */ val contextReceiverField0: CounterConfig
 
   // CHECK JVM_IR:
   //   Mangled name: CounterIterator#hasNext(){}kotlin.Boolean

@@ -5,22 +5,26 @@
 
 package org.jetbrains.kotlin.gradle.targets.js.binaryen
 
+import org.gradle.api.file.FileSystemOperations
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.tasks.*
 import org.gradle.work.DisableCachingByDefault
 import org.gradle.work.NormalizeLineEndings
-import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinJsCompilation
+import org.jetbrains.kotlin.gradle.targets.js.ir.KotlinJsIrCompilation
 import org.jetbrains.kotlin.gradle.tasks.registerTask
 import org.jetbrains.kotlin.gradle.utils.newFileProperty
 import javax.inject.Inject
 
 @DisableCachingByDefault
-open class BinaryenExec
+abstract class BinaryenExec
 @Inject
 constructor() : AbstractExecTask<BinaryenExec>(BinaryenExec::class.java) {
     @Transient
     @get:Internal
     lateinit var binaryen: BinaryenRootExtension
+
+    @get:Inject
+    abstract val fs: FileSystemOperations
 
     init {
         onlyIf {
@@ -85,7 +89,7 @@ constructor() : AbstractExecTask<BinaryenExec>(BinaryenExec::class.java) {
 
     companion object {
         fun create(
-            compilation: KotlinJsCompilation,
+            compilation: KotlinJsIrCompilation,
             name: String,
             configuration: BinaryenExec.() -> Unit = {}
         ): TaskProvider<BinaryenExec> {

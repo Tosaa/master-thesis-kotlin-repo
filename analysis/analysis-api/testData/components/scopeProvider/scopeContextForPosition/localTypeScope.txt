@@ -3,7 +3,7 @@ implicit receivers:
   type: KtUsualClassType:
     annotationsList: []
     ownTypeArguments: []
-    type: Y
+    type: <local>/Y
   owner symbol: KtFirNamedClassOrObjectSymbol
 
 scopes:
@@ -257,7 +257,7 @@ scopes:
         returnType: KtUsualClassType:
           annotationsList: []
           ownTypeArguments: []
-          type: Y
+          type: <local>/Y
         symbolKind: CLASS_MEMBER
         typeParameters: []
         valueParameters: []
@@ -384,6 +384,5 @@ scopes:
     callables: 0
     constructors: 0
 
-  DefaultSimpleImportingScope, index = 10
+  DefaultStarImportingScope, index = 10
 
-  DefaultStarImportingScope, index = 11

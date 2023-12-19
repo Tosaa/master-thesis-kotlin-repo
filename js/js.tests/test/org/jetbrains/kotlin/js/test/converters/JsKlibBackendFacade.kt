@@ -51,11 +51,11 @@ class JsKlibBackendFacade(
                 configuration[CommonConfigurationKeys.MODULE_NAME]!!,
                 configuration,
                 configuration.irMessageLogger,
+                inputArtifact.diagnosticReporter,
                 inputArtifact.sourceFiles,
                 klibPath = outputFile,
                 JsEnvironmentConfigurator.getAllRecursiveLibrariesFor(module, testServices).keys.toList(),
                 inputArtifact.irModuleFragment,
-                inputArtifact.expectDescriptorToSymbol,
                 cleanFiles = inputArtifact.icData,
                 nopack = true,
                 perFile = false,
@@ -63,7 +63,7 @@ class JsKlibBackendFacade(
                 abiVersion = KotlinAbiVersion.CURRENT, // TODO get from test file data
                 jsOutputName = null
             ) {
-                inputArtifact.serializeSingleFile(it, inputArtifact.irActualizerResult)
+                inputArtifact.serializeSingleFile(it)
             }
         }
 
@@ -89,6 +89,6 @@ class JsKlibBackendFacade(
         }
         testServices.libraryProvider.setDescriptorAndLibraryByName(outputFile, moduleDescriptor, lib)
 
-        return BinaryArtifacts.KLib(File(outputFile))
+        return BinaryArtifacts.KLib(File(outputFile), inputArtifact.diagnosticReporter)
     }
 }

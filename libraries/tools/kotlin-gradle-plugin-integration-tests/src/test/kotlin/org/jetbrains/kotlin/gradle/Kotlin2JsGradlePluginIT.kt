@@ -18,7 +18,6 @@ import org.jetbrains.kotlin.gradle.targets.js.npm.fromSrcPackageJson
 import org.jetbrains.kotlin.gradle.targets.js.yarn.YarnLockCopyTask.Companion.STORE_YARN_LOCK_NAME
 import org.jetbrains.kotlin.gradle.targets.js.yarn.YarnLockCopyTask.Companion.UPGRADE_YARN_LOCK
 import org.jetbrains.kotlin.gradle.targets.js.yarn.YarnLockCopyTask.Companion.YARN_LOCK_MISMATCH_MESSAGE
-import org.jetbrains.kotlin.gradle.tasks.USING_JS_IR_BACKEND_MESSAGE
 import org.jetbrains.kotlin.gradle.testbase.*
 import org.jetbrains.kotlin.gradle.testbase.TestVersions.Gradle.G_7_6
 import org.jetbrains.kotlin.gradle.util.replaceText
@@ -40,12 +39,28 @@ class Kotlin2JsIrGradlePluginIT : KGPBaseTest() {
     fun generateDts(gradleVersion: GradleVersion) {
         project("kotlin2JsIrDtsGeneration", gradleVersion) {
             build("build") {
-                checkIrCompilationMessage()
-
-                assertFileInProjectExists("build/kotlin2js/main/lib.js")
-                val dts = projectPath.resolve("build/kotlin2js/main/lib.d.ts")
+                assertFileInProjectExists("build/js/packages/kotlin2JsIrDtsGeneration/kotlin/kotlin2JsIrDtsGeneration.js")
+                val dts = projectPath.resolve("build/js/packages/kotlin2JsIrDtsGeneration/kotlin/kotlin2JsIrDtsGeneration.d.ts")
                 assertFileExists(dts)
                 assertFileContains(dts, "function bar(): string")
+            }
+        }
+    }
+
+    @DisplayName("nodejs main function arguments")
+    @GradleTest
+    fun testNodeJsMainArguments(gradleVersion: GradleVersion) {
+        project("kotlin-js-nodejs-project", gradleVersion) {
+            buildGradle.appendText(
+                """
+                |
+                |tasks.withType(org.jetbrains.kotlin.gradle.targets.js.nodejs.NodeJsExec).configureEach {
+                |   args += ["test", "'Hello, World'"]
+                |}
+               """.trimMargin()
+            )
+            build("nodeRun") {
+                assertOutputContains("ACCEPTED: test;'Hello, World'")
             }
         }
     }
@@ -364,31 +379,7 @@ class Kotlin2JsIrGradlePluginIT : KGPBaseTest() {
     fun testProjectWithExportedNamesClash(gradleVersion: GradleVersion) {
         project("kotlin-js-invalid-project-with-exported-clash", gradleVersion) {
             build("compileKotlinJs") {
-                assertOutputContains("""
-                   |There are clashes of declaration names that annotated with @JsExport in module 'kotlin-js-invalid-project-with-exported-clash'.
-                   |  * Next files contain declarations with @JsExport and name 'best'
-                """.trimMargin())
-            }
-        }
-    }
-
-    @DisplayName("per-file with the  declarations validation")
-    @GradleTest
-    fun testPerFileProjectWithResultFilesClash(gradleVersion: GradleVersion) {
-        project("kotlin-js-invalid-per-file-project", gradleVersion) {
-            buildAndFail("compileDevelopmentExecutableKotlinJs") {
-                assertTasksFailed(":compileDevelopmentExecutableKotlinJs")
-                assertOutputContains("""
-                   |There are two files in module '<kotlin-js-invalid-per-file-project>' that have the similar package and file names.
-                   |  - Package "com.example" and
-                """.trimMargin())
-            }
-            buildAndFail("compileProductionExecutableKotlinJs") {
-                assertTasksFailed(":compileProductionExecutableKotlinJs")
-                assertOutputContains("""
-                   |There are two files in module '<kotlin-js-invalid-per-file-project>' that have the similar package and file names.
-                   |  - Package "com.example" and path
-                """.trimMargin())
+                assertOutputContains("Exporting name 'best' in ES modules may clash")
             }
         }
     }
@@ -641,7 +632,7 @@ class Kotlin2JsIrGradlePluginIT : KGPBaseTest() {
                 }
             }
 
-            build("browserProductionWebpack") {
+            build("browserDistribution") {
                 assertTasksExecuted(":app:browserProductionWebpack")
                 assertFileExists(subProject("app").projectPath.resolve("build/${Distribution.DIST}/js/productionExecutable/app.js"))
             }
@@ -754,7 +745,7 @@ class Kotlin2JsIrGradlePluginIT : KGPBaseTest() {
                 }
             }
 
-            build("browserProductionWebpack") {
+            build("browserDistribution") {
                 assertTasksExecuted(":browserProductionWebpack")
                 assertFileExists(projectPath.resolve("build/${Distribution.DIST}/js/productionExecutable/CORRECT_NAME.js"))
             }
@@ -771,44 +762,18 @@ class Kotlin2JsIrGradlePluginIT : KGPBaseTest() {
         }
     }
 
-    protected fun BuildResult.checkIrCompilationMessage() {
-        assertOutputContains(USING_JS_IR_BACKEND_MESSAGE)
-    }
-
-    @DisplayName("js customized output is included into jar")
-    @GradleTest
-    fun testJarIncludesJsOutputSetExplicitly(gradleVersion: GradleVersion) {
-        project("kotlin2JsModuleKind", gradleVersion) {
-            build(":jar") {
-                checkIrCompilationMessage()
-
-                assertTasksExecuted(":compileKotlin2Js")
-                val jarPath = projectPath.resolve("build/libs/kotlin2JsModuleKind.jar")
-                assertFileExists(jarPath)
-                ZipFile(jarPath.toFile()).use { jar ->
-                    assertEquals(
-                        1, jar.entries().asSequence().count { it.name == "app.js" },
-                        "The jar should contain an entry `app.js` with no duplicates"
-                    )
-                }
-            }
-        }
-    }
-
     @DisplayName("test compilation can access main compilation")
     @GradleTest
     fun testCompileTestCouldAccessProduction(gradleVersion: GradleVersion) {
         project("kotlin2JsProjectWithTests", gradleVersion) {
             build("build") {
-                checkIrCompilationMessage()
-
                 assertTasksExecuted(
-                    ":compileKotlin2Js",
-                    ":compileTestKotlin2Js"
+                    ":compileKotlinJs",
+                    ":compileTestKotlinJs"
                 )
-                assertFileInProjectExists("build/kotlin2js/main/default/manifest")
+                assertFileInProjectExists("build/classes/kotlin/main/default/manifest")
 
-                assertFileInProjectExists("build/kotlin2js/test/module-tests.js")
+                assertFileInProjectExists("build/js/packages/kotlin2JsProjectWithTests-test/kotlin/kotlin2JsProjectWithTests-test.js")
             }
         }
     }
@@ -818,7 +783,6 @@ class Kotlin2JsIrGradlePluginIT : KGPBaseTest() {
     fun testCompilerTestAccessInternalProduction(gradleVersion: GradleVersion) {
         project("kotlin2JsInternalTest", gradleVersion) {
             build("build") {
-                checkIrCompilationMessage()
             }
         }
     }
@@ -1186,7 +1150,7 @@ class Kotlin2JsIrGradlePluginIT : KGPBaseTest() {
             build("clean", "browserDistribution") {
                 assertTasksExecuted(
                     ":app:processResources",
-                    ":app:browserProductionExecutableDistributeResources"
+                    ":app:browserDistribution"
                 )
 
                 assertFileInProjectExists("app/build/${Distribution.DIST}/js/productionExecutable/index.html")
@@ -1224,8 +1188,6 @@ class Kotlin2JsIrGradlePluginIT : KGPBaseTest() {
     fun testNodeJsForkOptions(gradleVersion: GradleVersion) {
         project("kotlin-js-nodejs-custom-node-module", gradleVersion) {
             build("build") {
-                checkIrCompilationMessage()
-
                 // It makes sense only since Tests will be run on Gradle 7.2
                 assertOutputDoesNotContain("Execution optimizations have been disabled for task ':nodeTest'")
 
@@ -1397,6 +1359,17 @@ class Kotlin2JsIrGradlePluginIT : KGPBaseTest() {
             )
             buildAndFail("nodeTest") {
                 assertTasksFailed(":nodeTest")
+                assertOutputContains("Cannot find module 'foo'")
+            }
+        }
+    }
+
+    @DisplayName("mocha has no output during dry run")
+    @GradleTest
+    fun testMochaHasNoDryRunOutput(gradleVersion: GradleVersion) {
+        project("kotlin-js-nodejs-project", gradleVersion) {
+            build("nodeTest") {
+                assertOutputDoesNotContain("0 passing")
             }
         }
     }
@@ -1812,6 +1785,77 @@ class Kotlin2JsIrGradlePluginIT : KGPBaseTest() {
                 assertTasksSkipped(":app:testPackageJson")
                 assertTasksExecuted(":lib:testPackageJson")
                 assertTasksExecuted(":base:testPackageJson")
+            }
+        }
+    }
+
+    @DisplayName("test FAIL_ON_PROJECT_REPOS using custom repository")
+    @GradleTest
+    fun testFailOnProjectReposUsingCustomRepo(gradleVersion: GradleVersion) {
+        project("js-project-repos", gradleVersion) {
+            settingsGradleKts.modify {
+                it + """
+                    
+                    dependencyResolutionManagement {
+                        repositories {
+                            ivy {
+                                name = "Node.JS dist"
+                                url = URI("https://nodejs.org/dist")
+                                patternLayout {
+                                    artifact("v[revision]/[artifact](-v[revision]-[classifier]).[ext]")
+                                }
+                                metadataSources {
+                                    artifact()
+                                }
+                                content {
+                                    includeModule("org.nodejs", "node")
+                                }
+                            }
+                            ivy {
+                                name = "Yarn dist"
+                                url = URI("https://github.com/yarnpkg/yarn/releases/download")
+                                patternLayout {
+                                    artifact("v[revision]/[artifact](-v[revision]).[ext]")
+                                }
+                                metadataSources {
+                                    artifact()
+                                }
+                                content {
+                                    includeModule("com.yarnpkg", "yarn")
+                                }
+                            }
+                        }
+                    }
+                """.trimIndent()
+            }
+
+            build("kotlinNodeJsSetup", "kotlinYarnSetup") {
+                assertTasksExecuted(":kotlinNodeJsSetup")
+                assertTasksExecuted(":kotlinYarnSetup")
+            }
+        }
+    }
+
+    @DisplayName("test FAIL_ON_PROJECT_REPOS no download")
+    @GradleTest
+    fun testFailOnProjectReposNoDownload(gradleVersion: GradleVersion) {
+        project("js-project-repos", gradleVersion) {
+            buildGradleKts.modify {
+                it + """
+                    
+                    rootProject.plugins.withType<org.jetbrains.kotlin.gradle.targets.js.nodejs.NodeJsRootPlugin> {
+                        rootProject.the<org.jetbrains.kotlin.gradle.targets.js.nodejs.NodeJsRootExtension>().download = false
+                    }
+
+                    rootProject.plugins.withType<org.jetbrains.kotlin.gradle.targets.js.yarn.YarnPlugin> {
+                        rootProject.the<org.jetbrains.kotlin.gradle.targets.js.yarn.YarnRootExtension>().download = false
+                    }
+                """.trimIndent()
+            }
+
+            build("kotlinNodeJsSetup", "kotlinYarnSetup") {
+                assertTasksSkipped(":kotlinNodeJsSetup")
+                assertTasksSkipped(":kotlinYarnSetup")
             }
         }
     }

@@ -18,14 +18,15 @@ package org.jetbrains.kotlin.fir.analysis.diagnostics
 
 import org.jetbrains.kotlin.diagnostics.rendering.ContextIndependentParameterRenderer
 import org.jetbrains.kotlin.fir.symbols.FirBasedSymbol
+import org.jetbrains.kotlin.resolve.multiplatform.ExpectActualCheckingCompatibility
 import org.jetbrains.kotlin.resolve.multiplatform.ExpectActualCompatibility
-import org.jetbrains.kotlin.resolve.multiplatform.ExpectActualCompatibility.Incompatible
+import org.jetbrains.kotlin.resolve.multiplatform.ExpectActualCompatibility.MismatchOrIncompatible
 
 class FirPlatformIncompatibilityDiagnosticRenderer(
     private val mode: MultiplatformDiagnosticRenderingMode
-) : ContextIndependentParameterRenderer<Map<ExpectActualCompatibility<FirBasedSymbol<*>>, Collection<FirBasedSymbol<*>>>> {
+) : ContextIndependentParameterRenderer<Map<out ExpectActualCompatibility<FirBasedSymbol<*>>, Collection<FirBasedSymbol<*>>>> {
     override fun render(
-        obj: Map<ExpectActualCompatibility<FirBasedSymbol<*>>, Collection<FirBasedSymbol<*>>>,
+        obj: Map<out ExpectActualCompatibility<FirBasedSymbol<*>>, Collection<FirBasedSymbol<*>>>,
     ): String {
         if (obj.isEmpty()) return ""
 
@@ -43,9 +44,9 @@ class FirPlatformIncompatibilityDiagnosticRenderer(
 
 class FirIncompatibleExpectedActualClassScopesRenderer(
     private val mode: MultiplatformDiagnosticRenderingMode
-) : ContextIndependentParameterRenderer<List<Pair<FirBasedSymbol<*>, Map<Incompatible<FirBasedSymbol<*>>, Collection<FirBasedSymbol<*>>>>>> {
+) : ContextIndependentParameterRenderer<List<Pair<FirBasedSymbol<*>, Map<out MismatchOrIncompatible<FirBasedSymbol<*>>, Collection<FirBasedSymbol<*>>>>>> {
     override fun render(
-        obj: List<Pair<FirBasedSymbol<*>, Map<Incompatible<FirBasedSymbol<*>>, Collection<FirBasedSymbol<*>>>>>
+        obj: List<Pair<FirBasedSymbol<*>, Map<out MismatchOrIncompatible<FirBasedSymbol<*>>, Collection<FirBasedSymbol<*>>>>>
     ): String {
         if (obj.isEmpty()) return ""
 
@@ -90,18 +91,19 @@ private fun StringBuilder.renderIncompatibilityInformation(
         append("The following declaration")
         if (descriptors.size == 1) append(" is") else append("s are")
         append(" incompatible")
-        (compatibility as? Incompatible)?.reason?.let { append(" because $it") }
+        (compatibility as? MismatchOrIncompatible)?.reason?.let { append(" because $it") }
         append(":")
 
         mode.renderList(this, descriptors.map { descriptor ->
             { mode.renderSymbol(this, descriptor, indent) }
         })
 
-        if (compatibility is Incompatible.ClassScopes) {
+        if (compatibility is ExpectActualCheckingCompatibility.ClassScopes) {
             append(indent)
             append("No actual members are found for expected members listed below:")
             mode.newLine(this)
-            renderIncompatibleClassScopes(compatibility.unfulfilled, indent, mode)
+            renderIncompatibleClassScopes(compatibility.mismatchedMembers, indent, mode)
+            renderIncompatibleClassScopes(compatibility.incompatibleMembers, indent, mode)
         }
     }
 }
@@ -126,4 +128,4 @@ private fun StringBuilder.renderIncompatibleClassScopes(
     })
 }
 
-private const val INDENTATION_UNIT = "    "
+internal const val INDENTATION_UNIT = "    "

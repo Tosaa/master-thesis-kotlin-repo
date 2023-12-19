@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2022 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Copyright 2010-2023 JetBrains s.r.o. and Kotlin Programming Language contributors.
  * Use of this source code is governed by the Apache 2.0 license that can be found in the license/LICENSE.txt file.
  */
 
@@ -8,8 +8,6 @@ package org.jetbrains.kotlin.analysis.test.framework.project.structure
 import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiManager
-import com.intellij.psi.search.GlobalSearchScope
-import org.jetbrains.kotlin.analysis.api.impl.base.util.LibraryUtils
 import org.jetbrains.kotlin.analysis.api.standalone.base.project.structure.KtModuleProjectStructure
 import org.jetbrains.kotlin.analysis.api.standalone.base.project.structure.KtModuleWithFiles
 import org.jetbrains.kotlin.analysis.api.standalone.base.project.structure.StandaloneProjectFactory
@@ -21,7 +19,10 @@ import org.jetbrains.kotlin.analysis.test.framework.services.environmentManager
 import org.jetbrains.kotlin.analysis.utils.errors.requireIsInstance
 import org.jetbrains.kotlin.cli.common.CLIConfigurationKeys
 import org.jetbrains.kotlin.cli.jvm.config.JvmClasspathRoot
+import org.jetbrains.kotlin.platform.isCommon
+import org.jetbrains.kotlin.platform.isJs
 import org.jetbrains.kotlin.platform.jvm.JvmPlatforms
+import org.jetbrains.kotlin.platform.jvm.isJvm
 import org.jetbrains.kotlin.test.TestInfrastructureInternals
 import org.jetbrains.kotlin.test.model.DependencyRelation
 import org.jetbrains.kotlin.test.model.TestModule
@@ -57,13 +58,7 @@ object TestModuleStructureFactory {
                 }
                 is KtModuleWithModifiableDependencies -> {
                     addModuleDependencies(testModule, moduleEntriesByName, ktModule)
-
-                    buildList {
-                        addIfNotNull(getJdkModule(testModule, project, testServices))
-                        addAll(getStdlibModules(testModule, project, testServices))
-                        addAll(getLibraryModules(testServices, testModule, project))
-                        addAll(createLibrariesByCompilerConfigurators(testModule, testServices, project))
-                    }.forEach { library ->
+                    stdlibAndSdkDependencies(ktModule, testModule, project, testServices).forEach { library ->
                         val cachedLibrary = binaryModulesBySourceRoots.getOrPut(library.getBinaryRoots().toSet()) { library }
                         ktModule.directRegularDependencies.add(cachedLibrary)
                     }
@@ -73,6 +68,29 @@ object TestModuleStructureFactory {
         }
 
         return KtModuleProjectStructure(moduleEntries, binaryModulesBySourceRoots.values)
+    }
+
+    private fun stdlibAndSdkDependencies(
+        module: KtModule,
+        testModule: TestModule,
+        project: Project,
+        testServices: TestServices,
+    ): List<KtBinaryModule> {
+        return when {
+            module.platform.isJvm() -> jvmStdlibAndJdkDependencies(testModule, project, testServices)
+            module.platform.isJs() -> jsStdlibDependencies(project, testServices)
+            module.platform.isCommon() -> jvmStdlibAndJdkDependencies(testModule, project, testServices) // TODO: KT-63769
+            else -> error("Unsupported platform ${module.platform} in this test")
+        }
+    }
+
+    private fun jvmStdlibAndJdkDependencies(testModule: TestModule, project: Project, testServices: TestServices): List<KtBinaryModule> {
+        return buildList {
+            addIfNotNull(getJdkModule(testModule, project, testServices))
+            addAll(getStdlibModules(testModule, project, testServices))
+            addAll(getLibraryModules(testServices, testModule, project))
+            addAll(createLibrariesByCompilerConfigurators(testModule, testServices, project))
+        }
     }
 
     @OptIn(TestInfrastructureInternals::class)
@@ -131,7 +149,10 @@ object TestModuleStructureFactory {
         return KtLibraryModuleImpl(
             libraryName,
             JvmPlatforms.defaultJvmPlatform,
-            getScopeForLibraryByRoots(listOf(jar), project, testServices),
+            StandaloneProjectFactory.createSearchScopeByLibraryRoots(
+                listOf(jar),
+                testServices.environmentManager.getProjectEnvironment()
+            ),
             project,
             listOf(jar),
             librarySources = null,
@@ -168,30 +189,40 @@ object TestModuleStructureFactory {
         return KtJdkModuleImpl(
             "jdk",
             JvmPlatforms.defaultJvmPlatform,
-            getScopeForLibraryByRoots(jdkSourceRoots, project, testServices),
+            StandaloneProjectFactory.createSearchScopeByLibraryRoots(
+                jdkSourceRoots,
+                testServices.environmentManager.getProjectEnvironment()
+            ),
             project,
             jdkSourceRoots
         )
     }
 
-    fun getScopeForLibraryByRoots(roots: Collection<Path>, project: Project, testServices: TestServices): GlobalSearchScope {
-        val virtualFileRoots = StandaloneProjectFactory.getVirtualFilesForLibraryRoots(
-            roots,
-            testServices.environmentManager.getProjectEnvironment()
+    private fun jsStdlibDependencies(project: Project, testServices: TestServices): List<KtBinaryModule> {
+        return listOf(
+            jsStdlib(project, testServices),
         )
-        return GlobalSearchScope.filesScope(
+    }
+
+    private fun jsStdlib(project: Project, testServices: TestServices): KtBinaryModule {
+        val jar = testServices.standardLibrariesPathProvider.fullJsStdlib().toPath()
+        return KtLibraryModuleImpl(
+            PathUtil.JS_LIB_NAME,
+            JvmPlatforms.defaultJvmPlatform,
+            StandaloneProjectFactory.createSearchScopeByLibraryRoots(
+                listOf(jar),
+                testServices.environmentManager.getProjectEnvironment()
+            ),
             project,
-            buildList {
-                addAll(virtualFileRoots)
-                virtualFileRoots.flatMapTo(this) { LibraryUtils.getAllVirtualFilesFromRoot(it, includeRoot = true) }
-            }
+            listOf(jar),
+            librarySources = null,
         )
     }
 
     fun createSourcePsiFiles(
         testModule: TestModule,
         testServices: TestServices,
-        project: Project
+        project: Project,
     ): List<PsiFile> {
         return testModule.files.map { testFile ->
             when {
@@ -200,7 +231,7 @@ object TestModuleStructureFactory {
                     KtTestUtil.createFile(testFile.name, fileText, project)
                 }
 
-                testFile.isJavaFile -> {
+                testFile.isJavaFile || testFile.isExternalAnnotation -> {
                     val filePath = testServices.sourceFileProvider.getRealFileForSourceFile(testFile)
                     val virtualFile =
                         testServices.environmentManager.getApplicationEnvironment().localFileSystem.findFileByIoFile(filePath)
@@ -213,7 +244,5 @@ object TestModuleStructureFactory {
             }
         }
     }
-
-
 }
 

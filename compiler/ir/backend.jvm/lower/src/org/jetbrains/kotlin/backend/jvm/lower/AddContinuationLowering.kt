@@ -262,6 +262,7 @@ private class AddContinuationLowering(context: JvmBackendContext) : SuspendLower
                     var cursor = irFunction.parentAsClass.parent
                     while (cursor is IrClass) {
                         if (cursor == param.parent) return true
+                        @Suppress("USELESS_CAST") // K2 warning suppression, TODO: KT-62472
                         cursor = (cursor as IrClass).parent
                     }
                     return false
@@ -403,7 +404,7 @@ private fun IrSimpleFunction.suspendFunctionViewOrStub(context: JvmBackendContex
     // If superinterface is in another file, the bridge to default method will already have continuation parameter,
     // so skip it. See KT-47549.
     if (origin == JvmLoweredDeclarationOrigin.SUPER_INTERFACE_METHOD_BRIDGE &&
-        valueParameters.lastOrNull()?.origin == JvmLoweredDeclarationOrigin.CONTINUATION_CLASS
+        overriddenSymbols.singleOrNull()?.owner?.valueParameters?.lastOrNull()?.origin == JvmLoweredDeclarationOrigin.CONTINUATION_CLASS
     ) return this
     // We need to use suspend function originals here, since if we use 'this' here,
     // turing FlowCollector into 'fun interface' leads to AbstractMethodError. See KT-49294.

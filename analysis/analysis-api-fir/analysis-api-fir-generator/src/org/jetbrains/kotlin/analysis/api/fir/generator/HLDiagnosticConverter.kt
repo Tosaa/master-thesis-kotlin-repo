@@ -40,6 +40,7 @@ import org.jetbrains.kotlin.resolve.ForbiddenNamedArgumentsTarget
 import org.jetbrains.kotlin.resolve.deprecation.DeprecationInfo
 import org.jetbrains.kotlin.resolve.multiplatform.ExpectActualAnnotationsIncompatibilityType
 import org.jetbrains.kotlin.resolve.multiplatform.ExpectActualCompatibility
+import org.jetbrains.kotlin.serialization.deserialization.IncompatibleVersionErrorData
 import org.jetbrains.kotlin.types.Variance
 import kotlin.reflect.KClass
 import kotlin.reflect.KType
@@ -213,6 +214,14 @@ internal object FirToKtConversionCreator {
                 "org.jetbrains.kotlin.psi"
             )
         ),
+        KtSourceElement::class to HLFunctionCallConversion(
+            "({0} as? KtPsiSourceElement)?.psi",
+            PsiElement::class.createType(nullable = true),
+            importsToAdd = listOf(
+                "org.jetbrains.kotlin.psi",
+                "org.jetbrains.kotlin.KtPsiSourceElement"
+            )
+        ),
     )
 
     private val typeMapping: Map<KClass<*>, HLFunctionCallConversion> = mapOf(
@@ -364,7 +373,7 @@ internal object FirToKtConversionCreator {
         ClassId::class,
         FirModuleData::class,
         ExpectActualCompatibility::class,
-        ExpectActualCompatibility.Incompatible::class,
+        ExpectActualCompatibility.MismatchOrIncompatible::class,
         ExpectActualAnnotationsIncompatibilityType::class,
         DeprecationInfo::class,
         ApiVersion::class,
@@ -372,6 +381,7 @@ internal object FirToKtConversionCreator {
         ClassKind::class,
         FunctionTypeKind::class,
         VersionRequirement.Version::class,
+        IncompatibleVersionErrorData::class,
     )
 
     private val KType.kClass: KClass<*>

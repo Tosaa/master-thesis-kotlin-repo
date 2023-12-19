@@ -5,10 +5,7 @@
 
 package org.jetbrains.kotlin.fir.types
 
-import org.jetbrains.kotlin.fir.expressions.FirAnnotation
-import org.jetbrains.kotlin.fir.expressions.FirConstExpression
-import org.jetbrains.kotlin.fir.expressions.FirExpression
-import org.jetbrains.kotlin.fir.expressions.FirSmartCastExpression
+import org.jetbrains.kotlin.fir.expressions.*
 import org.jetbrains.kotlin.fir.types.impl.FirImplicitBuiltinTypeRef
 import org.jetbrains.kotlin.fir.utils.exceptions.withFirEntry
 import org.jetbrains.kotlin.name.ClassId
@@ -36,6 +33,16 @@ val FirTypeRef.coneType: ConeKotlinType
 
 val FirTypeRef.coneTypeOrNull: ConeKotlinType?
     get() = coneTypeSafe()
+
+@OptIn(UnresolvedExpressionTypeAccess::class)
+val FirExpression.resolvedType: ConeKotlinType
+    get() = coneTypeOrNull
+        ?: errorWithAttachment("Expected expression '${this::class.simpleName}' to be resolved") {
+            withFirEntry("expression", this@resolvedType)
+        }
+
+@OptIn(UnresolvedExpressionTypeAccess::class)
+val FirExpression.isResolved: Boolean get() = coneTypeOrNull != null
 
 @RequiresOptIn(
     "This type check never expands type aliases. Use with care (probably Ok for expression & constructor types). " +

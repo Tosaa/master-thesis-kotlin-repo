@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2022 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Copyright 2010-2023 JetBrains s.r.o. and Kotlin Programming Language contributors.
  * Use of this source code is governed by the Apache 2.0 license that can be found in the license/LICENSE.txt file.
  */
 
@@ -30,13 +30,13 @@ internal class KtFirTypeErrorType(
     override fun tryRenderAsNonErrorType(): String? = withValidityAssertion {
         when (val diagnostic = coneType.diagnostic) {
             is ConeCannotInferTypeParameterType -> diagnostic.typeParameter.name.asString()
-            is ConeTypeVariableTypeIsNotInferred -> diagnostic.typeVariableType.lookupTag.debugName
+            is ConeTypeVariableTypeIsNotInferred -> diagnostic.typeVariableType.typeConstructor.debugName
             else -> null
         }
     }
 
     override val annotationsList: KtAnnotationsList by cached {
-        KtFirAnnotationListForType.create(coneType, builder.rootSession, token)
+        KtFirAnnotationListForType.create(coneType, builder)
     }
 
     override fun asStringForDebugging(): String = withValidityAssertion { coneType.renderForDebugging() }

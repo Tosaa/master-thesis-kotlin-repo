@@ -12,20 +12,13 @@ import org.jetbrains.kotlin.builtins.functions.isBasicFunctionOrKFunction
 import org.jetbrains.kotlin.config.LanguageFeature
 import org.jetbrains.kotlin.fir.*
 import org.jetbrains.kotlin.fir.declarations.*
-import org.jetbrains.kotlin.fir.expressions.FirAnnotation
-import org.jetbrains.kotlin.fir.expressions.FirExpression
-import org.jetbrains.kotlin.fir.expressions.FirNamedArgumentExpression
-import org.jetbrains.kotlin.fir.expressions.FirResolvedQualifier
+import org.jetbrains.kotlin.fir.expressions.*
 import org.jetbrains.kotlin.fir.expressions.builder.buildNamedArgumentExpression
-import org.jetbrains.kotlin.fir.resolve.BodyResolveComponents
-import org.jetbrains.kotlin.fir.resolve.DoubleColonLHS
-import org.jetbrains.kotlin.fir.resolve.createFunctionType
+import org.jetbrains.kotlin.fir.resolve.*
 import org.jetbrains.kotlin.fir.resolve.diagnostics.ConeUnsupportedCallableReferenceTarget
-import org.jetbrains.kotlin.fir.resolve.fullyExpandedType
 import org.jetbrains.kotlin.fir.resolve.inference.extractInputOutputTypesFromCallableReferenceExpectedType
 import org.jetbrains.kotlin.fir.resolve.inference.model.ConeArgumentConstraintPosition
-import org.jetbrains.kotlin.fir.resolve.scope
-import org.jetbrains.kotlin.fir.scopes.FakeOverrideTypeCalculator
+import org.jetbrains.kotlin.fir.scopes.CallableCopyTypeCalculator
 import org.jetbrains.kotlin.fir.symbols.impl.FirCallableSymbol
 import org.jetbrains.kotlin.fir.types.*
 import org.jetbrains.kotlin.fir.utils.exceptions.withConeTypeEntry
@@ -36,6 +29,7 @@ import org.jetbrains.kotlin.name.StandardClassIds
 import org.jetbrains.kotlin.resolve.calls.inference.ConstraintSystemOperation
 import org.jetbrains.kotlin.resolve.calls.inference.runTransaction
 import org.jetbrains.kotlin.resolve.calls.tower.isSuccess
+import org.jetbrains.kotlin.types.AbstractTypeChecker
 import org.jetbrains.kotlin.types.expressions.CoercionStrategy
 import org.jetbrains.kotlin.utils.addToStdlib.shouldNotBeCalled
 import org.jetbrains.kotlin.utils.exceptions.errorWithAttachment
@@ -52,14 +46,32 @@ internal object CheckCallableReferenceExpectedType : CheckerStage() {
             else -> null
         }
 
-        val fir: FirCallableDeclaration = candidate.symbol.fir
+        val fir: FirCallableDeclaration = candidate.symbol.fir as FirCallableDeclaration
 
-        val (rawResultingType, callableReferenceAdaptation) = buildReflectionType(fir, resultingReceiverType, candidate, context)
+        val isExpectedTypeReflectionType = callInfo.expectedType?.isReflectFunctionType(callInfo.session) == true
+        val (rawResultingType, callableReferenceAdaptation) = buildResultingTypeAndAdaptation(
+            fir,
+            resultingReceiverType,
+            candidate,
+            context,
+            // If the input and output types match the expected type but the expected type is a reflection type, and we need an adaptation,
+            // we want to report AdaptedCallableReferenceIsUsedWithReflection but *not* InapplicableCandidate because
+            // AdaptedCallableReferenceIsUsedWithReflection has the higher applicability.
+            // Therefore, we force a reflection type whenever the expected type is a reflection type.
+            //
+            // If the input and output types end up not matching, we'll report InapplicableCandidate, regardless of whether the
+            // expected/actual type is a reflection type.
+            forceReflectionType = isExpectedTypeReflectionType
+        )
         val resultingType = candidate.substitutor.substituteOrSelf(rawResultingType)
 
-        if (callableReferenceAdaptation.needCompatibilityResolveForCallableReference()) {
+        if (callableReferenceAdaptation != null) {
             if (!context.session.languageVersionSettings.supportsFeature(LanguageFeature.DisableCompatibilityModeForNewInference)) {
                 sink.reportDiagnostic(LowerPriorityToPreserveCompatibilityDiagnostic)
+            }
+
+            if (isExpectedTypeReflectionType) {
+                sink.reportDiagnostic(AdaptedCallableReferenceIsUsedWithReflection)
             }
         }
 
@@ -72,7 +84,7 @@ internal object CheckCallableReferenceExpectedType : CheckerStage() {
             val position = ConeArgumentConstraintPosition(callInfo.callSite)
 
             if (expectedType != null && !resultingType.contains {
-                    it is ConeTypeVariableType && it.lookupTag !in outerCsBuilder.currentStorage().allTypeVariables
+                    it is ConeTypeVariableType && it.typeConstructor !in outerCsBuilder.currentStorage().allTypeVariables
                 }
             ) {
                 addSubtypeConstraint(resultingType, expectedType, position)
@@ -95,11 +107,17 @@ internal object CheckCallableReferenceExpectedType : CheckerStage() {
     }
 }
 
-private fun buildReflectionType(
+/**
+ *  The resulting type is a reflection type ([FunctionTypeKind.reflectKind])
+ *  iff the adaptation is `null` or [forceReflectionType]` == true`.
+ *  Otherwise, it's a non-reflection type ([FunctionTypeKind.nonReflectKind]).
+ */
+private fun buildResultingTypeAndAdaptation(
     fir: FirCallableDeclaration,
     receiverType: ConeKotlinType?,
     candidate: Candidate,
-    context: ResolutionContext
+    context: ResolutionContext,
+    forceReflectionType: Boolean,
 ): Pair<ConeKotlinType, CallableReferenceAdaptation?> {
     val returnTypeRef = context.bodyResolveComponents.returnTypeCalculator.tryCalculateReturnType(fir)
     return when (fir) {
@@ -135,7 +153,7 @@ private fun buildReflectionType(
                 ?: FunctionTypeKind.Function
 
             return createFunctionType(
-                if (callableReferenceAdaptation == null) baseFunctionTypeKind.reflectKind() else baseFunctionTypeKind.nonReflectKind(),
+                if (callableReferenceAdaptation == null || forceReflectionType) baseFunctionTypeKind.reflectKind() else baseFunctionTypeKind.nonReflectKind(),
                 parameters,
                 receiverType = receiverType.takeIf { fir.receiverParameter != null },
                 rawReturnType = returnType,
@@ -152,16 +170,20 @@ internal class CallableReferenceAdaptation(
     val coercionStrategy: CoercionStrategy,
     val defaults: Int,
     val mappedArguments: CallableReferenceMappedArguments,
-    val suspendConversionStrategy: CallableReferenceConversionStrategy
-)
-
-private fun CallableReferenceAdaptation?.needCompatibilityResolveForCallableReference(): Boolean {
-    // KT-13934: check containing declaration for companion object
-    if (this == null) return false
-    return defaults != 0 ||
-            suspendConversionStrategy != CallableReferenceConversionStrategy.NoConversion ||
-            coercionStrategy != CoercionStrategy.NO_COERCION ||
-            mappedArguments.values.any { it is ResolvedCallArgument.VarargArgument }
+    val suspendConversionStrategy: CallableReferenceConversionStrategy,
+) {
+    init {
+        if (AbstractTypeChecker.RUN_SLOW_ASSERTIONS) {
+            require(
+                defaults != 0 ||
+                        suspendConversionStrategy != CallableReferenceConversionStrategy.NoConversion ||
+                        coercionStrategy != CoercionStrategy.NO_COERCION ||
+                        mappedArguments.values.any { it is ResolvedCallArgument.VarargArgument }
+            ) {
+                "Adaptation must be non-trivial."
+            }
+        }
+    }
 }
 
 private fun BodyResolveComponents.getCallableReferenceAdaptation(
@@ -183,7 +205,7 @@ private fun BodyResolveComponents.getCallableReferenceAdaptation(
     val originScope = function.dispatchReceiverType?.scope(
         useSiteSession = session,
         scopeSession = scopeSession,
-        fakeOverrideTypeCalculator = FakeOverrideTypeCalculator.DoNothing,
+        callableCopyTypeCalculator = CallableCopyTypeCalculator.DoNothing,
         requiredMembersPhase = FirResolvePhase.STATUS,
     )
 
@@ -408,18 +430,19 @@ private fun createFakeArgumentsForReference(
 }
 
 class FirFakeArgumentForCallableReference(
-    val index: Int
+    val index: Int,
 ) : FirExpression() {
     override val source: KtSourceElement?
         get() = null
 
-    override val typeRef: FirTypeRef
+    @UnresolvedExpressionTypeAccess
+    override val coneTypeOrNull: ConeKotlinType
         get() = shouldNotBeCalled()
 
     override val annotations: List<FirAnnotation>
         get() = shouldNotBeCalled()
 
-    override fun replaceTypeRef(newTypeRef: FirTypeRef) {
+    override fun replaceConeTypeOrNull(newConeTypeOrNull: ConeKotlinType?) {
         shouldNotBeCalled()
     }
 

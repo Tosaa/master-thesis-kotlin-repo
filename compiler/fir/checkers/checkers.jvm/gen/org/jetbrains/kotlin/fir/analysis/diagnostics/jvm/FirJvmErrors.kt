@@ -25,14 +25,11 @@ import org.jetbrains.kotlin.psi.KtDeclaration
 import org.jetbrains.kotlin.psi.KtElement
 import org.jetbrains.kotlin.psi.KtExpression
 
-/*
- * This file was generated automatically
- * DO NOT MODIFY IT MANUALLY
+/**
+ * Generated from: [org.jetbrains.kotlin.fir.checkers.generator.diagnostics.JVM_DIAGNOSTICS_LIST]
  */
-
 object FirJvmErrors {
     // Declarations
-    val CONFLICTING_JVM_DECLARATIONS by error0<PsiElement>()
     val OVERRIDE_CANNOT_BE_STATIC by error0<PsiElement>()
     val JVM_STATIC_NOT_IN_OBJECT_OR_CLASS_COMPANION by error0<PsiElement>(SourceElementPositioningStrategies.DECLARATION_SIGNATURE)
     val JVM_STATIC_NOT_IN_OBJECT_OR_COMPANION by error0<PsiElement>(SourceElementPositioningStrategies.DECLARATION_SIGNATURE)
@@ -44,12 +41,17 @@ object FirJvmErrors {
     val FUNCTION_DELEGATE_MEMBER_NAME_CLASH by error0<PsiElement>(SourceElementPositioningStrategies.DECLARATION_NAME)
     val VALUE_CLASS_WITHOUT_JVM_INLINE_ANNOTATION by error0<PsiElement>()
     val JVM_INLINE_WITHOUT_VALUE_CLASS by error0<PsiElement>()
+    val WRONG_NULLABILITY_FOR_JAVA_OVERRIDE by warning2<PsiElement, FirCallableSymbol<*>, FirCallableSymbol<*>>(SourceElementPositioningStrategies.OVERRIDE_MODIFIER)
 
     // Types
     val JAVA_TYPE_MISMATCH by error2<KtExpression, ConeKotlinType, ConeKotlinType>()
+    val RECEIVER_NULLABILITY_MISMATCH_BASED_ON_JAVA_ANNOTATIONS by warning2<PsiElement, ConeKotlinType, ConeKotlinType>()
+    val NULLABILITY_MISMATCH_BASED_ON_JAVA_ANNOTATIONS by warning2<PsiElement, ConeKotlinType, ConeKotlinType>()
 
     // Type parameters
     val UPPER_BOUND_CANNOT_BE_ARRAY by error0<PsiElement>()
+    val UPPER_BOUND_VIOLATED_BASED_ON_JAVA_ANNOTATIONS by warning2<PsiElement, ConeKotlinType, ConeKotlinType>()
+    val UPPER_BOUND_VIOLATED_IN_TYPEALIAS_EXPANSION_BASED_ON_JAVA_ANNOTATIONS by warning2<PsiElement, ConeKotlinType, ConeKotlinType>()
 
     // annotations
     val STRICTFP_ON_CLASS by error0<KtAnnotationEntry>()
@@ -71,7 +73,6 @@ object FirJvmErrors {
     val REDUNDANT_REPEATABLE_ANNOTATION by warning2<KtAnnotationEntry, FqName, FqName>()
 
     // Super
-    val SUPER_CALL_WITH_DEFAULT_PARAMETERS by error1<PsiElement, String>()
     val INTERFACE_CANT_CALL_DEFAULT_METHOD_VIA_SUPER by error0<PsiElement>(SourceElementPositioningStrategies.REFERENCE_BY_QUALIFIED)
 
     // JVM Records

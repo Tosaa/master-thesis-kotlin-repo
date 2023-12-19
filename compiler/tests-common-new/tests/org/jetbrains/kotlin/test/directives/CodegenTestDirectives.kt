@@ -6,7 +6,6 @@
 package org.jetbrains.kotlin.test.directives
 
 import org.jetbrains.kotlin.backend.common.phaser.AnyNamedPhase
-import org.jetbrains.kotlin.test.FirParser
 import org.jetbrains.kotlin.test.TargetBackend
 import org.jetbrains.kotlin.test.backend.TargetInliner
 import org.jetbrains.kotlin.test.backend.handlers.*
@@ -15,7 +14,6 @@ import org.jetbrains.kotlin.test.directives.model.DirectiveApplicability.File
 import org.jetbrains.kotlin.test.directives.model.DirectiveApplicability.Global
 import org.jetbrains.kotlin.test.directives.model.SimpleDirectivesContainer
 import org.jetbrains.kotlin.test.directives.model.ValueDirective
-import org.jetbrains.kotlin.test.directives.model.singleOrZeroValue
 import org.jetbrains.kotlin.test.model.FrontendKinds
 import org.jetbrains.kotlin.test.model.TestModule
 
@@ -32,11 +30,6 @@ object CodegenTestDirectives : SimpleDirectivesContainer() {
 
     val IGNORE_BACKEND_K2 by enumDirective<TargetBackend>(
         description = "Ignore specific backend if test uses K2 frontend",
-        applicability = Global
-    )
-
-    val IGNORE_BACKEND_K2_LIGHT_TREE by enumDirective<TargetBackend>(
-        description = "Ignore specific backend if test uses K2 frontend in Light tree mode",
         applicability = Global
     )
 
@@ -154,6 +147,10 @@ object CodegenTestDirectives : SimpleDirectivesContainer() {
         description = "Dumps generated backend IR in pretty kotlin dump (enables ${IrPrettyKotlinDumpHandler::class})"
     )
 
+    val DUMP_SOURCE_RANGES_IR by directive(
+        description = "Dumps generated backend IR together with elements source ranges (enables ${IrSourceRangesDumpHandler::class})"
+    )
+
     val SKIP_KT_DUMP by directive(
         description = "Skips check pretty kt IR dump (disables ${IrPrettyKotlinDumpHandler::class})"
     )
@@ -163,10 +160,6 @@ object CodegenTestDirectives : SimpleDirectivesContainer() {
         Like $DUMP_KT_IR, but does not dump function bodies, and prints a rendered binary signature and a mangled name for each declaration
         (enables ${IrMangledNameAndSignatureDumpHandler::class})
         """.trimIndent()
-    )
-
-    val DUMP_LOCAL_DECLARATION_SIGNATURES by directive(
-        description = "For tests with $DUMP_SIGNATURES, also dumps signatures and mangled names for local functions and classes"
     )
 
     val SKIP_SIGNATURE_DUMP by directive(
@@ -249,45 +242,41 @@ object CodegenTestDirectives : SimpleDirectivesContainer() {
             Ignore exceptions in AbstractFirLoadK2CompiledKotlin tests
         """.trimIndent()
     )
+
+    val ENABLE_IR_FAKE_OVERRIDE_GENERATION by directive(
+        description = """
+            Enables fake-override generation in FIR2IR using IR f/o generator. KT-61514
+        """.trimIndent()
+    )
+
+    // String to allow and enforce issue id. Value is not actually used.
+    val IGNORE_CODEGEN_WITH_IR_FAKE_OVERRIDE_GENERATION by stringDirective(
+        description = """
+            Suppresses test if $ENABLE_IR_FAKE_OVERRIDE_GENERATION directive enabled
+        """.trimIndent()
+    )
 }
 
-fun extractIgnoredDirectivesForTargetBackend(
+fun extractIgnoredDirectiveForTargetBackend(
     module: TestModule,
     targetBackend: TargetBackend,
     customIgnoreDirective: ValueDirective<TargetBackend>? = null
-): List<ValueDirective<TargetBackend>> {
-    val specificIgnoreDirectives = when (module.frontendKind) {
-        FrontendKinds.ClassicFrontend -> listOf(CodegenTestDirectives.IGNORE_BACKEND_K1)
-        FrontendKinds.FIR -> listOfNotNull(
-            CodegenTestDirectives.IGNORE_BACKEND_K2,
-            CodegenTestDirectives.IGNORE_BACKEND_K2_LIGHT_TREE.takeIf {
-                module.directives.singleOrZeroValue(FirDiagnosticsDirectives.FIR_PARSER) == FirParser.LightTree
+): ValueDirective<TargetBackend>? =
+    when (module.frontendKind) {
+        FrontendKinds.ClassicFrontend -> CodegenTestDirectives.IGNORE_BACKEND_K1
+        FrontendKinds.FIR -> CodegenTestDirectives.IGNORE_BACKEND_K2
+        else -> null
+    }?.let { specificIgnoreDirective ->
+        when {
+            customIgnoreDirective != null -> customIgnoreDirective
+            !module.directives.contains(specificIgnoreDirective) -> CodegenTestDirectives.IGNORE_BACKEND
+            else -> {
+                val inCommonIgnored = module.directives[CodegenTestDirectives.IGNORE_BACKEND].let { targetBackend in it || TargetBackend.ANY in it }
+                val inSpecificIgnored = module.directives[specificIgnoreDirective].let { targetBackend in it || TargetBackend.ANY in it }
+                if (inCommonIgnored && inSpecificIgnored) {
+                    throw AssertionError("Both, IGNORE_BACKEND and ${specificIgnoreDirective.name} contain target backend ${targetBackend.name}. Please remove one of them.")
+                }
+                if (inCommonIgnored) CodegenTestDirectives.IGNORE_BACKEND else specificIgnoreDirective
             }
-        )
-        else -> return emptyList()
-    }
-    val result = specificIgnoreDirectives.mapNotNull {
-        extractIgnoredDirectiveForTargetBackendForSpecificIgnoreDirective(module, targetBackend, it, customIgnoreDirective)
-    }
-    return result.takeIf { it.isNotEmpty() } ?: listOf(CodegenTestDirectives.IGNORE_BACKEND)
-}
-
-private fun extractIgnoredDirectiveForTargetBackendForSpecificIgnoreDirective(
-    module: TestModule,
-    targetBackend: TargetBackend,
-    specificIgnoreDirective: ValueDirective<TargetBackend>,
-    customIgnoreDirective: ValueDirective<TargetBackend>?
-): ValueDirective<TargetBackend>? {
-    return when {
-        customIgnoreDirective != null -> customIgnoreDirective
-        !module.directives.contains(specificIgnoreDirective) -> null//CodegenTestDirectives.IGNORE_BACKEND
-        else -> {
-            val inCommonIgnored = module.directives[CodegenTestDirectives.IGNORE_BACKEND].let { targetBackend in it || TargetBackend.ANY in it }
-            val inSpecificIgnored = module.directives[specificIgnoreDirective].let { targetBackend in it || TargetBackend.ANY in it }
-            if (inCommonIgnored && inSpecificIgnored) {
-                throw AssertionError("Both, IGNORE_BACKEND and ${specificIgnoreDirective.name} contain target backend ${targetBackend.name}. Please remove one of them.")
-            }
-            if (inCommonIgnored) null else specificIgnoreDirective
         }
     }
-}

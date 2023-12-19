@@ -246,9 +246,12 @@ class ScriptingHostTest : TestCase() {
     }
 
     @Test
-    fun testSimpleScriptWithImplicitReceiver() {
-        val greeting = listOf("3")
-        val script = "println(length)"
+    fun testImplicitReceiverWithExtensionProperty() {
+        // emulates the appropriate gradle kotlin dsl test
+        val script = """
+            val String.implicitReceiver get() = this
+            require(implicitReceiver is String)
+            """.trimIndent()
         val definition = createJvmScriptDefinitionFromTemplate<SimpleScriptTemplate>(
             compilation = {
                 implicitReceivers(String::class)
@@ -257,13 +260,9 @@ class ScriptingHostTest : TestCase() {
                 implicitReceivers("abc")
             }
         )
-        val output = captureOut {
-            val retVal = BasicJvmScriptingHost().eval(
-                script.toScriptSource(), definition.compilationConfiguration, definition.evaluationConfiguration
-            ).valueOrThrow().returnValue
-            if (retVal is ResultValue.Error) throw retVal.error
-        }.lines()
-        Assert.assertEquals(greeting, output)
+        BasicJvmScriptingHost().eval(
+            script.toScriptSource(), definition.compilationConfiguration, definition.evaluationConfiguration
+        ).throwOnFailure()
     }
 
     fun testScriptWithImplicitReceiversWithSameShortName() {
@@ -288,6 +287,43 @@ class ScriptingHostTest : TestCase() {
             val retVal = BasicJvmScriptingHost().eval(
                 script.toScriptSource(), definition.compilationConfiguration, definition.evaluationConfiguration
             ).valueOrThrow().returnValue
+            if (retVal is ResultValue.Error) throw retVal.error
+        }.lines()
+        Assert.assertEquals(result, output)
+    }
+
+    fun testScriptImplicitReceiversTransitiveVisibility() {
+        val result = listOf("42")
+        val script = """
+            import kotlin.script.experimental.jvmhost.test.forScript.p1.TestClass
+
+            fun TestClass.foo() = 6
+            
+            fun test(body: TestClass.() -> Int): Int {
+                return foo() *
+                    body()
+            }
+
+            println(test { 7 })
+        """.trimIndent()
+        val definition = createJvmScriptDefinitionFromTemplate<SimpleScriptTemplate>(
+            compilation = {
+                updateClasspath(classpathFromClass<kotlin.script.experimental.jvmhost.test.forScript.p1.TestClass>())
+                implicitReceivers(
+                    kotlin.script.experimental.jvmhost.test.forScript.p1.TestClass::class,
+                )
+            },
+            evaluation = {
+                implicitReceivers(
+                    kotlin.script.experimental.jvmhost.test.forScript.p1.TestClass(""),
+                )
+            }
+        )
+        val output = captureOut {
+            val evalRes = BasicJvmScriptingHost().eval(
+                script.toScriptSource(), definition.compilationConfiguration, definition.evaluationConfiguration
+            )
+            val retVal = evalRes.valueOrThrow().returnValue
             if (retVal is ResultValue.Error) throw retVal.error
         }.lines()
         Assert.assertEquals(result, output)
@@ -468,7 +504,8 @@ class ScriptingHostTest : TestCase() {
             compilerOptions("-no-stdlib")
         }
         assertTrue(res1 is ResultWithDiagnostics.Failure)
-        res1.reports.find { it.message.startsWith("Unresolved reference: println") }
+        val regex = "Unresolved reference\\W+println".toRegex()
+        res1.reports.find { it.message.contains(regex) }
             ?: fail("Expected unresolved reference report. Reported:\n  ${res1.reports.joinToString("\n  ") { it.message }}")
 
         val res2 = evalScriptWithConfiguration(script) {

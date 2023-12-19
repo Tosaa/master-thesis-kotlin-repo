@@ -44,21 +44,28 @@ fun IrType.eraseTypeParameters(): IrType = when (this) {
                 IrSimpleTypeImpl(classifier, nullability, emptyList(), annotations)
             }
             is IrClass -> IrSimpleTypeImpl(classifier, nullability, arguments.map { it.eraseTypeParameters() }, annotations)
-            is IrTypeParameter -> {
-                val upperBound = owner.erasedUpperBound
-                IrSimpleTypeImpl(
-                    upperBound.symbol,
-                    isNullable(),
-                    // Should not affect JVM signature, but may result in an invalid type object
-                    List(upperBound.typeParameters.size) { IrStarProjectionImpl },
-                    owner.annotations
-                )
-            }
+            is IrTypeParameter -> owner.erasedType(isNullable())
             else -> error("Unknown IrSimpleType classifier kind: $owner")
         }
     is IrErrorType ->
         this
     else -> error("Unknown IrType kind: $this")
+}
+
+fun IrType.eraseIfTypeParameter(): IrType {
+    val typeParameter = (this as? IrSimpleType)?.classifier?.owner as? IrTypeParameter ?: return this
+    return typeParameter.erasedType(isNullable())
+}
+
+private fun IrTypeParameter.erasedType(isNullable: Boolean): IrType {
+    val upperBound = erasedUpperBound
+    return IrSimpleTypeImpl(
+        upperBound.symbol,
+        isNullable,
+        // Should not affect JVM signature, but may result in an invalid type object
+        List(upperBound.typeParameters.size) { IrStarProjectionImpl },
+        annotations
+    )
 }
 
 private fun IrTypeArgument.eraseTypeParameters(): IrTypeArgument = when (this) {
@@ -84,13 +91,16 @@ val IrTypeParameter.erasedUpperBound: IrClass
     }
 
 val IrType.erasedUpperBound: IrClass
-    get() =
-        when (val classifier = classifierOrNull) {
-            is IrClassSymbol -> classifier.owner
-            is IrTypeParameterSymbol -> classifier.owner.erasedUpperBound
-            is IrScriptSymbol -> classifier.owner.targetClass!!.owner
-            null -> if (this is IrErrorType) symbol.owner else error(render())
+    get() = when (this) {
+        is IrSimpleType -> when (val classifier = classifier.owner) {
+            is IrClass -> classifier
+            is IrTypeParameter -> classifier.erasedUpperBound
+            is IrScript -> classifier.targetClass!!.owner
+            else -> error(render())
         }
+        is IrErrorType -> symbol.owner
+        else -> error(render())
+    }
 
 /**
  * Get the default null/0 value for the type.

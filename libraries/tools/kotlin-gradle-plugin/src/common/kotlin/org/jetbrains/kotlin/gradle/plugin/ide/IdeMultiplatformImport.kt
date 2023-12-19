@@ -15,18 +15,17 @@ import org.jetbrains.kotlin.gradle.dsl.multiplatformExtensionOrNull
 import org.jetbrains.kotlin.gradle.idea.serialize.IdeaKotlinExtrasSerializationExtension
 import org.jetbrains.kotlin.gradle.idea.serialize.IdeaKotlinExtrasSerializationExtensionBuilder
 import org.jetbrains.kotlin.gradle.idea.tcs.IdeaKotlinDependency
-import org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType
+import org.jetbrains.kotlin.gradle.plugin.*
 import org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType.*
 import org.jetbrains.kotlin.gradle.plugin.KotlinSourceSet
 import org.jetbrains.kotlin.gradle.plugin.KotlinTarget
-import org.jetbrains.kotlin.gradle.plugin.extraProperties
 import org.jetbrains.kotlin.gradle.plugin.ide.IdeMultiplatformImport.SourceSetConstraint
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeCompilation
 import org.jetbrains.kotlin.gradle.plugin.sources.internal
 import org.jetbrains.kotlin.gradle.targets.metadata.isNativeSourceSet
 import org.jetbrains.kotlin.gradle.targets.metadata.isSingleKotlinTargetSourceSet
 import org.jetbrains.kotlin.gradle.targets.metadata.isSinglePlatformTypeSourceSet
-import org.jetbrains.kotlin.gradle.utils.getOrPut
+import org.jetbrains.kotlin.gradle.utils.projectStoredProperty
 import org.jetbrains.kotlin.tooling.core.Extras
 import org.jetbrains.kotlin.tooling.core.HasMutableExtras
 
@@ -317,14 +316,19 @@ interface IdeMultiplatformImport {
 
         @JvmStatic
         fun instance(project: Project): IdeMultiplatformImport {
-            return project.extraProperties.getOrPut(IdeMultiplatformImport::class.java.name) {
-                IdeMultiplatformImport(project.kotlinExtension)
-            }
+            return project.kotlinIdeMultiplatformImport
         }
     }
 }
 
-internal val Project.kotlinIdeMultiplatformImport: IdeMultiplatformImport get() = IdeMultiplatformImport.instance(project)
+internal val Project.kotlinIdeMultiplatformImport: IdeMultiplatformImport by projectStoredProperty {
+    IdeMultiplatformImport(project.kotlinExtension)
+}
+
+internal val IdeMultiplatformImportSetupAction = KotlinProjectSetupAction {
+    /* Ensure instance is created */
+    kotlinIdeMultiplatformImport
+}
 
 /**
  * Convenience shortcut method for

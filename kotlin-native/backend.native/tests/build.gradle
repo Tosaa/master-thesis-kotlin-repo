@@ -3,6 +3,8 @@
  * that can be found in the LICENSE file.
  */
 
+
+import org.codehaus.groovy.runtime.IOGroovyMethods
 import org.jetbrains.kotlin.*
 import org.jetbrains.kotlin.gradle.plugin.tasks.KonanCompileNativeBinary
 import org.jetbrains.kotlin.konan.target.Architecture
@@ -25,6 +27,7 @@ buildscript {
 apply plugin: 'konan'
 apply plugin: 'kotlin'
 apply plugin: 'kotlin.native.build-tools-conventions'
+apply plugin: 'native-dependencies'
 
 configurations {
     cli_bc
@@ -43,7 +46,7 @@ ext.testOutputRoot = rootProject.file("test.output").absolutePath
 ext.platformManager = project.project(":kotlin-native").platformManager
 ext.target = platformManager.targetManager(project.testTarget).target
 
-ext.testLibraryDir = "${ext.testOutputRoot}/klib/platform/${project.target.name}"
+ext.buildNumber = rootProject.property("kotlinVersion")
 
 // Add executor to run tests depending on a target
 // NOTE: If this persists in a gradle daemon, environment update (e.g. an Xcode update) may lead to execution failures.
@@ -117,9 +120,6 @@ allprojects {
     // backend.native/tests/external
     ext.testOutputExternal = rootProject.file("$testOutputRoot/external")
 
-    // backend.native/tests/stdlib_external
-    ext.testOutputStdlib = rootProject.file("$testOutputRoot/stdlib")
-
     // backend.native/tests/framework
     ext.testOutputFramework = rootProject.file("$testOutputRoot/framework")
 
@@ -129,39 +129,46 @@ allprojects {
     ext.testOutputFileCheck = rootProject.file("$testOutputRoot/filecheck")
 }
 testOutputExternal.mkdirs()
-testOutputStdlib.mkdirs()
 
 konanArtifacts {
-    library('testLibrary') {
-        srcDir 'testLibrary'
-    }
     library('baseTestClass', targets: [target]) {
         srcFiles 'testing/library.kt'
     }
-    UtilsKt.dependsOnDist(UtilsKt.findKonanBuildTask(project, "testLibrary", HostManager.@Companion.getHost()))
-}
-configure(project.tasks.findByName("compileKonanBaseTestClass${UtilsKt.getTestTargetSuffix(project)}")) {
-  UtilsKt.dependsOnDist(it)
-}
-
-def installTestLib = tasks.register("installTestLibrary", KonanKlibInstallTask) {
-    dependsOn "compileKonanTestLibraryHost"
-    klib = project.provider { konanArtifacts.testLibrary.getArtifactByTarget('host') }
-    repo = rootProject.file(testLibraryDir)
-
-    doLast {
-        // Remove the version in build/, so that we don't link two copies.
-        def file = project.file("build/konan/libs/${project.target.name}/testLibrary.klib")
-        file.delete()
-    }
+    UtilsKt.dependsOnDist(UtilsKt.findKonanBuildTask(project, "baseTestClass", target))
 }
 
 void konanc(String[] args) {
-   def konancScript = isWindows() ? "konanc.bat" : "konanc"
-   def konanc = "$kotlinNativeDist/bin/$konancScript"
-   def allArgs = args.join(" ")
-   println("$konanc $allArgs")
-   "$konanc $allArgs".execute().waitFor()
+    String kotlincNative = isWindows() ? "kotlinc-native.bat" : "kotlinc-native"
+    String allArgs = args.join(" ")
+    String commandWithArguments = "$kotlinNativeDist/bin/$kotlincNative $allArgs"
+
+    println(commandWithArguments)
+
+    Process process = commandWithArguments.execute()
+    int exitCode = process.waitFor()
+
+    if (exitCode != 0) {
+        String stdOut = IOGroovyMethods.getText(process.inputStream)
+        String stdErr = IOGroovyMethods.getText(process.errorStream)
+
+        StringBuilder builder = new StringBuilder()
+        builder.append("Error during execution of the command: $commandWithArguments\n")
+        builder.append("exitCode = $exitCode\n")
+        builder.append("=== STDOUT: BEGIN ===\n")
+        if (!stdOut.isEmpty()) {
+            builder.append(stdOut)
+            if (!stdOut.endsWith("\n")) builder.append("\n")
+        }
+        builder.append("=== STDOUT: END ===\n")
+        builder.append("=== STDERR: BEGIN ===\n")
+        if (!stdErr.isEmpty()) {
+            builder.append(stdErr)
+            if (!stdErr.endsWith("\n")) builder.append("\n")
+        }
+        builder.append("=== STDERR: END ===\n")
+
+        throw new GradleException(builder.toString())
+    }
 }
 
 tasks.named("clean", Delete.class) {
@@ -170,39 +177,27 @@ tasks.named("clean", Delete.class) {
     }
 }
 
-TaskCollection<Task> tasksOf(Class<? extends Task> type, Closure<Boolean> filter = { return true }) {
-    project.tasks.withType(type).matching { it.enabled && filter(it) }
-}
-
 tasks.named("run") {
-    dependsOn("sanity")
-    // Note: sanity contains subsets of the tests listed below.
-
-    dependsOn(tasksOf(KonanTest))
+    dependsOn(tasks.withType(KonanTest).matching { it.enabled })
     // Add framework tests
-    dependsOn(tasksOf(FrameworkTest))
-    dependsOn(tasksOf(FileCheckTest))
-}
-
-tasks.register("sanity") {
-    def platformLibsTasks =":distPlatformLibs" + ":kotlin-native:platformLibs"
-    dependsOn(tasksOf(KonanTest) { task ->
-        !UtilsKt.isDependsOnPlatformLibs(task)
-    })
+    dependsOn(tasks.withType(FrameworkTest).matching { it.enabled })
+    dependsOn(tasks.withType(FileCheckTest).matching { it.enabled })
+    dependsOn(tasks.withType(KonanTest).matching { it.enabled })
     // Add framework tests
-    dependsOn(tasksOf(FrameworkTest) { task ->
-        !UtilsKt.isDependsOnPlatformLibs(task)
-    })
+    dependsOn(tasks.withType(FrameworkTest).matching { it.enabled })
     // Add regular gradle test tasks
-    dependsOn(tasksOf(Test))
-    dependsOn(tasksOf(CoverageTest))
-    dependsOn(tasksOf(FileCheckTest) { task ->
-        // Avoid cross-compilation in a sanity run.
-        task.targetName == project.target.name
-    })
+    dependsOn(tasks.withType(Test).matching { it.enabled })
+    dependsOn(tasks.withType(CoverageTest).matching { it.enabled })
+    dependsOn(tasks.withType(FileCheckTest).matching { it.enabled })
     dependsOn(":kotlin-native:Interop:Indexer:check")
     dependsOn(":kotlin-native:Interop:StubGenerator:check")
     dependsOn(":native:kotlin-native-utils:check")
+    dependsOn(":kotlin-native:backend.native:check")
+}
+
+// Was a subset of tests.
+tasks.register("sanity") {
+    dependsOn("run")
 }
 
 boolean isExcluded(String dir) {
@@ -259,7 +254,7 @@ Task linkTest(String name, Closure<KonanLinkTest> configureClosure) {
                 // Build an executable with library
                 program(name, targets: [targetName]) {
                     libraries {
-                        klib lib
+                        klibFile file("$testOutputLocal/$name/$targetName/${lib}.klib")
                     }
                     baseDir  "$testOutputLocal/$name"
                     srcFiles  task.getSources()
@@ -275,7 +270,7 @@ Task linkTest(String name, Closure<KonanLinkTest> configureClosure) {
  * Creates a task for a dynamic test. Configures runner and adds library and test build tasks.
  */
 Task dynamicTest(String name, Closure<KonanDynamicTest> configureClosure) {
-    return KotlinNativeTestKt.createTest(project, name, KonanDynamicTest) { task ->
+    return KotlinNativeTestKt.createTest(project, name, KonanDynamicTest) { KonanDynamicTest task ->
         task.configure(configureClosure)
         if (task.enabled) {
             konanArtifacts {
@@ -301,6 +296,8 @@ Task dynamicTest(String name, Closure<KonanDynamicTest> configureClosure) {
             }
             def buildTask = UtilsKt.findKonanBuildTask(project, name, target)
             UtilsKt.dependsOnDist(buildTask)
+            task.dependsOn(nativeDependencies.llvmDependency)
+            task.dependsOn(nativeDependencies.targetDependency(target))
         }
     }
 }
@@ -611,179 +608,18 @@ standaloneTest("runtime_basic_exit") {
     expectedExitStatus = 42
 }
 
-tasks.register("runtime_random", KonanLocalTest) {
-    source = "runtime/basic/random.kt"
-}
-
-tasks.register("runtime_basic_simd", KonanLocalTest) {
-    source = "runtime/basic/simd.kt"
-}
-
-tasks.register("runtime_worker_random", KonanLocalTest) {
-    source = "runtime/basic/worker_random.kt"
-}
-
-tasks.register("hello0", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/basic/hello0.kt"
+tasks.register("codegen_vector_default_argument", KonanLocalTest) {
+    source = "codegen/vector/default_argument.kt"
 }
 
 tasks.register("stringTrim", KonanLocalTest) {
     source = "codegen/stringTrim/stringTrim.kt"
 }
 
-standaloneTest("hello1") {
-   useGoldenData = true
-   useTestData = true
-   source = "runtime/basic/hello1.kt"
-}
-
-standaloneTest("hello2") {
-   useGoldenData = true
-   useTestData = true
-   source = "runtime/basic/hello2.kt"
-}
-
-standaloneTest("readlnOrNull_empty") {
-    useGoldenData = true
-    useTestData = true
-    source = "runtime/basic/readlnOrNull_empty.kt"
-}
-
-standaloneTest("readln_empty") {
-    useTestData = true
-    outputChecker = { s -> s.contains("ReadAfterEOFException") }
-    expectedExitStatusChecker = { it != 0 }
-    source = "runtime/basic/readln_empty.kt"
-}
-
-standaloneTest("readln_alone_CR") {
-    useGoldenData = true
-    useTestData = true
-    source = "runtime/basic/readln_alone_CR.kt"
-}
-
-standaloneTest("readln_empty_new_line") {
-    useGoldenData = true
-    useTestData = true
-    source = "runtime/basic/readln_empty_new_line.kt"
-}
-
-standaloneTest("readln_multiline") {
-    useGoldenData = true
-    useTestData = true
-    source = "runtime/basic/readln_multiline.kt"
-}
-
-standaloneTest("readln_CR_and_CRLF") {
-    useGoldenData = true
-    useTestData = true
-    source = "runtime/basic/readln_CR_and_CRLF.kt"
-}
-
-standaloneTest("readln_long_line") {
-    useGoldenData = true
-    useTestData = true
-    source = "runtime/basic/readln_long_line.kt"
-}
-
-standaloneTest("readln_cyrillic") {
-    useGoldenData = true
-    useTestData = true
-    source = "runtime/basic/readln_cyrillic.kt"
-}
-
-standaloneTest("readln_multiple_empty_new_lines") {
-    useGoldenData = true
-    useTestData = true
-    source = "runtime/basic/readln_multiple_empty_new_lines.kt"
-}
-
-tasks.register("hello3", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/basic/hello3.kt"
-}
-
-tasks.register("hello4", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/basic/hello4.kt"
-}
-
 standaloneTest('enumEquals') {
     useGoldenData = true
     source = "runtime/basic/enum_equals.kt"
     flags = ['-XXLanguage:-ProhibitComparisonOfIncompatibleEnums', '-e', 'runtime.basic.enum_equals.main']
-}
-
-standaloneTest("entry0") {
-    useGoldenData = true
-    source = "runtime/basic/entry0.kt"
-    flags = ["-entry", "runtime.basic.entry0.main"]
-}
-
-standaloneTest("entry1") {
-    useGoldenData = true
-    source = "runtime/basic/entry1.kt"
-    flags = ["-entry", "foo"]
-}
-
-linkTest("entry2") {
-    useGoldenData = true
-    source = "runtime/basic/entry2.kt"
-    lib = "runtime/basic/libentry2.kt"
-    flags = ["-entry", "foo"]
-}
-
-standaloneTest("entry3") {
-    useGoldenData = true
-    source = "runtime/basic/entry3.kt"
-    flags = ["-entry", "bar"]
-}
-
-standaloneTest("entry4") {
-    useGoldenData = true
-    source = "runtime/basic/entry4.kt"
-}
-
-standaloneTest("readline0") {
-    useGoldenData = true
-    useTestData = true
-    source = "runtime/basic/readline0.kt"
-}
-
-standaloneTest("readline1") {
-    useGoldenData = true
-    useTestData = true
-    source = "runtime/basic/readline1.kt"
-}
-
-tasks.register("tostring0", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/basic/tostring0.kt"
-}
-
-tasks.register("tostring1", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/basic/tostring1.kt"
-}
-
-tasks.register("tostring2", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/basic/tostring2.kt"
-}
-
-tasks.register("tostring3", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/basic/tostring3.kt"
-}
-
-tasks.register("tostring4", KonanLocalTest) {
-    source = "runtime/basic/tostring4.kt"
-}
-
-tasks.register("empty_substring", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/basic/empty_substring.kt"
 }
 
 standaloneTest("cleaner_basic") {
@@ -844,6 +680,31 @@ standaloneTest("cleaner_in_tls_worker") {
     flags = ['-opt-in=kotlin.native.internal.InternalForKotlinNative']
 }
 
+standaloneTest('logging') {
+    outputChecker = { out ->
+        out.toLowerCase().contains("[logging]") && // loging reports configured log levels on info level
+        out.toLowerCase().contains("logging = debug") &&
+        out.toLowerCase().contains("gc = info") &&
+        out.toLowerCase().contains("mm = warning") &&
+        out.toLowerCase().contains("tls = error") &&
+        out.toLowerCase().contains("[gc]") // gc reports initialization on info level
+    }
+    source = "runtime/basic/logging.kt"
+    flags = ['-Xruntime-logs=gc=info,mm=warning,tls=error,logging=debug']
+}
+
+standaloneTest('logging_invalid') {
+    outputChecker = { it.isEmpty() }
+    source = "runtime/basic/logging.kt"
+    flags = ['-Xruntime-logs=invalid=unknown,logging=debug']
+}
+
+standaloneTest('logging_override') {
+    outputChecker = { it.isEmpty() }
+    source = "runtime/basic/logging.kt"
+    flags = ['-Xruntime-logs=logging=info,logging=debug,logging=none']
+}
+
 standaloneTest("worker_bound_reference0") {
     source = "runtime/concurrent/worker_bound_reference0.kt"
     flags = ['-tr']
@@ -861,71 +722,16 @@ standaloneTest("worker_bound_reference0") {
     }
 }
 
-tasks.register("worker0", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/workers/worker0.kt"
-}
-
-tasks.register("worker1", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/workers/worker1.kt"
-}
-
-tasks.register("worker2", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/workers/worker2.kt"
-}
-
-tasks.register("worker3", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/workers/worker3.kt"
-}
-
-tasks.register("worker4", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/workers/worker4.kt"
-}
-
 // This tests changes main thread worker queue state, so better be executed alone.
 standaloneTest("worker5") {
     useGoldenData = true
     source = "runtime/workers/worker5.kt"
 }
 
-tasks.register("worker6", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/workers/worker6.kt"
-}
-
-tasks.register("worker7", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/workers/worker7.kt"
-}
-
-tasks.register("worker8", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/workers/worker8.kt"
-}
-
-tasks.register("worker9_experimentalMM", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/workers/worker9_experimentalMM.kt"
-}
-
 tasks.register("worker10", KonanLocalTest) {
     enabled = !isNoopGC
     useGoldenData = true
     source = "runtime/workers/worker10.kt"
-}
-
-tasks.register("worker11", KonanLocalTest) {
-    enabled = !isAggressiveGC // TODO: Investigate why too slow
-    useGoldenData = true
-    source = "runtime/workers/worker11.kt"
-}
-
-tasks.register("worker_exception_messages", KonanLocalTest) {
-    source = "runtime/workers/worker_exception_messages.kt"
 }
 
 standaloneTest("worker_exceptions") {
@@ -1014,52 +820,11 @@ standaloneTest("worker_threadlocal_no_leak") {
     source = "runtime/workers/worker_threadlocal_no_leak.kt"
 }
 
-tasks.register("worker_list_workers", KonanLocalTest) {
-    source = "runtime/workers/worker_list_workers.kt"
-}
-
 standaloneTest("freeze_disabled") {
     enabled = !isNoopGC
     flags = ["-tr"]
     source = "runtime/workers/freeze_disabled.kt"
     testLogger = KonanTest.Logger.SILENT
-}
-
-tasks.register("atomicSmokeTest", KonanLocalTest) {
-    source = "runtime/atomics/atomic_smoke.kt"
-}
-
-tasks.register("atomicStressTest", KonanLocalTest) {
-    source = "runtime/atomics/atomic_stress.kt"
-}
-
-tasks.register("atomic0", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/atomics/atomic0.kt"
-}
-
-standaloneTest("atomic1") {
-    // Note: This test reproduces a race, so it'll start flaking if problem is reintroduced.
-    enabled = false // Needs USE_CYCLIC_GC, which is disabled.
-    source = "runtime/atomics/atomic1.kt"
-}
-
-tasks.register("atomicArraySmokeTest", KonanLocalTest) {
-    source = "runtime/atomics/atomic_array_smoke.kt"
-}
-
-tasks.register("atomicArrayStressTest", KonanLocalTest) {
-    source = "runtime/atomics/atomic_array_stress.kt"
-}
-
-tasks.register("lazy0", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/workers/lazy0.kt"
-}
-
-tasks.register("lazy1", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/workers/lazy1.kt"
 }
 
 standaloneTest("lazy2") {
@@ -1070,11 +835,6 @@ standaloneTest("lazy2") {
 standaloneTest("lazy3") {
     enabled = !isNoopGC
     source = "runtime/workers/lazy3.kt"
-}
-
-tasks.register("lazy4", KonanLocalTest) {
-    enabled = !isAggressiveGC // TODO: Investigate why too slow
-    source = "runtime/workers/lazy4.kt"
 }
 
 tasks.register("mutableData1", KonanLocalTest) {
@@ -1996,73 +1756,9 @@ standaloneTest('coroutines_suspendConversion') {
     flags = ['-XXLanguage:+SuspendConversion']
 }
 
-tasks.register("AbstractMutableCollection", KonanLocalTest) {
-    expectedExitStatus = 0
-    source = "runtime/collections/AbstractMutableCollection.kt"
-}
-
-tasks.register("BitSet", KonanLocalTest) {
-    expectedExitStatus = 0
-    source = "runtime/collections/BitSet.kt"
-}
-
 tasks.register("stack_array", KonanLocalTest) {
     useGoldenData = true
-    source = "runtime/collections/stack_array.kt"
-}
-
-tasks.register("array0", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/collections/array0.kt"
-}
-
-tasks.register("array1", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/collections/array1.kt"
-}
-
-tasks.register("array2", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/collections/array2.kt"
-}
-
-tasks.register("array3", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/collections/array3.kt"
-}
-
-tasks.register("array4", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/collections/array4.kt"
-}
-
-tasks.register("array5", KonanLocalTest) {
-    source = "runtime/collections/array5.kt"
-}
-
-tasks.register("typed_array0", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/collections/typed_array0.kt"
-}
-
-tasks.register("typed_array1", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/collections/typed_array1.kt"
-}
-
-
-tasks.register("sort0", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/collections/sort0.kt"
-}
-
-tasks.register("sort1", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/collections/sort1.kt"
-}
-
-tasks.register("sortWith", KonanLocalTest) {
-    source = "runtime/collections/SortWith.kt"
+    source = "codegen/escapeAnalysis/stack_array.kt"
 }
 
 tasks.register("if_else", KonanLocalTest) {
@@ -2216,20 +1912,6 @@ standaloneTest("link_default_libs") {
     UtilsKt.dependsOnPlatformLibs(it)
 }
 
-standaloneTest("link_testLib_explicitly1") {
-    // there is no testLibrary for cross targets yet.
-    enabled = project.target.name == project.hostName
-    dependsOn installTestLib
-    useGoldenData = true
-    source = "link/testLib_explicitly1.kt"
-    // We force library inclusion, so need to see the warning banner.
-    flags = ['-l', 'testLibrary', '-r', testLibraryDir]
-    doLast {
-        def file = new File("$testLibraryDir/testLibrary")
-        file.deleteDir()
-    }
-}
-
 linkTest("no_purge_for_dependencies") {
     useGoldenData = true
     source = "link/purge1/prog.kt"
@@ -2241,11 +1923,6 @@ linkTest("lib@name") {
     useGoldenData = true
     source = "link/klib_name/prog.kt"
     lib = "link/klib_name/lib.kt"
-}
-
-tasks.register("for0", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/basic/for0.kt"
 }
 
 tasks.register("throw0", KonanLocalTest) {
@@ -2358,111 +2035,10 @@ tasks.register("interface0", KonanLocalTest) {
     source = "runtime/basic/interface0.kt"
 }
 
-tasks.register("hash0", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/basic/hash0.kt"
-}
-
-tasks.register("ieee754", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/basic/ieee754.kt"
-}
-
-standaloneTest("hypotenuse") {
-    source = "runtime/basic/hypot.kt"
-}
-
-tasks.register("array_list1", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/collections/array_list1.kt"
-}
-
-tasks.register("array_list2", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/collections/array_list2.kt"
-}
-
-tasks.register("hash_map0", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/collections/hash_map0.kt"
-}
-
-tasks.register("hash_map1", KonanLocalTest) {
-    disabled = isAggressiveGC // TODO: Investigate why too slow
-    useGoldenData = true
-    source = "runtime/collections/hash_map1.kt"
-}
-
-tasks.register("hash_set0", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/collections/hash_set0.kt"
-}
-
-tasks.register("listof0", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/collections/listof0.kt"
-}
-
 tasks.register("listof1", KonanLocalTest) {
     enabled = false
     useGoldenData = true
     source = "datagen/literals/listof1.kt"
-}
-
-
-tasks.register("moderately_large_array", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/collections/moderately_large_array.kt"
-}
-
-tasks.register("moderately_large_array1", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/collections/moderately_large_array1.kt"
-}
-
-tasks.register("string_builder0", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/text/string_builder0.kt"
-}
-
-tasks.register("string_builder1", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/text/string_builder1.kt"
-}
-
-tasks.register("string0", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/text/string0.kt"
-}
-
-tasks.register("parse0", KonanLocalTest) {
-    source = "runtime/text/parse0.kt"
-}
-
-tasks.register("to_string0", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/text/to_string0.kt"
-}
-
-tasks.register("trim", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/text/trim.kt"
-}
-
-tasks.register("chars0", KonanLocalTest) {
-    disabled = isAggressiveGC // TODO: Investigate why too slow
-    source = "runtime/text/chars0.kt"
-    expectedExitStatus = 0
-}
-
-tasks.register("indexof", KonanLocalTest) {
-    source = "runtime/text/indexof.kt"
-}
-
-tasks.register("utf8", KonanLocalTest) {
-    enabled = !isAggressiveGC // TODO: Investigate why too slow
-    useGoldenData = true
-    source = "runtime/text/utf8.kt"
 }
 
 tasks.register("catch1", KonanLocalTest) {
@@ -2629,21 +2205,6 @@ standaloneTest("unhandled_exception") {
     source = "runtime/exceptions/unhandled_exception.kt"
 }
 
-standaloneTest("runtime_math_exceptions") {
-    source = "stdlib_external/numbers/MathExceptionTest.kt"
-    flags = ['-tr']
-}
-
-standaloneTest("runtime_math") {
-    source = "stdlib_external/numbers/MathTest.kt"
-    flags = ['-tr']
-}
-
-standaloneTest("runtime_math_harmony") {
-    source = "stdlib_external/numbers/HarmonyMathTests.kt"
-    flags = ['-tr']
-}
-
 tasks.register("catch3", KonanLocalTest) {
     useGoldenData = true
     source = "codegen/try/catch3.kt"
@@ -2774,17 +2335,6 @@ tasks.register("break1", KonanLocalTest) {
     source = "codegen/controlflow/break1.kt"
 }
 
-tasks.register("range0", KonanLocalTest) {
-    useGoldenData = true
-    source = "runtime/collections/range0.kt"
-}
-
-standaloneTest("args0") {
-    arguments = ["AAA", "BB", "C"]
-    useGoldenData = true
-    source = "runtime/basic/args0.kt"
-}
-
 standaloneTest("devirtualization_lateinitInterface") {
     disabled = (cacheTesting != null) // Cache is not compatible with -opt.
     useGoldenData = true
@@ -2840,10 +2390,6 @@ tasks.register("main_exception", KonanLocalTest) {
     outputChecker = { s -> s.contains("kotlin.Error: Hello!") }
     expectedExitStatus = 1
     source = "runtime/basic/main_exception.kt"
-}
-
-tasks.register("runtime_basic_standard", KonanLocalTest) {
-    source = "runtime/basic/standard.kt"
 }
 
 standaloneTest("runtime_basic_assert_failed") {
@@ -3121,10 +2667,6 @@ standaloneTest("memory_only_gc") {
     source = "runtime/memory/only_gc.kt"
 }
 
-tasks.register("memory_stable_ref_cross_thread_check", KonanLocalTest) {
-    source = "runtime/memory/stable_ref_cross_thread_check.kt"
-}
-
 standaloneTest("leakMemory") {
     source = "runtime/memory/leak_memory.kt"
 }
@@ -3159,6 +2701,9 @@ standaloneTest("stress_gc_allocations") {
 }
 
 standaloneTest("array_out_of_memory") {
+    // This test allocs a large array that may make Linux
+    // kill any process inlcuding Gradle with OOM-killer
+    enabled = project.target.family != Family.LINUX
     source = "runtime/memory/array_out_of_memory.kt"
     flags = ['-tr']
     switch(project.target.architecture) {
@@ -3220,8 +2765,7 @@ tasks.register("vararg_of_literals", KonanLocalTest) {
 }
 
 standaloneTest('tailrec') {
-    disabled = isAggressiveGC || // TODO: Investigate why too slow
-            isK2(project) // KT-56269
+    disabled = isAggressiveGC // TODO: Investigate why too slow
     useGoldenData = true
     source = "lower/tailrec.kt"
     flags = ['-XXLanguage:-ProhibitTailrecOnVirtualMember', '-e', 'lower.tailrec.main']
@@ -3796,6 +3340,8 @@ int customCompare(const char* str1, const char* str2) {
 void createInterop(String name, Closure conf) {
     konanArtifacts {
         interop(name, targets: [target.name]) {
+            dependsOn(nativeDependencies.llvmDependency)
+            dependsOn(nativeDependencies.targetDependency(target))
             conf(it)
             noDefaultLibs(true)
             noEndorsedLibs(true)
@@ -3826,28 +3372,12 @@ createInterop("sockets") {
     it.defFile 'interop/basics/sockets.def'
 }
 
-createInterop("bitfields") {
-    it.defFile 'interop/basics/bitfields.def'
-}
-
-createInterop("cglobals") {
-    it.defFile 'interop/basics/cglobals.def'
-}
-
-createInterop("cfunptr") {
-    it.defFile 'interop/basics/cfunptr.def'
-}
-
 createInterop("cmacros") {
     it.defFile 'interop/basics/cmacros.def'
 }
 
 createInterop("cunsupported") {
     it.defFile 'interop/basics/cunsupported.def'
-}
-
-createInterop("ctoKString") {
-    it.defFile 'interop/basics/ctoKString.def'
 }
 
 createInterop("ctypes") {
@@ -3870,10 +3400,6 @@ createInterop("cstructs") {
     it.defFile 'interop/basics/cstructs.def'
 }
 
-createInterop("ccallbacksAndVarargs") {
-    it.defFile 'interop/basics/ccallbacksAndVarargs.def'
-}
-
 createInterop("cmangling") {
     it.defFile 'interop/basics/mangling.def'
 }
@@ -3894,34 +3420,12 @@ createInterop("cunion") {
     it.defFile 'interop/basics/cunion.def'
 }
 
-createInterop("cenums") {
-    it.defFile 'interop/basics/cenums.def'
-}
-
-createInterop("carrayPointers") {
-    it.defFile 'interop/basics/carrayPointers.def'
-}
-
-createInterop("auxiliaryCppSources") {
-    // We need to provide empty def file to create correct `KonanInteropTask`.
-    it.defFile 'interop/auxiliary_sources/auxiliaryCppSources.def'
-    it.headers "$projectDir/interop/auxiliary_sources/name.h"
-    it.extraOpts "-Xcompile-source", "$projectDir/interop/auxiliary_sources/name.cpp"
-    it.extraOpts "-Xsource-compiler-option", "-std=c++17"
-}
-
 createInterop("concurrentTerminate") {
     it.defFile 'interop/concurrentTerminate/concurrentTerminate.def'
     it.headers "$projectDir/interop/concurrentTerminate/async.h"
     // TODO: Using `-Xcompile-source` does not imply dependency on that source, so the task will no re-run when the source is updated.
     it.extraOpts "-Xcompile-source", "$projectDir/interop/concurrentTerminate/async.cpp"
     it.extraOpts "-Xsource-compiler-option", "-std=c++17"
-}
-
-createInterop("incomplete_types") {
-    it.defFile 'interop/incomplete_types/library.def'
-    it.headers "$projectDir/interop/incomplete_types/library.h"
-    it.extraOpts "-Xcompile-source", "$projectDir/interop/incomplete_types/library.cpp"
 }
 
 createInterop("embedStaticLibraries") {
@@ -3948,25 +3452,8 @@ createInterop("embedStaticLibraries") {
     it.extraOpts '-staticLibrary', "2.a"
 }
 
-createInterop("kt43265") {
-    it.defFile 'interop/kt43265/kt43265.def'
-}
-
-createInterop("kt44283") {
-    it.defFile 'interop/kt44283/kt44283.def'
-}
-
 createInterop("kt51925") {
     it.defFile 'interop/kt51925/kt51925.def'
-}
-
-createInterop("kt54284") {
-    it.defFile 'interop/kt54284/kt54284.def'
-}
-
-createInterop("kt54284_fmodules") {
-    it.defFile 'interop/kt54284/kt54284.def'
-    it.extraOpts '-compiler-option', '-fmodules'
 }
 
 createInterop("kt43502") {
@@ -4018,10 +3505,6 @@ createInterop("workerSignals") {
     it.defFile "interop/workerSignals/workerSignals.def"
     it.headers "$projectDir/interop/workerSignals/workerSignals.h"
     it.extraOpts "-Xcompile-source", "$projectDir/interop/workerSignals/workerSignals.cpp"
-}
-
-createInterop("cForwardDeclarations") {
-    it.defFile "interop/forwardDeclarations/cForwardDeclarations.def"
 }
 
 createInterop("cForwardDeclarationsTwoLibs1") {
@@ -4160,6 +3643,11 @@ if (PlatformInfo.isAppleTarget(project)) {
     createInterop("kt59167") {
         it.defFile 'interop/kt59167/kt59167.def'
     }
+    createInterop("overridabilityCondition") {
+        it.defFile 'interop/objc/overridabilityCondition/lib.def'
+        it.headers "$projectDir/interop/objc/overridabilityCondition/lib.h"
+        it.extraOpts "-Xcompile-source", "$projectDir/interop/objc/overridabilityCondition/lib.m"
+    }
 }
 
 createInterop("withSpaces") {
@@ -4180,7 +3668,7 @@ createInterop("exceptions_cCallback") {
  * Creates a task for the interop test. Configures runner and adds library and test build tasks.
  */
 Task interopTestBase(String name, boolean multiFile, boolean interop2ForMainOnly, Closure<KonanInteropTest> configureClosure) {
-    return KotlinNativeTestKt.createTest(project, name, KonanInteropTest) { task ->
+    return KotlinNativeTestKt.createTest(project, name, KonanInteropTest) { KonanInteropTest task ->
         task.configure(configureClosure)
         if (task.enabled) {
             konanArtifacts {
@@ -4212,7 +3700,7 @@ Task interopTestBase(String name, boolean multiFile, boolean interop2ForMainOnly
                         artifact interopLib
                         if (interopLib2 != null) artifact interopLib2
                         if (hasIntermediateLib)
-                            klib lib
+                            klibFile file("$testOutputLocal/$name/$targetName/${lib}.klib")
                     }
                     srcFiles multiFile ? fileTree(task.source) { include '**/*.kt' } : task.getSources()
                     baseDir "$testOutputLocal/$name"
@@ -4221,6 +3709,8 @@ Task interopTestBase(String name, boolean multiFile, boolean interop2ForMainOnly
                     extraOpts project.globalTestArgs
                 }
             }
+            task.dependsOn(nativeDependencies.llvmDependency)
+            task.dependsOn(nativeDependencies.targetDependency(target))
         }
     }
 }
@@ -4283,23 +3773,6 @@ standaloneTest("interop5") {
     UtilsKt.dependsOnPlatformLibs(it)
 }
 
-interopTest("interop_bitfields") {
-    disabled = isAggressiveGC // TODO: Investigate why too slow
-    source = "interop/basics/bf.kt"
-    interop = 'bitfields'
-}
-
-interopTest("interop_funptr") {
-    useGoldenData = true
-    source = "interop/basics/funptr.kt"
-    interop = 'cfunptr'
-}
-
-interopTest("interop_globals") {
-    source = "interop/basics/globals.kt"
-    interop = 'cglobals'
-}
-
 interopTest("interop_macros") {
     source = "interop/basics/macros.kt"
     interop = 'cmacros'
@@ -4308,11 +3781,6 @@ interopTest("interop_macros") {
 interopTest("interop_unsupported") {
     source = "interop/basics/unsupported.kt"
     interop = 'cunsupported'
-}
-
-interopTest("interop_toKString") {
-    source = "interop/basics/toKString.kt"
-    interop = 'ctoKString'
 }
 
 interopTest("interop_types") {
@@ -4350,21 +3818,11 @@ interopTest("interop_mangling_keywords2") {
     interop = 'cmangling_keywords2'
 }
 
-interopTest("interop_auxiliarySources") {
-    source = "interop/auxiliary_sources/main.kt"
-    interop = 'auxiliaryCppSources'
-}
-
 interopTest("interop_concurrentTerminate") {
     source = "interop/concurrentTerminate/main.kt"
     interop = 'concurrentTerminate'
     outputChecker = { str -> str.endsWith("Reporting error!\n") }
     expectedExitStatus = 99
-}
-
-interopTest("interop_incompleteTypes") {
-    source = "interop/incomplete_types/main.kt"
-    interop = 'incomplete_types'
 }
 
 interopTest("interop_embedStaticLibraries") {
@@ -4380,11 +3838,6 @@ interopTest("interop_values") {
 interopTest("interop_structs") {
     source = "interop/basics/structs.kt"
     interop = 'cstructs'
-}
-
-interopTest("interop_callbacksAndVarargs") {
-    source = "interop/basics/callbacksAndVarargs.kt"
-    interop = 'ccallbacksAndVarargs'
 }
 
 interopTest("interop_threadStates") {
@@ -4429,39 +3882,6 @@ interopTest("interop_union") {
     source = "interop/basics/union.kt"
 }
 
-interopTest("interop_enums") {
-    interop = 'cenums'
-    flags = ['-XXLanguage:+EnumEntries']
-    source = "interop/basics/enums.kt"
-}
-
-interopTest("interop_array_pointers") {
-    interop = 'carrayPointers'
-    source = "interop/basics/arrayPointers.kt"
-}
-
-interopTest("interop_kt43265") {
-    interop = 'kt43265'
-    source = "interop/kt43265/usage.kt"
-}
-
-interopTest("interop_kt44283") {
-    disabled = project.globalTestArgs.contains('-opt') // Incompatible with -g.
-    flags = ['-g']
-    interop = 'kt44283'
-    source = "interop/kt44283/main.kt"
-}
-
-interopTest("interop_kt54284") {
-    interop = 'kt54284'
-    source = "interop/kt54284/main.kt"
-}
-
-interopTest("interop_kt54284_fmodules") {
-    interop = 'kt54284_fmodules'
-    source = "interop/kt54284/main.kt"
-}
-
 // TODO: This test should be run with caches on.
 interopTest("interop_kt51925") {
     interop = 'kt51925'
@@ -4485,11 +3905,6 @@ dynamicTest("interop_kt43502") {
     useGoldenData = true
 }
 
-interopTest("interop_leakMemoryWithRunningThreadUnchecked") {
-    interop = 'leakMemoryWithRunningThread'
-    source = "interop/leakMemoryWithRunningThread/unchecked.kt"
-}
-
 interopTest("interop_leakMemoryWithRunningThreadChecked") {
     interop = 'leakMemoryWithRunningThread'
     source = "interop/leakMemoryWithRunningThread/checked.kt"
@@ -4508,10 +3923,6 @@ tasks.register("interop_convert", KonanLocalTest) {
 
 tasks.register("interop_sourceCodeStruct", KonanLocalTest) {
     source = "codegen/intrinsics/interop_sourceCodeStruct.kt"
-}
-
-tasks.register("interop_alloc_value", KonanLocalTest) {
-    source = "runtime/interop/interop_alloc_value.kt"
 }
 
 standaloneTest("isExperimentalMM") {
@@ -4551,11 +3962,6 @@ interopTest("interop_workerSignals") {
     disabled = project.testTarget == 'mingw_x64' // cross-thread signalling does not work on Windows
     source = "interop/workerSignals/workerSignals.kt"
     interop = "workerSignals"
-}
-
-interopTest("interop_forwardDeclarations") {
-    source = "interop/forwardDeclarations/forwardDeclarations.kt"
-    interop = "cForwardDeclarations"
 }
 
 interopTest("interop_forwardDeclarationsTwoLibs") {
@@ -4730,6 +4136,12 @@ if (PlatformInfo.isAppleTarget(project)) {
     interopTest("interop_objc_direct") {
         source = "interop/objc/direct/main.kt"
         interop = "objcDirect"
+    }
+
+    interopTest("interop_objc_overridabilityCondition") {
+        interop = "overridabilityCondition"
+        source = "interop/objc/overridabilityCondition/main.kt"
+        flags = [ "-Xuse-ir-fake-override-builder" ]
     }
 
     interopTest("interop_objc_foreignException") {
@@ -5039,6 +4451,12 @@ standaloneTest("interop_objc_illegal_sharing") {
     }
 }
 
+standaloneTest("interop_kt62262") {
+    enabled = project.testTarget == 'ios_x64' || project.testTarget == 'ios_arm64' || project.testTarget == 'ios_simulator_arm64'
+    source = "interop/objc/kt62262.kt"
+    UtilsKt.dependsOnPlatformLibs(it)
+}
+
 dynamicTest("produce_dynamic") {
     source = "produce_dynamic/simple/hello.kt"
     cSource = "$projectDir/produce_dynamic/simple/main.c"
@@ -5102,10 +4520,13 @@ dynamicTest("produce_dynamic_unhandledException") {
 }
 
 dynamicTest("interop_concurrentRuntime") {
-    disabled = true  // KT-43180
     source = "interop/concurrentTerminate/reverseInterop.kt"
     cSource = "$projectDir/interop/concurrentTerminate/main.cpp"
     clangTool = "clang++"
+    if (project.testTarget == 'mingw_x64') {
+        // Our sysroot for mingw_x64 still requires -femulated-tls. For C++ code as well. See KT-46612.
+        clangFlags += "-femulated-tls"
+    }
     outputChecker = { str -> str.startsWith("Uncaught Kotlin exception: kotlin.RuntimeException: Example") }
     expectedExitStatus = 99
 }
@@ -5177,30 +4598,50 @@ interopTest("interop_exceptions_cCallback") {
     interop = "exceptions_cCallback"
 }
 
-tasks.register("library_ir_provider_mismatch", KonanDriverTest) {
-    disabled = isAggressiveGC // No need to test with different GC schedulers
+standaloneTest("library_ir_provider_mismatch") {
+    enabled = !isAggressiveGC // No need to test with different GC schedulers
 
-    def dir = buildDir.absolutePath
-    def lib = "$projectDir/link/ir_providers/library/empty.kt"
-    def invalidManifest = "$projectDir/link/ir_providers/library/manifest.properties"
+    String librarySource = "$projectDir/link/ir_providers/library/empty.kt"
+    String invalidManifest = "$projectDir/link/ir_providers/library/manifest.properties"
+    String mainSource = "$projectDir/link/ir_providers/hello.kt"
 
-    def currentTarget = project.target.name
+    String outputDir = "$buildDir/$name"
+    String currentTarget = project.target.name
+
+    inputs.files(librarySource, invalidManifest)
+    inputs.property("target", currentTarget)
+    outputs.dir(outputDir)
+    source = mainSource
 
     doBeforeBuild {
-        konanc("$lib -p library -o $dir/supported_ir_provider/empty -target $currentTarget")
-        konanc("$lib -p library -o $dir/unsupported_ir_provider/empty -manifest $invalidManifest -target $currentTarget")
+        konanc("$librarySource -target $currentTarget -p library -o $outputDir/unsupported_ir_provider/empty.klib -manifest $invalidManifest")
+        konanc("$librarySource -target $currentTarget -p library -o $outputDir/supported_ir_provider/empty.klib ")
 
+        // Should not be successful:
+        boolean failed = false
+        String command = "$mainSource -target $currentTarget -p program -o $outputDir/failed.kexe -l $outputDir/unsupported_ir_provider/empty.klib"
+        try {
+            konanc(command)
+        } catch (Throwable t) {
+            String exceptionText = t.message
+            exceptionText = PlatformInfo.isWindows() ? exceptionText.replace("\\", "/") : exceptionText
+
+            String expectedText = "warning: skipping $outputDir/unsupported_ir_provider/empty.klib. The library requires unknown IR provider UNSUPPORTED."
+            expectedText = PlatformInfo.isWindows() ? expectedText.replace("\\", "/") : expectedText
+
+            if (t instanceof GradleException && exceptionText.contains(expectedText)) {
+                failed = true
+            } else {
+                throw t
+            }
+        }
+
+        if (!failed) {
+            throw new GradleException("Kotlin/Natice invocation is successful but should fail:\n$command")
+        }
     }
-    source = "link/ir_providers/hello.kt"
-    flags = ['-target', currentTarget, '-l', 'empty', '-r', "$dir/unsupported_ir_provider", '-r', "$dir/supported_ir_provider"]
-    compilerMessages = true
-    def messages = "warning: skipping $dir/unsupported_ir_provider/empty.klib. The library requires unknown IR provider UNSUPPORTED.\nhello\n"
-    messages = PlatformInfo.isWindows() ? messages.replaceAll('\\/', '\\\\') : messages
-    outputChecker = { out ->
-        messages.split("\n")
-                .collect { line -> out.contains(line) }
-                .every { it == true }
-    }
+
+    flags = ["-l", "$outputDir/supported_ir_provider/empty.klib"]
 }
 
 standaloneTest("kt51302") {
@@ -5211,15 +4652,14 @@ standaloneTest("kt51302") {
 
 standaloneTest("fake_override_0") {
     def sources = "$projectDir/link/fake_overrides"
-    def dir = buildDir.absolutePath
     doBeforeBuild {
-        konanc("$sources/base.kt -p library -target ${target.name} -o $dir/base")
-        konanc("$sources/move.kt -p library -target ${target.name} -o $dir/move -r $dir -l base")
-        konanc("$sources/use.kt -p library -target ${target.name} -o $dir/use -r $dir -l move")
-        konanc("$sources/move2.kt -p library -target ${target.name} -o $dir/move -r $dir -l base")
+        konanc("$sources/base.kt -p library -target ${target.name} -o $outputDirectory/base.klib")
+        konanc("$sources/move.kt -p library -target ${target.name} -o $outputDirectory/move.klib -l $outputDirectory/base.klib")
+        konanc("$sources/use.kt -p library -target ${target.name} -o $outputDirectory/use.klib -l $outputDirectory/move.klib -l $outputDirectory/base.klib")
+        konanc("$sources/move2.kt -p library -target ${target.name} -o $outputDirectory/move.klib -l $outputDirectory/base.klib")
     }
     source = "$sources/main.kt"
-    flags = ["-l", "use", "-r", "$dir"]
+    flags = ["-l", "$outputDirectory/use.klib", "-l", "$outputDirectory/move.klib", "-l", "$outputDirectory/base.klib"]
     useGoldenData = true
 }
 
@@ -5233,8 +4673,8 @@ standaloneTest("split_compilation_pipeline") {
     def dir = buildDir.absolutePath
     source = "link/private_fake_overrides/override_main.kt"
     doBeforeBuild {
-        konanc("$projectDir/link/private_fake_overrides/override_lib.kt -p library -target ${target.name} -o $dir/lib")
-        konanc("$projectDir/$source -target ${target.name} -o $dir/out -r $dir -l lib " +
+        konanc("$projectDir/link/private_fake_overrides/override_lib.kt -p library -target ${target.name} -o $dir/lib.klib")
+        konanc("$projectDir/$source -target ${target.name} -o $dir/out.klib -l $dir/lib.klib " +
                 "-Xtemporary-files-dir=$dir/tmp/split " +
                 "-Xwrite-dependencies-to=${dir}/split_compilation_pipeline.deps")
     }
@@ -5271,13 +4711,12 @@ Task frameworkTest(String name, Closure<FrameworkTest> configurator) {
                         fr.libraries.forEach { library ->
                             dependsOn konanArtifacts[library].getByTarget(target.name)
                             libraries {
-                                file konanArtifacts[library].getArtifactByTarget(target.name)
+                                klibFile konanArtifacts[library].getArtifactByTarget(target.name)
                             }
                             linkerOpts "-L$buildDir"
                             UtilsKt.dependsOnKonanBuildingTask(task, library, target)
                         }
 
-                        extraOpts fr.bitcode ? "-Xembed-bitcode" : "-Xembed-bitcode-marker"
                         if (fr.isStatic) extraOpts "-Xstatic-framework"
                         extraOpts fr.opts
                         extraOpts project.globalTestArgs
@@ -5344,6 +4783,7 @@ Task objcExportTest(
 
         def libraryName = frameworkName + "Library"
         def noEnumEntriesLibraryName = frameworkName + "NoEnumEntriesLibrary"
+        File exportedKlibArtifact = null
         konanArtifacts {
             library(libraryName, targets: [target.name]) {
                 srcDir "objcexport/library"
@@ -5362,6 +4802,7 @@ Task objcExportTest(
                     UtilsKt.dependsOnDist(it)
                 }
 
+                exportedKlibArtifact = getArtifactByTarget(target.name)
                 extraOpts "-Xshort-module-name=NoEnumEntriesLibrary"
                 extraOpts "-module-name", "org.jetbrains.kotlin.native.test-no-enum-entries-library"
                 extraOpts "-XXLanguage:-EnumEntries"
@@ -5372,7 +4813,6 @@ Task objcExportTest(
             sources = ['objcexport']
             libraries = [libraryName, noEnumEntriesLibraryName]
             artifact = 'Kt'
-            bitcode = !isStaticFramework
             isStatic = isStaticFramework
             if (needLazyHeaderCheck) {
                 opts += "-Xemit-lazy-objc-header=$lazyHeader"
@@ -5380,7 +4820,7 @@ Task objcExportTest(
             opts += [
                     "-Xexport-kdoc",
                     "-Xbinary=bundleId=foo.bar",
-                    "-Xexport-library=test-no-enum-entries-${libraryName}.klib",
+                    "-Xexport-library=$exportedKlibArtifact",
                     "-module-name", "Kt"
             ]
             opts += frameworkOpts
@@ -5463,9 +4903,7 @@ if (isAppleTarget(project)) {
     frameworkTest("testStdlibFramework") {
         framework('Stdlib') {
             sources = ['framework/stdlib']
-            bitcode = true
         }
-        if (cacheTesting == null) fullBitcode = true
         swiftSources = ['framework/stdlib/']
     }
 
@@ -5474,11 +4912,9 @@ if (isAppleTarget(project)) {
     } else frameworkTest("testMultipleFrameworks") {
         framework('First') {
             sources = ['framework/multiple/framework1', 'framework/multiple/shared']
-            bitcode = true
         }
         framework('Second') {
             sources = ['framework/multiple/framework2', 'framework/multiple/shared']
-            bitcode = true
         }
         swiftSources = ['framework/multiple']
     }
@@ -5493,14 +4929,12 @@ if (isAppleTarget(project)) {
         framework('FirstStatic') {
             artifact = 'First'
             sources = ['framework/multiple/framework1', 'framework/multiple/shared']
-            bitcode = true
             isStatic = true
             opts = ['-Xstatic-framework', "-Xpre-link-caches=enable"]
         }
         framework('SecondStatic') {
             artifact = 'Second'
             sources = ['framework/multiple/framework2', 'framework/multiple/shared']
-            bitcode = true
             isStatic = true
             opts = ['-Xstatic-framework', "-Xpre-link-caches=enable"]
         }
@@ -5643,26 +5077,6 @@ if (isAppleTarget(project)) {
             opts = ['-opt-in=kotlin.native.internal.InternalForKotlinNative']
         }
         swiftSources = ['framework/permanentObjects']
-    }
-}
-
-/**
- * Creates tasks to build and execute Harmony regex tests with GTEST logger.
- */
-KotlinNativeTestKt.createTest(project, 'harmonyRegexTest', KonanGTest) { task ->
-    task.enabled = !isAggressiveGC // TODO: Investigate why too slow
-    task.useFilter = false
-    task.testLogger = KonanTest.Logger.GTEST
-
-    def sources = UtilsKt.getFilesToCompile(project, ["../../../libraries/stdlib/native-wasm/test/harmony_regex"], [])
-
-    konanArtifacts {
-        program('harmonyRegexTest', targets: [target.name]) {
-            srcFiles sources
-            baseDir "$testOutputStdlib/harmonyRegexTest"
-            extraOpts '-tr'
-            extraOpts project.globalTestArgs
-        }
     }
 }
 
@@ -5905,7 +5319,7 @@ pluginTest("runtime_basic_init", "nopPlugin") {
 
 
 Task fileCheckTest(String name, Closure<FileCheckTest> configureClosure) {
-    return project.tasks.create(name, FileCheckTest) { task ->
+    return project.tasks.create(name, FileCheckTest) { FileCheckTest task ->
         task.configure(configureClosure)
         task.llvmIr = project.file("$testOutputFileCheck/$name/$target/out.${task.phaseToCheck}.ll")
 
@@ -5963,28 +5377,12 @@ Task fileCheckTest(String name, Closure<FileCheckTest> configureClosure) {
                 }
                 UtilsKt.dependsOnKonanBuildingTask(task, name, target)
             }
+            task.dependsOn(nativeDependencies.llvmDependency)
         }
     }
 }
 
-fileCheckTest("filecheck_smoke0") {
-    annotatedSource = project.file('filecheck/smoke0.kt')
-}
-
-fileCheckTest("filecheck_when") {
-    annotatedSource = project.file('filecheck/when.kt')
-}
-
 if (HostManager.@Companion.hostIsMac) {
-    fileCheckTest("filecheck_force_arm_instruction_set") {
-        enabled = enabled && cacheTesting == null
-        annotatedSource = project.file('filecheck/force_arm_instruction_set.kt')
-        targetName = "watchos_arm32"
-        // Perform check after optimization pipeline because
-        // LLVM might infer attributes.
-        phaseToCheck = "LTOBitcodeOptimization"
-    }
-
     fileCheckTest("filecheck_redundant_safepoints_removal_smallbinary") {
         enabled = project.globalTestArgs.contains("-opt")
         annotatedSource = project.file('filecheck/redundant_safepoints.kt')
@@ -6002,242 +5400,6 @@ fileCheckTest("filecheck_redundant_safepoints_removal") {
             !needSmallBinary(project)
     annotatedSource = project.file('filecheck/redundant_safepoints.kt')
     phaseToCheck = "RemoveRedundantSafepoints"
-}
-
-fileCheckTest("filecheck_replace_invoke_with_call") {
-    annotatedSource = project.file('filecheck/replace_invoke_with_call.kt')
-}
-
-fileCheckTest("filecheck_no_frame_on_constant_object_access") {
-    annotatedSource = project.file('filecheck/no_frame_on_constant_object_access.kt')
-    enabled = project.globalTestArgs.contains('-opt')
-}
-
-fileCheckTest("filecheck_kt49847_simple_function_reference") {
-    annotatedSource = project.file('filecheck/kt49847_simple_function_reference.kt')
-    enabled = project.globalTestArgs.contains('-opt')
-}
-
-fileCheckTest("filecheck_kt49847_sam_Any") {
-    annotatedSource = project.file('filecheck/kt49847_sam_Any.kt')
-    enabled = project.globalTestArgs.contains('-opt')
-}
-
-fileCheckTest("filecheck_kt49847_sam_Int") {
-    annotatedSource = project.file('filecheck/kt49847_sam_Int.kt')
-    enabled = project.globalTestArgs.contains('-opt')
-}
-
-fileCheckTest("filecheck_kt49847_sam_Any_generic") {
-    annotatedSource = project.file('filecheck/kt49847_sam_Any_generic.kt')
-    enabled = project.globalTestArgs.contains('-opt')
-}
-
-fileCheckTest("filecheck_kt49847_sam_Int_generic") {
-    annotatedSource = project.file('filecheck/kt49847_sam_Int_generic.kt')
-    enabled = project.globalTestArgs.contains('-opt')
-}
-
-fileCheckTest("filecheck_kt49847_class") {
-    annotatedSource = project.file('filecheck/kt49847_class.kt')
-    enabled = project.globalTestArgs.contains('-opt')
-}
-
-fileCheckTest("filecheck_kt49847_generic") {
-    annotatedSource = project.file('filecheck/kt49847_generic.kt')
-    enabled = project.globalTestArgs.contains('-opt')
-}
-
-fileCheckTest("filecheck_kt49847_generic_receiver") {
-    annotatedSource = project.file('filecheck/kt49847_generic_receiver.kt')
-    enabled = project.globalTestArgs.contains('-opt')
-}
-
-fileCheckTest("filecheck_kt58654") {
-    annotatedSource = project.file('filecheck/kt58654.kt')
-    enabled = project.globalTestArgs.contains('-opt')
-}
-
-fileCheckTest("filecheck_kt53261_inline_unbox") {
-    annotatedSource = project.file('filecheck/kt53261/kt53261_inline_unbox.kt')
-    enabled = project.globalTestArgs.contains('-opt')
-    if (isAppleTarget(project)) {
-        checkPrefix = "CHECK-APPLE"
-    }
-}
-
-fileCheckTest("filecheck_kt53261_noinline_value_unbox") {
-    annotatedSource = project.file('filecheck/kt53261/kt53261_noinline_value_unbox.kt')
-    enabled = project.globalTestArgs.contains('-opt')
-}
-
-fileCheckTest("filecheck_kt53261_noinline_CPointer.kt") {
-    annotatedSource = project.file('filecheck/kt53261/kt53261_noinline_CPointer.kt')
-    enabled = project.globalTestArgs.contains('-opt')
-}
-
-fileCheckTest("filecheck_kt53261_noinline_NativePointed.kt") {
-    annotatedSource = project.file('filecheck/kt53261/kt53261_noinline_NativePointed.kt')
-    enabled = project.globalTestArgs.contains('-opt')
-}
-
-fileCheckTest("filecheck_kt53261_noinline_NonNullNativePtr.kt") {
-    annotatedSource = project.file('filecheck/kt53261/kt53261_noinline_NonNullNativePtr.kt')
-    enabled = project.globalTestArgs.contains('-opt')
-}
-
-fileCheckTest("filecheck_kt53261_noinline_StableRef") {
-    annotatedSource = project.file('filecheck/kt53261/kt53261_noinline_StableRef.kt')
-    enabled = project.globalTestArgs.contains('-opt')
-}
-
-fileCheckTest("filecheck_kt53261_noinline_UByteArray.kt") {
-    annotatedSource = project.file('filecheck/kt53261/kt53261_noinline_UByteArray.kt')
-    enabled = project.globalTestArgs.contains('-opt')
-}
-
-fileCheckTest("filecheck_kt53261_noinline_UIntArray.kt") {
-    annotatedSource = project.file('filecheck/kt53261/kt53261_noinline_UIntArray.kt')
-    enabled = project.globalTestArgs.contains('-opt')
-}
-
-fileCheckTest("filecheck_kt53261_noinline_ULongArray.kt") {
-    annotatedSource = project.file('filecheck/kt53261/kt53261_noinline_ULongArray.kt')
-    enabled = project.globalTestArgs.contains('-opt')
-}
-
-fileCheckTest("filecheck_kt53261_noinline_UShortArray.kt") {
-    annotatedSource = project.file('filecheck/kt53261/kt53261_noinline_UShortArray.kt')
-    enabled = project.globalTestArgs.contains('-opt')
-}
-
-fileCheckTest("filecheck_intrinsics") {
-    annotatedSource = project.file('filecheck/intrinsics.kt')
-}
-
-fileCheckTest("filecheck_default_parameters_dont_box") {
-    annotatedSource = project.file('filecheck/default_parameters_dont_box.kt')
-}
-
-tasks.register("kt53119_side_effect", KonanLocalTest) {
-    useGoldenData = true
-    source = "codegen/stringConcatenationTypeNarrowing/kt53119_side_effect.kt"
-}
-
-fileCheckTest("filecheck_kt53119_plus_generated_noescape") {
-    annotatedSource = project.file('codegen/stringConcatenationTypeNarrowing/kt53119_plus_generated_noescape.kt')
-    enabled = project.globalTestArgs.contains('-opt')
-    extraOpts = ["-tr"]
-}
-
-tasks.register("kt53119_plus_generated_noescape", KonanLocalTest) {
-    useGoldenData = true
-    source = "codegen/stringConcatenationTypeNarrowing/kt53119_plus_generated_noescape.kt"
-}
-
-fileCheckTest("filecheck_kt53119_plus_member") {
-    annotatedSource = project.file('codegen/stringConcatenationTypeNarrowing/kt53119_plus_member.kt')
-    enabled = project.globalTestArgs.contains('-opt')
-    extraOpts = ["-tr"]
-}
-
-tasks.register("kt53119_plus_member", KonanLocalTest) {
-    useGoldenData = true
-    source = "codegen/stringConcatenationTypeNarrowing/kt53119_plus_member.kt"
-}
-
-fileCheckTest("filecheck_kt53119_plus_extension") {
-    annotatedSource = project.file('codegen/stringConcatenationTypeNarrowing/kt53119_plus_extension.kt')
-    enabled = project.globalTestArgs.contains('-opt')
-    extraOpts = ["-tr"]
-}
-
-tasks.register("kt53119_plus_extension", KonanLocalTest) {
-    useGoldenData = true
-    source = "codegen/stringConcatenationTypeNarrowing/kt53119_plus_extension.kt"
-}
-
-fileCheckTest("filecheck_kt53119_append_generated") {
-    annotatedSource = project.file('codegen/stringConcatenationTypeNarrowing/kt53119_append_generated.kt')
-    enabled = project.globalTestArgs.contains('-opt')
-    extraOpts = ["-tr"]
-}
-
-tasks.register("kt53119_append_generated", KonanLocalTest) {
-    useGoldenData = true
-    source = "codegen/stringConcatenationTypeNarrowing/kt53119_append_generated.kt"
-}
-
-fileCheckTest("filecheck_kt53119_append_manual") {
-    annotatedSource = project.file('codegen/stringConcatenationTypeNarrowing/kt53119_append_manual.kt')
-    enabled = project.globalTestArgs.contains('-opt')
-    extraOpts = ["-tr"]
-}
-
-tasks.register("kt53119_append_manual", KonanLocalTest) {
-    useGoldenData = true
-    source = "codegen/stringConcatenationTypeNarrowing/kt53119_append_manual.kt"
-}
-
-fileCheckTest("filecheck_escape_analysis_enabled") {
-    annotatedSource = project.file('filecheck/escape_analysis.kt')
-    enabled = project.globalTestArgs.contains('-opt')
-    checkPrefix = "CHECK-OPT"
-}
-
-fileCheckTest("filecheck_enum_when") {
-    // In case of `-opt` we inline Enum.ordinal due to property inlining.
-    if (project.globalTestArgs.contains('-opt')) {
-        checkPrefix = "CHECK-OPT"
-    }
-    annotatedSource = project.file('filecheck/enum_when.kt')
-}
-
-fileCheckTest("filecheck_escape_analysis_disabled") {
-    annotatedSource = project.file('filecheck/escape_analysis.kt')
-    enabled = project.globalTestArgs.contains('-g')
-    checkPrefix = "CHECK-DEBUG"
-}
-
-fileCheckTest("filecheck_suspend_returnNothing") {
-    annotatedSource = project.file('filecheck/suspend_returnNothing.kt')
-}
-
-fileCheckTest("filecheck_suspend_tailcalls_functions") {
-    annotatedSource = project.file('filecheck/suspend_tailcalls_functions.kt')
-}
-
-fileCheckTest("filecheck_suspend_tailcalls_lambdas") {
-    annotatedSource = project.file('filecheck/suspend_tailcalls_lambdas.kt')
-}
-
-fileCheckTest("filecheck_bce") {
-    enabled = enabled && cacheTesting == null
-    annotatedSource = project.file('filecheck/bce.kt')
-}
-
-fileCheckTest("filecheck_generic_function_references") {
-    enabled = project.globalTestArgs.contains('-opt')
-    annotatedSource = project.file('filecheck/generic_function_references.kt')
-}
-
-fileCheckTest("filecheck_adopted_function_reference") {
-    annotatedSource = project.file('filecheck/adopted_function_reference.kt')
-}
-
-fileCheckTest("filecheck_single_tls_load") {
-    enabled = project.globalTestArgs.contains("-opt")
-    annotatedSource = project.file('filecheck/single_tls_load.kt')
-    phaseToCheck = "OptimizeTLSDataLoads"
-}
-
-fileCheckTest("filecheck_signext_zeroext0") {
-    annotatedSource = project.file('filecheck/signext_zeroext0.kt')
-    if (project.testTarget == 'mingw_x64') {
-        checkPrefix = "CHECK-WINDOWSX64"
-    } else if (!target.family.appleFamily && target.architecture == Architecture.ARM64) {
-        checkPrefix = "CHECK-AAPCS"
-    }
 }
 
 createInterop("filecheck_signext_zeroext_interop_input") {
@@ -6258,20 +5420,8 @@ fileCheckTest("filecheck_signext_zeroext_interop") {
 fileCheckTest("filecheck_signext_zeroext_objc_export") {
     annotatedSource = project.file('filecheck/signext_zeroext_objc_export.kt')
     generateFramework = true
-//    enabled = target.family.appleFamily
-    enabled = false // KT-58863
+    enabled = target.family.appleFamily
 }
-
-fileCheckTest("filecheck_function_attributes_at_callsite") {
-    // attributes for caller and callee might be the same so we allow overlapping.
-    additionalFileCheckFlags = ["--allow-deprecated-dag-overlap"]
-    annotatedSource = project.file('filecheck/function_attributes_at_callsite.kt')
-}
-
-fileCheckTest("filecheck_constants_merge") {
-    annotatedSource = project.file('filecheck/constants_merge.kt')
-}
-
 
 fileCheckTest("filecheck_objc_direct") {
     enabled = enabled && cacheTesting == null
@@ -6298,26 +5448,7 @@ dependencies {
 
     implementation kotlinCompilerModule
     api project(path: ':kotlin-native:backend.native', configuration: 'cli_bcApiElements')
-    api RepoDependencies.commonDependency(project, "junit")
-}
-
-// Configure build for iOS device targets.
-if (UtilsKt.supportsRunningTestsOnDevice(target) && !UtilsKt.getCompileOnlyTests(project)) {
-    project.tasks
-            .withType(KonanTestExecutable.class)
-            .configureEach {
-                ExecutorServiceKt.configureXcodeBuild((KonanTestExecutable) it)
-            }
-    // Exclude tasks that cannot be run on device
-    project.tasks
-            .withType(KonanTest.class)
-            .matching { (it instanceof KonanLocalTest && ((KonanLocalTest) it).useTestData) ||
-                    // Filter out tests that depend on libs. TODO: copy them too
-                    it instanceof KonanInteropTest ||
-                    it instanceof KonanDynamicTest ||
-                    it instanceof KonanLinkTest
-            }
-            .configureEach { it.enabled = false }
+    api libs.junit4
 }
 
 project.afterEvaluate {

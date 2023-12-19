@@ -14,6 +14,7 @@ import org.jetbrains.kotlin.ir.declarations.IrFunction
 import org.jetbrains.kotlin.ir.expressions.*
 import org.jetbrains.kotlin.ir.interpreter.hasAnnotation
 import org.jetbrains.kotlin.ir.interpreter.intrinsicConstEvaluationAnnotation
+import org.jetbrains.kotlin.ir.interpreter.isConst
 import org.jetbrains.kotlin.ir.interpreter.property
 import org.jetbrains.kotlin.ir.types.isPrimitiveType
 import org.jetbrains.kotlin.ir.types.isString
@@ -58,8 +59,10 @@ enum class EvaluationMode {
             BuiltInOperatorNames.ANDAND, BuiltInOperatorNames.OROR
         ).map { IrBuiltIns.KOTLIN_INTERNAL_IR_FQN.child(Name.identifier(it)).asString() }.toSet()
 
+        private val allowedOriginsForWhen = setOf(IrStatementOrigin.ANDAND, IrStatementOrigin.OROR)
+
         override fun canEvaluateFunction(function: IrFunction): Boolean {
-            if (function.property?.isConst == true) return true
+            if (function.property.isConst) return true
 
             val returnType = function.returnType
             if (!returnType.isPrimitiveType() && !returnType.isString() && !returnType.isUnsignedType()) return false
@@ -79,13 +82,19 @@ enum class EvaluationMode {
 
         override fun canEvaluateBlock(block: IrBlock): Boolean = block.statements.size == 1
         override fun canEvaluateExpression(expression: IrExpression): Boolean {
-            if (expression !is IrCall) return false
-
-            if (expression.getAllArgumentsWithIr().any { it.second?.type?.isUnsigned() == true }) {
-                return expression.symbol.owner.fqNameWhenAvailable?.asString() == "kotlin.String.plus"
+            return when {
+                expression is IrWhen -> expression.origin in allowedOriginsForWhen
+                expression !is IrCall -> false
+                expression.hasUnsignedArgs() -> expression.symbol.owner.fqNameWhenAvailable?.asString() == "kotlin.String.plus"
+                else -> true
             }
+        }
 
-            return true
+        private fun IrCall.hasUnsignedArgs(): Boolean {
+            fun IrExpression?.hasUnsignedType() = this != null && type.isUnsigned()
+            if (dispatchReceiver.hasUnsignedType() || extensionReceiver.hasUnsignedType()) return true
+            if ((0 until this.valueArgumentsCount).any { getValueArgument(it)?.type?.isUnsigned() == true }) return true
+            return false
         }
     },
 
@@ -96,7 +105,7 @@ enum class EvaluationMode {
 
         private fun IrFunction?.isCompileTimePropertyAccessor(): Boolean {
             val property = this?.property ?: return false
-            return property.isConst || (property.resolveFakeOverride() ?: property).isMarkedAsIntrinsicConstEvaluation()
+            return property.isConst || property.isMarkedAsIntrinsicConstEvaluation()
         }
 
         override fun canEvaluateBlock(block: IrBlock): Boolean = block.origin == IrStatementOrigin.WHEN || block.statements.size == 1

@@ -46,10 +46,11 @@ import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.psi.KtCallElement
 import org.jetbrains.kotlin.psi.KtClassOrObject
-import org.jetbrains.kotlin.psi.KtProperty
+import org.jetbrains.kotlin.psi.KtExpression
 import org.jetbrains.kotlin.renderer.DescriptorRenderer
 import org.jetbrains.kotlin.resolve.DescriptorUtils
 import org.jetbrains.kotlin.resolve.calls.inference.CapturedType
+import org.jetbrains.kotlin.resolve.calls.tasks.isDynamic
 import org.jetbrains.kotlin.resolve.constants.*
 import org.jetbrains.kotlin.resolve.constants.evaluate.ConstantExpressionEvaluator
 import org.jetbrains.kotlin.resolve.descriptorUtil.annotationClass
@@ -141,6 +142,7 @@ internal fun KtSymbol.getDescriptor(): DeclarationDescriptor? {
         is KtFe10PsiDefaultSetterParameterSymbol -> descriptor
         is KtFe10PsiDefaultPropertySetterSymbol -> null
         is KtFe10DescDefaultPropertySetterSymbol -> null
+        is KtFe10DynamicFunctionDescValueParameterSymbol -> null
         is KtFe10FileSymbol -> null
         is KtFe10DescDefaultPropertySetterSymbol.DefaultKtValueParameterSymbol -> descriptor
         is KtFe10PsiDefaultPropertySetterSymbol.DefaultKtValueParameterSymbol -> descriptor
@@ -331,7 +333,11 @@ internal fun DeclarationDescriptor.getSymbolOrigin(analysisContext: Fe10Analysis
         is CallableMemberDescriptor -> when (kind) {
             CallableMemberDescriptor.Kind.DELEGATION -> return KtSymbolOrigin.DELEGATED
             CallableMemberDescriptor.Kind.SYNTHESIZED -> return KtSymbolOrigin.SOURCE_MEMBER_GENERATED
-            else -> {}
+            else -> {
+                if (isDynamic()) {
+                    return KtSymbolOrigin.JS_DYNAMIC
+                }
+            }
         }
     }
 
@@ -465,6 +471,7 @@ internal fun ConstantValue<*>.toKtAnnotationValue(analysisContext: Fe10AnalysisC
                     useSiteTarget = null,
                     arguments = value.getKtNamedAnnotationArguments(analysisContext),
                     index = null,
+                    constructorSymbolPointer = null,
                 )
             )
         }
@@ -567,7 +574,7 @@ internal val ClassifierDescriptor.classId: ClassId?
     }
 
 internal val ClassifierDescriptor.maybeLocalClassId: ClassId
-    get() = classId ?: ClassId(containingPackage() ?: FqName.ROOT, FqName.topLevel(this.name), true)
+    get() = classId ?: ClassId(containingPackage() ?: FqName.ROOT, FqName.topLevel(this.name), isLocal = true)
 
 internal fun ClassDescriptor.getSupertypesWithAny(): Collection<KotlinType> {
     val supertypes = typeConstructor.supertypes
@@ -585,15 +592,13 @@ internal fun CallableMemberDescriptor.getSymbolPointerSignature(): String {
 }
 
 internal fun createKtInitializerValue(
-    ktProperty: KtProperty?,
+    initializer: KtExpression?,
     propertyDescriptor: PropertyDescriptor?,
     analysisContext: Fe10AnalysisContext,
 ): KtInitializerValue? {
-    require(ktProperty != null || propertyDescriptor != null)
-    if (ktProperty?.initializer == null && propertyDescriptor?.compileTimeInitializer == null) {
+    if (initializer == null && propertyDescriptor?.compileTimeInitializer == null) {
         return null
     }
-    val initializer = ktProperty?.initializer
 
     val compileTimeInitializer = propertyDescriptor?.compileTimeInitializer
     if (compileTimeInitializer != null) {
@@ -614,13 +619,16 @@ internal fun createKtInitializerValue(
 internal fun AnnotationDescriptor.toKtAnnotationApplication(
     analysisContext: Fe10AnalysisContext,
     index: Int,
-): KtAnnotationApplicationWithArgumentsInfo = KtAnnotationApplicationWithArgumentsInfo(
-    classId = classIdForAnnotation,
-    psi = psi,
-    useSiteTarget = useSiteTarget,
-    arguments = getKtNamedAnnotationArguments(analysisContext),
-    index = index,
-)
+): KtAnnotationApplicationWithArgumentsInfo {
+    return KtAnnotationApplicationWithArgumentsInfo(
+        classId = classIdForAnnotation,
+        psi = psi,
+        useSiteTarget = useSiteTarget,
+        arguments = getKtNamedAnnotationArguments(analysisContext),
+        index = index,
+        constructorSymbolPointer = null,
+    )
+}
 
 internal fun AnnotationDescriptor.toKtAnnotationInfo(index: Int): KtAnnotationApplicationInfo = KtAnnotationApplicationInfo(
     classId = classIdForAnnotation,

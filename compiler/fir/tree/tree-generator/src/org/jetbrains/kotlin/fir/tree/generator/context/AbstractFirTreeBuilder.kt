@@ -6,28 +6,25 @@
 package org.jetbrains.kotlin.fir.tree.generator.context
 
 import org.jetbrains.kotlin.fir.tree.generator.model.Element
-import org.jetbrains.kotlin.fir.tree.generator.model.IntermediateBuilder
-import org.jetbrains.kotlin.fir.tree.generator.model.Type
+import org.jetbrains.kotlin.fir.tree.generator.model.ElementRef
 import org.jetbrains.kotlin.fir.tree.generator.printer.BASE_PACKAGE
-import org.jetbrains.kotlin.fir.tree.generator.util.DummyDelegate
+import org.jetbrains.kotlin.generators.tree.ClassRef
+import org.jetbrains.kotlin.generators.tree.PositionTypeParameterRef
+import org.jetbrains.kotlin.generators.tree.TypeKind
+import org.jetbrains.kotlin.utils.DummyDelegate
 import kotlin.properties.ReadOnlyProperty
-import kotlin.reflect.KClass
 import kotlin.reflect.KProperty
 
 abstract class AbstractFirTreeBuilder {
     companion object {
-        val baseFirElement = Element(
-            "Element",
-            Element.Kind.Other
+        val baseFirElement: Element = Element(
+            name = "Element",
+            propertyName = this::class.qualifiedName + "." + Companion::baseFirElement.name,
+            kind = Element.Kind.Other
         )
-
-        const val string = "String"
-        const val boolean = "Boolean"
-        const val int = "Int"
     }
 
     val elements = mutableListOf(baseFirElement)
-    val intermediateBuilders = mutableListOf<IntermediateBuilder>()
 
     protected fun element(kind: Element.Kind, vararg dependencies: Element): ElementDelegateProvider {
         return ElementDelegateProvider(kind, dependencies, isSealed = false, predefinedName = null)
@@ -45,21 +42,24 @@ abstract class AbstractFirTreeBuilder {
         return ElementDelegateProvider(kind, dependencies, isSealed = true, predefinedName = name)
     }
 
-    private fun createElement(name: String, kind: Element.Kind, vararg dependencies: Element): Element =
-        Element(name, kind).also {
+    private fun createElement(name: String, propertyName: String, kind: Element.Kind, vararg dependencies: Element): Element =
+        Element(name, propertyName, kind).also {
             if (dependencies.isEmpty()) {
-                it.parents.add(baseFirElement)
+                it.elementParents.add(ElementRef(baseFirElement))
             }
-            it.parents.addAll(dependencies)
+            for (dependency in dependencies) {
+                it.elementParents.add(ElementRef(dependency))
+            }
             elements += it
         }
 
     private fun createSealedElement(
         name: String,
+        propertyName: String,
         kind: Element.Kind,
         vararg dependencies: Element,
     ): Element {
-        return createElement(name, kind, *dependencies).apply {
+        return createElement(name, propertyName, kind, *dependencies).apply {
             isSealed = true
         }
     }
@@ -82,33 +82,33 @@ abstract class AbstractFirTreeBuilder {
             thisRef: AbstractFirTreeBuilder,
             prop: KProperty<*>
         ): ReadOnlyProperty<Any?, Element> {
+            val path = thisRef::class.qualifiedName + "." + prop.name
             val name = predefinedName ?: prop.name.replaceFirstChar { it.uppercaseChar() }
             val element = if (isSealed) {
-                createSealedElement(name, kind, *dependencies)
+                createSealedElement(name, path, kind, *dependencies)
             } else {
-                createElement(name, kind, *dependencies)
+                createElement(name, path, kind, *dependencies)
             }
             return DummyDelegate(element)
         }
     }
 }
 
-fun generatedType(type: String, firType: Boolean = false): Type = generatedType("", type, firType)
+fun generatedType(type: String, kind: TypeKind = TypeKind.Class): ClassRef<PositionTypeParameterRef> = generatedType("", type, kind)
 
-fun generatedType(packageName: String, type: String, firType: Boolean = false): Type {
+fun generatedType(packageName: String, type: String, kind: TypeKind = TypeKind.Class): ClassRef<PositionTypeParameterRef> {
     val realPackage = BASE_PACKAGE + if (packageName.isNotBlank()) ".$packageName" else ""
-    return type(realPackage, type, exactPackage = true, firType)
+    return type(realPackage, type, exactPackage = true, kind = kind)
 }
 
-fun type(packageName: String?, type: String, exactPackage: Boolean = false, firType: Boolean = false): Type {
-    val realPackage = if (exactPackage) packageName else packageName?.let { "org.jetbrains.kotlin.$it" }
-    return Type(realPackage, type, firType)
+fun type(
+    packageName: String,
+    type: String,
+    exactPackage: Boolean = false,
+    kind: TypeKind = TypeKind.Interface,
+): ClassRef<PositionTypeParameterRef> {
+    val realPackage = if (exactPackage) packageName else packageName.let { "org.jetbrains.kotlin.$it" }
+    return org.jetbrains.kotlin.generators.tree.type(realPackage, type, kind)
 }
 
-fun type(type: String): Type = type(null, type)
-
-fun type(klass: KClass<*>): Type {
-    val fqn = klass.qualifiedName!!
-    val name = klass.simpleName!!
-    return type(fqn.dropLast(name.length + 1), name, exactPackage = true)
-}
+inline fun <reified T : Any> type() = org.jetbrains.kotlin.generators.tree.type<T>()

@@ -65,6 +65,23 @@ class CocoaPodsIT : KGPBaseTest() {
         }
     }
 
+    @DisplayName("Pod import single noPodspec")
+    @GradleTest
+    fun testPodImportSingleNoPodspec(gradleVersion: GradleVersion) {
+        nativeProjectWithCocoapodsAndIosAppPodFile(cocoapodsSingleKtPod, gradleVersion) {
+
+            buildGradleKts.addCocoapodsBlock("noPodspec()")
+
+            buildWithCocoapodsWrapper(podImportTaskName) {
+                podImportAsserts(buildGradleKts)
+            }
+
+            buildWithCocoapodsWrapper(":kotlin-library:podImport") {
+                podImportAsserts(subProject("kotlin-library").buildGradleKts, "kotlin-library")
+            }
+        }
+    }
+
     @DisplayName("Pod import multiple")
     @GradleTest
     fun testPodImportMultiple(gradleVersion: GradleVersion) {
@@ -484,7 +501,7 @@ class CocoaPodsIT : KGPBaseTest() {
                 )
             )
             buildAndFail("syncFramework", buildOptions = buildOptions) {
-                assertOutputContains("/native-cocoapods-template/src/commonMain/kotlin/A.kt:5:2: error: Expecting a top level declaration")
+                assertOutputContains("/native-cocoapods-template/src/commonMain/kotlin/A.kt:5:2: error: Syntax error: Expecting a top level declaration")
                 assertOutputContains("error: Compilation finished with errors")
             }
         }
@@ -504,7 +521,7 @@ class CocoaPodsIT : KGPBaseTest() {
             )
             buildAndFail("linkPodDebugFrameworkIOS", buildOptions = buildOptions) {
                 assertOutputContains("e: file:///")
-                assertOutputContains("/native-cocoapods-template/src/commonMain/kotlin/A.kt:5:2 Expecting a top level declaration")
+                assertOutputContains("/native-cocoapods-template/src/commonMain/kotlin/A.kt:5:2 Syntax error: Expecting a top level declaration")
                 assertOutputDoesNotContain("error: Compilation finished with errors")
             }
         }
@@ -524,7 +541,7 @@ class CocoaPodsIT : KGPBaseTest() {
                 )
             )
             buildAndFail("linkPodDebugFrameworkIOS", buildOptions = buildOptions) {
-                assertOutputContains("/native-cocoapods-template/src/commonMain/kotlin/A.kt:5:2: error: Expecting a top level declaration")
+                assertOutputContains("/native-cocoapods-template/src/commonMain/kotlin/A.kt:5:2: error: Syntax error: Expecting a top level declaration")
                 assertOutputContains("error: Compilation finished with errors")
             }
         }
@@ -705,24 +722,10 @@ class CocoaPodsIT : KGPBaseTest() {
 
                 assertTasksExecuted(":cinteropSDWebImageIOS")
 
-                // TODO(Dmitrii Krasnov): rewrite it, when GeneralNativeIT will be migrated to new test dsl
-                assertOutputContains(
-                    """
-                    |	-linker-option
-                    |	-framework
-                    |	-linker-option
-                    |	AFNetworking
-                    """.trimMargin()
-                )
-
-                assertOutputContains(
-                    """
-                    |	-linker-option
-                    |	-framework
-                    |	-linker-option
-                    |	SSZipArchive
-                    """.trimMargin()
-                )
+                extractNativeTasksCommandLineArgumentsFromOutput(":linkPodDebugFrameworkIOS") {
+                    assertCommandLineArgumentsContainSequentially("-linker-option", "-framework", "-linker-option", "AFNetworking")
+                    assertCommandLineArgumentsContainSequentially("-linker-option", "-framework", "-linker-option", "SSZipArchive")
+                }
             }
         }
     }
@@ -742,6 +745,23 @@ class CocoaPodsIT : KGPBaseTest() {
             )
             buildWithCocoapodsWrapper(":linkPodDebugFrameworkIOS") {
                 assertHasDiagnostic(CocoapodsPluginDiagnostics.LinkOnlyUsedWithStaticFramework)
+            }
+        }
+    }
+
+    @DisplayName("Add pod-dependencies together with noPodspec")
+    @GradleTest
+    fun testPodDependenciesWithNoPodspec(gradleVersion: GradleVersion) {
+        nativeProjectWithCocoapodsAndIosAppPodFile(gradleVersion = gradleVersion) {
+            buildGradleKts.addCocoapodsBlock(
+                """
+                    noPodspec()
+        
+                    pod("Base64", version = "1.1.2")
+                """.trimIndent()
+            )
+            buildWithCocoapodsWrapper(":linkPodDebugFrameworkIOS") {
+                assertFileInProjectNotExists("cocoapods.podspec")
             }
         }
     }

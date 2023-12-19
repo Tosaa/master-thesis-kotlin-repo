@@ -5,6 +5,7 @@
 
 package org.jetbrains.kotlin.fir.analysis.checkers.declaration
 
+import org.jetbrains.kotlin.KtFakeSourceElementKind
 import org.jetbrains.kotlin.KtSourceElement
 import org.jetbrains.kotlin.builtins.StandardNames.BACKING_FIELD
 import org.jetbrains.kotlin.builtins.functions.isSuspendOrKSuspendFunction
@@ -20,13 +21,10 @@ import org.jetbrains.kotlin.fir.analysis.checkers.inlineCheckerExtension
 import org.jetbrains.kotlin.fir.analysis.checkers.isInlineOnly
 import org.jetbrains.kotlin.fir.analysis.checkers.unsubstitutedScope
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors
-import org.jetbrains.kotlin.fir.declarations.FirCallableDeclaration
-import org.jetbrains.kotlin.fir.declarations.FirFunction
-import org.jetbrains.kotlin.fir.declarations.FirPropertyAccessor
-import org.jetbrains.kotlin.fir.declarations.FirSimpleFunction
+import org.jetbrains.kotlin.fir.declarations.*
 import org.jetbrains.kotlin.fir.declarations.utils.*
 import org.jetbrains.kotlin.fir.expressions.*
-import org.jetbrains.kotlin.fir.references.FirSuperReference
+import org.jetbrains.kotlin.fir.references.*
 import org.jetbrains.kotlin.fir.resolve.toSymbol
 import org.jetbrains.kotlin.fir.resolve.transformers.publishedApiEffectiveVisibility
 import org.jetbrains.kotlin.fir.scopes.getDirectOverriddenMembers
@@ -131,7 +129,7 @@ object FirInlineDeclarationChecker : FirFunctionChecker() {
             reporter: DiagnosticReporter,
         ) {
             if (context.isContractBody) return
-            val calledFunctionSymbol = targetSymbol as? FirNamedFunctionSymbol ?: return
+            val calledFunctionSymbol = targetSymbol as? FirFunctionSymbol ?: return
             val argumentMapping = functionCall.resolvedArgumentMapping ?: return
             for ((wrappedArgument, valueParameter) in argumentMapping) {
                 val argument = wrappedArgument.unwrapArgument()
@@ -144,8 +142,10 @@ object FirInlineDeclarationChecker : FirFunctionChecker() {
                             valueParameter.isNoinline -> {
                                 FirErrors.USAGE_IS_NOT_INLINABLE
                             }
-                            valueParameter.isCrossinline && !valueParameterOfOriginalInlineFunction.isCrossinline
-                            -> FirErrors.NON_LOCAL_RETURN_NOT_ALLOWED
+                            !valueParameterOfOriginalInlineFunction.isCrossinline &&
+                                    (valueParameter.isCrossinline || !isNonLocalReturnAllowed(context, inlineFunction)) -> {
+                                FirErrors.NON_LOCAL_RETURN_NOT_ALLOWED
+                            }
                             else -> continue
                         }
                         else -> FirErrors.USAGE_IS_NOT_INLINABLE
@@ -157,12 +157,13 @@ object FirInlineDeclarationChecker : FirFunctionChecker() {
 
         private fun checkReceiver(
             qualifiedAccessExpression: FirQualifiedAccessExpression,
-            receiverExpression: FirExpression,
+            receiverExpression: FirExpression?,
             targetSymbol: FirBasedSymbol<*>?,
             context: CheckerContext,
             reporter: DiagnosticReporter,
         ) {
-            val receiverSymbol = receiverExpression.toResolvedCallableSymbol() ?: return
+            if (receiverExpression == null) return
+            val receiverSymbol = receiverExpression.toResolvedCallableSymbol() as? FirValueParameterSymbol ?: return
             if (receiverSymbol in inlinableParameters) {
                 if (!isInvokeOrInlineExtension(targetSymbol)) {
                     reporter.reportOn(
@@ -170,6 +171,13 @@ object FirInlineDeclarationChecker : FirFunctionChecker() {
                         FirErrors.USAGE_IS_NOT_INLINABLE,
                         receiverSymbol,
                         context
+                    )
+                } else if (!receiverSymbol.isCrossinline && !isNonLocalReturnAllowed(context, inlineFunction)) {
+                    reporter.reportOn(
+                        receiverExpression.source ?: qualifiedAccessExpression.source,
+                        FirErrors.NON_LOCAL_RETURN_NOT_ALLOWED,
+                        receiverSymbol,
+                        context,
                     )
                 }
             }
@@ -221,9 +229,10 @@ object FirInlineDeclarationChecker : FirFunctionChecker() {
             context: CheckerContext,
             reporter: DiagnosticReporter,
         ) {
-            if (
-                calledDeclaration == null ||
-                calledDeclaration.callableId.callableName == BACKING_FIELD
+            if (calledDeclaration == null ||
+                calledDeclaration.callableId.callableName == BACKING_FIELD ||
+                calledDeclaration is FirPropertySymbol && calledDeclaration.isConst &&
+                context.callsOrAssignments.any { it is FirAnnotationCall }
             ) {
                 return
             }
@@ -286,8 +295,8 @@ object FirInlineDeclarationChecker : FirFunctionChecker() {
             } as? FirQualifiedAccessExpression ?: return
 
             if (receiver.calleeReference is FirSuperReference) {
-                val dispatchReceiverType = receiver.dispatchReceiver.typeRef.coneType
-                val classSymbol = dispatchReceiverType.toSymbol(session) ?: return
+                val dispatchReceiverType = receiver.dispatchReceiver?.resolvedType
+                val classSymbol = dispatchReceiverType?.toSymbol(session) ?: return
                 if (!classSymbol.isDefinedInInlineFunction()) {
                     reporter.reportOn(
                         receiver.source,
@@ -443,7 +452,10 @@ object FirInlineDeclarationChecker : FirFunctionChecker() {
         if (effectiveVisibility == EffectiveVisibility.PrivateInClass) return true
 
         if (!declaration.isEffectivelyFinal(context)) {
-            reporter.reportOn(declaration.source, FirErrors.DECLARATION_CANT_BE_INLINED, context)
+            // For primary constructor parameters there's INLINE_PROPERTY_WITH_BACKING_FIELD already
+            if (declaration.source?.kind != KtFakeSourceElementKind.PropertyFromParameter) {
+                reporter.reportOn(declaration.source, FirErrors.DECLARATION_CANT_BE_INLINED, context)
+            }
             return false
         }
         return true
@@ -468,6 +480,60 @@ object FirInlineDeclarationChecker : FirFunctionChecker() {
         if (canBeInlined && overriddenSymbols.isNotEmpty()) {
             reporter.reportOn(declaration.source, FirErrors.OVERRIDE_BY_INLINE, context)
         }
+    }
+
+    private fun isNonLocalReturnAllowed(context: CheckerContext, inlineFunction: FirFunction): Boolean {
+        val declarations = context.containingDeclarations
+        val inlineFunctionIndex = declarations.indexOf(inlineFunction)
+        if (inlineFunctionIndex == -1) return true
+
+        for (i in (inlineFunctionIndex + 1) until declarations.size) {
+            val declaration = declarations[i]
+
+            // Only consider containers which can change locality.
+            if (declaration !is FirFunction && declaration !is FirClass) continue
+
+            // Anonymous functions are allowed if they are an argument to an inline function call,
+            // and the associated anonymous function parameter allows non-local returns. Everything
+            // else changes locality, and must not be allowed.
+            val anonymousFunction = declaration as? FirAnonymousFunction ?: return false
+            val (call, parameter) = extractCallAndParameter(context, anonymousFunction) ?: return false
+            val callable = call.toResolvedCallableSymbol() as? FirFunctionSymbol<*> ?: return false
+            if (!callable.isInline && !callable.isArrayLambdaConstructor()) return false
+            if (parameter.isNoinline || parameter.isCrossinline) return false
+        }
+
+        return true
+    }
+
+    private fun extractCallAndParameter(
+        context: CheckerContext,
+        anonymousFunction: FirAnonymousFunction,
+    ): Pair<FirFunctionCall, FirValueParameter>? {
+        for (call in context.callsOrAssignments) {
+            if (call is FirFunctionCall) {
+                val mapping = call.resolvedArgumentMapping ?: continue
+                for ((argument, parameter) in mapping) {
+                    if ((argument.unwrapArgument() as? FirAnonymousFunctionExpression)?.anonymousFunction === anonymousFunction) {
+                        return call to parameter
+                    }
+                }
+            }
+        }
+        return null
+    }
+
+    /**
+     * @return true if the symbol is the constructor of one of 9 array classes (`Array<T>`,
+     * `IntArray`, `FloatArray`, ...) which takes the size and an initializer lambda as parameters.
+     * Such constructors are marked as `inline` but they are not loaded as such because the `inline`
+     * flag is not stored for constructors in the binary metadata. Therefore, we pretend that they
+     * are inline.
+     */
+    private fun FirFunctionSymbol<*>.isArrayLambdaConstructor(): Boolean {
+        return this is FirConstructorSymbol &&
+                valueParameterSymbols.size == 2 &&
+                resolvedReturnType.isArrayOrPrimitiveArray
     }
 }
 

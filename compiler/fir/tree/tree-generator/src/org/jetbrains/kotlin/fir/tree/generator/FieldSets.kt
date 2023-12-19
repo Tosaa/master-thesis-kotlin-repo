@@ -16,9 +16,12 @@ import org.jetbrains.kotlin.fir.tree.generator.FirTreeBuilder.typeParameter
 import org.jetbrains.kotlin.fir.tree.generator.FirTreeBuilder.typeParameterRef
 import org.jetbrains.kotlin.fir.tree.generator.FirTreeBuilder.typeProjection
 import org.jetbrains.kotlin.fir.tree.generator.FirTreeBuilder.typeRef
-import org.jetbrains.kotlin.fir.tree.generator.FirTreeBuilder.valueParameter
+import org.jetbrains.kotlin.fir.tree.generator.context.AbstractFieldConfigurator
 import org.jetbrains.kotlin.fir.tree.generator.context.type
 import org.jetbrains.kotlin.fir.tree.generator.model.*
+import org.jetbrains.kotlin.generators.tree.TypeRefWithVariance
+import org.jetbrains.kotlin.generators.tree.withArgs
+import org.jetbrains.kotlin.types.Variance
 
 object FieldSets {
     val calleeReference by lazy { field("calleeReference", reference, withReplace = true) }
@@ -26,8 +29,8 @@ object FieldSets {
     val receivers by lazy {
         fieldSet(
             field("explicitReceiver", expression, nullable = true, withReplace = true).withTransform(),
-            field("dispatchReceiver", expression, withReplace = true),
-            field("extensionReceiver", expression, withReplace = true)
+            field("dispatchReceiver", expression, nullable = true, withReplace = true),
+            field("extensionReceiver", expression, nullable = true, withReplace = true)
         )
     }
 
@@ -35,7 +38,7 @@ object FieldSets {
 
     val arguments by lazy { fieldList("arguments", expression) }
 
-    val declarations by lazy { fieldList(declaration.withArgs("E" to "*")) }
+    val declarations by lazy { fieldList(declaration).apply { useInBaseTransformerDetection = false } }
 
     val annotations by lazy {
         fieldList(
@@ -46,12 +49,17 @@ object FieldSets {
         ).withTransform(needTransformInOtherChildren = true)
     }
 
-    fun symbolWithPackage(packageName: String?, symbolClassName: String, argument: String? = null): Field {
-        return field("symbol", type(packageName, symbolClassName), argument)
-    }
+    fun AbstractFieldConfigurator<*>.ConfigureContext.symbolWithPackageWithArgument(packageName: String, symbolClassName: String) =
+        field("symbol", type(packageName, symbolClassName).withArgs(TypeRefWithVariance(Variance.OUT_VARIANCE, element)))
 
-    fun symbol(symbolClassName: String, argument: String? = null): Field =
-        symbolWithPackage("fir.symbols.impl", symbolClassName, argument)
+    fun symbolWithPackage(packageName: String, symbolClassName: String): Field =
+        field("symbol", type(packageName, symbolClassName))
+
+    fun AbstractFieldConfigurator<*>.ConfigureContext.symbolWithArgument(symbolClassName: String): Field =
+        symbolWithPackageWithArgument("fir.symbols.impl", symbolClassName)
+
+    fun symbol(symbolClassName: String): Field =
+        symbolWithPackage("fir.symbols.impl", symbolClassName)
 
     fun body(nullable: Boolean = false, withReplace: Boolean = false) =
         field("body", block, nullable, withReplace = withReplace)
@@ -80,7 +88,9 @@ object FieldSets {
 
     val effectiveVisibility by lazy { field("effectiveVisibility", effectiveVisibilityType) }
 
-    val modality by lazy { field(modalityType, nullable = true) }
+    fun modality(nullable: Boolean): Field {
+        return field(modalityType, nullable = nullable)
+    }
 
     val scopeProvider by lazy { field("scopeProvider", firScopeProviderType) }
 

@@ -36,7 +36,7 @@ abstract class KotlinJsIrLibraryGradlePluginITBase : KGPBaseTest() {
                     .getAsJsonObject("dependencies")
                     ?.entrySet()?.associate { (k, v) -> k to v.asString }
                     .let { dependencies ->
-                        assertNotNull(dependencies?.get("kotlin")) { "Direct npm dependency missing in package.json" }
+                        assertNotNull(dependencies?.get("decamelize")) { "Direct npm dependency missing in package.json" }
                         assertNotNull(dependencies?.get("@js-joda/core")) { "Transitive npm dependency missing in package.json" }
                     }
             }
@@ -74,12 +74,12 @@ abstract class KotlinJsIrLibraryGradlePluginITBase : KGPBaseTest() {
 @DisplayName("Kotlin/JS K1 IR library")
 @JsGradlePluginTests
 class KotlinK1JsIrLibraryGradlePluginIT : KotlinJsIrLibraryGradlePluginITBase() {
-    override val defaultBuildOptions = super.defaultBuildOptions.copy(languageVersion = null)
+    override val defaultBuildOptions = super.defaultBuildOptions.copyEnsuringK1()
 }
 
 @GradleTestVersions(minVersion = TestVersions.Gradle.G_7_0)
 @DisplayName("Kotlin/JS K2 IR library")
 @JsGradlePluginTests
 class KotlinK2JsIrLibraryGradlePluginIT : KotlinJsIrLibraryGradlePluginITBase() {
-    override val defaultBuildOptions = super.defaultBuildOptions.copy(languageVersion = "2.0")
+    override val defaultBuildOptions = super.defaultBuildOptions.copyEnsuringK2()
 }

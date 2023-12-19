@@ -12,10 +12,11 @@ dependencies {
     api(project(":compiler:fir:tree"))
 
     implementation(kotlinxCollectionsImmutable())
+    implementation(project(":compiler:frontend.common-psi"))
     implementation(project(":compiler:psi"))
 
     compileOnly(intellijCore())
-    compileOnly(commonDependency("com.google.guava:guava"))
+    compileOnly(libs.guava)
 
     testCompileOnly(intellijCore())
     testRuntimeOnly(intellijCore())

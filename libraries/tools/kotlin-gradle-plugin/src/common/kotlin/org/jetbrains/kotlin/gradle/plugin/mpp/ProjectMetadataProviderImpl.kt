@@ -8,8 +8,8 @@ package org.jetbrains.kotlin.gradle.plugin.mpp
 import org.gradle.api.Project
 import org.gradle.api.file.FileCollection
 import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
+import org.jetbrains.kotlin.gradle.dsl.metadataTarget
 import org.jetbrains.kotlin.gradle.dsl.multiplatformExtensionOrNull
-import org.jetbrains.kotlin.gradle.plugin.KotlinCompilation
 import org.jetbrains.kotlin.gradle.plugin.KotlinPluginLifecycle.Stage.AfterEvaluateBuildscript
 import org.jetbrains.kotlin.gradle.plugin.KotlinSourceSet
 import org.jetbrains.kotlin.gradle.plugin.await
@@ -63,12 +63,9 @@ internal suspend fun Project.collectSourceSetMetadataOutputs(): Map<SourceSetNam
 }
 
 private suspend fun KotlinMultiplatformExtension.sourceSetsMetadataOutputs(): Map<KotlinSourceSet, FileCollection?> {
-    val metadataTarget = metadata() as KotlinMetadataTarget
     return metadataTarget
         .awaitMetadataCompilationsCreated()
         // TODO: KT-62332/Stop-Creating-legacy-metadata-compilation-with-name-main
-        .filter { it.name != KotlinCompilation.MAIN_COMPILATION_NAME }
+        .filter { if (it is KotlinCommonCompilation) it.isKlibCompilation else true }
         .associate { it.defaultSourceSet to it.output.classesDirs }
 }
-
-

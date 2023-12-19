@@ -6,12 +6,13 @@
 #pragma once
 
 #include <atomic>
+#include <list>
 
 #include "GC.hpp"
 #include "Memory.h"
 #include "RawPtr.hpp"
+#include "ReferenceOps.hpp"
 #include "ThreadRegistry.hpp"
-#include "std_support/List.hpp"
 
 namespace kotlin::mm {
 
@@ -102,7 +103,7 @@ class SpecialRefRegistry : private Pinned {
 
         OBJ_GETTER0(tryRef) noexcept {
             AssertThreadState(ThreadState::kRunnable);
-            RETURN_RESULT_OF(kotlin::gc::tryRef, obj_);
+            RETURN_RESULT_OF(mm::weakRefReadBarrier, obj_);
         }
 
         void retainRef() noexcept {
@@ -110,7 +111,7 @@ class SpecialRefRegistry : private Pinned {
             RuntimeAssert(rc >= 0, "Retaining StableRef@%p with rc %d", this, rc);
             if (rc == 0) {
                 RuntimeAssert(
-                        position_ == std_support::list<Node>::iterator{},
+                        position_ == std::list<Node>::iterator{},
                         "Retaining StableRef@%p with fast deletion optimization is disallowed", this);
 
                 if (!obj_.load(std::memory_order_relaxed)) {
@@ -175,7 +176,7 @@ class SpecialRefRegistry : private Pinned {
         //       be only deleted in the sweep anyway.
         //       Alternative: keep stable refs completely separate.
         void* owner_ = nullptr;
-        std_support::list<Node>::iterator position_{};
+        std::list<Node>::iterator position_{};
     };
 
 public:
@@ -192,7 +193,7 @@ public:
                 //       the whole queue here and just have the nodes inserted into the roots
                 //       when they're created.
                 node.owner_ = nullptr;
-                node.position_ = std_support::list<Node>::iterator();
+                node.position_ = std::list<Node>::iterator();
                 RuntimeAssert(node.obj_ != nullptr, "Publishing Node with null obj_");
                 // If the node was created with a positive refcount, we must ensure its put into
                 // the roots.
@@ -243,7 +244,7 @@ public:
         void deleteNodeIfLocal(Node& node) noexcept;
 
         SpecialRefRegistry& owner_;
-        std_support::list<Node> queue_;
+        std::list<Node> queue_;
     };
 
     class RootsIterator {
@@ -303,10 +304,10 @@ public:
         friend class SpecialRefRegistry;
         friend class SpecialRefRegistryTest;
 
-        Iterator(SpecialRefRegistry& owner, std_support::list<Node>::iterator iterator) noexcept : owner_(&owner), iterator_(iterator) {}
+        Iterator(SpecialRefRegistry& owner, std::list<Node>::iterator iterator) noexcept : owner_(&owner), iterator_(iterator) {}
 
         SpecialRefRegistry* owner_;
-        std_support::list<Node>::iterator iterator_;
+        std::list<Node>::iterator iterator_;
     };
 
     class Iterable : private MoveOnly {
@@ -356,16 +357,16 @@ private:
     // previous to `node`. Returns two nodes between which `node` was deleted.
     std::pair<Node*, Node*> eraseFromRoots(Node* prev, Node* node) noexcept;
     void insertIntoRootsHead(Node& node) noexcept;
-    std_support::list<Node>::iterator findAliveNode(std_support::list<Node>::iterator it) noexcept;
+    std::list<Node>::iterator findAliveNode(std::list<Node>::iterator it) noexcept;
 
     Node* rootsHead() noexcept { return reinterpret_cast<Node*>(rootsHeadStorage_); }
     const Node* rootsHead() const noexcept { return reinterpret_cast<const Node*>(rootsHeadStorage_); }
     static Node* rootsTail() noexcept { return reinterpret_cast<Node*>(rootsTailStorage_); }
 
-    // TODO: Iteration over `all_` will be slow, because it's `std_support::list`
+    // TODO: Iteration over `all_` will be slow, because it's `std::list`
     //       collected at different times from different threads, and so the nodes
     //       are all over the memory. Consider using custom allocator for that.
-    std_support::list<Node> all_;
+    std::list<Node> all_;
     Mutex mutex_;
     alignas(Node) char rootsHeadStorage_[sizeof(Node)] = {0};
     alignas(Node) static inline char rootsTailStorage_[sizeof(Node)] = {0};

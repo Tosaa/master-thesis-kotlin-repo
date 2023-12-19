@@ -11,10 +11,6 @@ import org.jetbrains.kotlin.diagnostics.Errors
 import org.jetbrains.kotlin.incremental.components.NoLookupLocation
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.resolve.BindingTrace
-import org.jetbrains.kotlin.resolve.calls.mpp.AbstractExpectActualCompatibilityChecker
-import org.jetbrains.kotlin.resolve.descriptorUtil.fqNameSafe
-import org.jetbrains.kotlin.resolve.descriptorUtil.getSuperClassNotAny
-import org.jetbrains.kotlin.resolve.descriptorUtil.getSuperInterfaces
 import org.jetbrains.kotlin.resolve.descriptorUtil.module
 import org.jetbrains.kotlin.resolve.multiplatform.*
 import org.jetbrains.kotlin.resolve.scopes.MemberScope
@@ -28,7 +24,9 @@ object ActualClassifierMustHasTheSameMembersAsNonFinalExpectClassifierChecker : 
         val (actual, expect) = matchActualWithNonFinalExpect(declaration, descriptor, context) ?: return
 
         // The explicit casts won't be necessary when we start compiling kotlin with K2. K1 doesn't build CFG properly
+        @Suppress("USELESS_CAST") // K2 warning suppression, TODO: KT-62472
         declaration as KtClassLikeDeclaration
+        @Suppress("USELESS_CAST") // K2 warning suppression, TODO: KT-62472
         descriptor as ClassifierDescriptorWithTypeParameters
 
         checkExpectActualScopeDiff(expect, actual, context, declaration, descriptor)
@@ -79,7 +77,9 @@ internal fun matchActualWithNonFinalExpect(
     // Common supertype of KtTypeAlias and KtClassOrObject is KtClassLikeDeclaration.
     // Common supertype of TypeAliasDescriptor and ClassDescriptor is ClassifierDescriptorWithTypeParameters.
     // The explicit casts won't be necessary when we start compiling kotlin with K2.
+    @Suppress("USELESS_CAST") // K2 warning suppression, TODO: KT-62472
     declaration as KtClassLikeDeclaration
+    @Suppress("USELESS_CAST") // K2 warning suppression, TODO: KT-62472
     descriptor as ClassifierDescriptorWithTypeParameters
 
     if (!descriptor.isActual) return null
@@ -94,7 +94,7 @@ internal fun matchActualWithNonFinalExpect(
     if (actual.modality == Modality.FINAL) return null
 
     val expect = ExpectedActualResolver.findExpectedForActual(descriptor)
-        ?.get(ExpectActualCompatibility.Compatible)
+        ?.get(K1ExpectActualCompatibility.Compatible)
         ?.singleOrNull() as? ClassDescriptor // if actual has more than one expects then it will be reported by another checker
         ?: return null
 
@@ -105,7 +105,7 @@ internal fun matchActualWithNonFinalExpect(
 private fun calculateExpectActualScopeDiff(
     expect: ClassDescriptor,
     actual: ClassDescriptor,
-): Set<ExpectActualMemberDiff<CallableMemberDescriptor, ClassDescriptor>> {
+): Set<K1ExpectActualMemberDiff<CallableMemberDescriptor, ClassDescriptor>> {
     val matchingContext = ClassicExpectActualMatchingContext(actual.module)
     // It's responsibility of AbstractExpectActualCompatibilityChecker to report that. Most probably this check is redundant,
     // because we can't reach this line if expect and actual don't match, but let's have it for safety
@@ -125,11 +125,11 @@ private fun calculateExpectActualScopeDiff(
     return actualClassCallables.flatMap { actualMember ->
         val potentialExpects = nameAndKindToExpectCallables[actualMember.name to actualMember.functionVsPropertyKind]
         if (potentialExpects.isNullOrEmpty()) {
-            emptyList<ExpectActualMemberDiff.Kind>()
+            emptyList<K1ExpectActualMemberDiff.Kind>()
         } else {
             potentialExpects
                 .map { expectMember ->
-                    AbstractExpectActualCompatibilityChecker.getCallablesCompatibility(
+                    K1AbstractExpectActualCompatibilityChecker.getCallablesCompatibility(
                         expectMember,
                         actualMember,
                         classTypeSubstitutor,
@@ -138,32 +138,32 @@ private fun calculateExpectActualScopeDiff(
                         matchingContext
                     )
                 }
-                .takeIf { kinds -> kinds.all { it != ExpectActualCompatibility.Compatible } }
+                .takeIf { kinds -> kinds.all { it != K1ExpectActualCompatibility.Compatible } }
                 .orEmpty()
                 .mapNotNull {
                     when (it) {
-                        is ExpectActualCompatibility.Compatible -> error("Compatible was filtered out by takeIf")
-                        ExpectActualCompatibility.Incompatible.CallableKind,
-                        ExpectActualCompatibility.Incompatible.ParameterCount,
-                        ExpectActualCompatibility.Incompatible.ParameterShape,
-                        ExpectActualCompatibility.Incompatible.ParameterTypes,
-                        ExpectActualCompatibility.Incompatible.FunctionTypeParameterCount,
-                        ExpectActualCompatibility.Incompatible.FunctionTypeParameterUpperBounds,
+                        is K1ExpectActualCompatibility.Compatible -> error("Compatible was filtered out by takeIf")
+                        K1ExpectActualCompatibility.Incompatible.CallableKind,
+                        K1ExpectActualCompatibility.Incompatible.ParameterCount,
+                        K1ExpectActualCompatibility.Incompatible.ParameterShape,
+                        K1ExpectActualCompatibility.Incompatible.ParameterTypes,
+                        K1ExpectActualCompatibility.Incompatible.FunctionTypeParameterCount,
+                        K1ExpectActualCompatibility.Incompatible.FunctionTypeParameterUpperBounds,
                             // Don't report "matching" (aka "strong") incompatibilities, because it's
                             // incompatibilities that happen only when a new member added
                         -> null
 
-                        is ExpectActualCompatibility.Incompatible -> it.toMemberDiffKind()
+                        is K1ExpectActualCompatibility.Incompatible -> it.toMemberDiffKind()
                         // If toMemberDiffKind returns null then some Kotlin invariants described in toMemberDiffKind no longer hold.
                         // We can't throw exception here because it would crash the compilation.
                         // Those broken invariants just needs to be reported by other checkers.
-                        // But it's better to report ExpectActualMemberDiff.Kind.Unknown to make sure that we don't have missed
+                        // But it's better to report K1ExpectActualMemberDiff.Kind.Unknown to make sure that we don't have missed
                         // compilation errors if the invariants change
-                            ?: ExpectActualMemberDiff.Kind.Unknown
+                            ?: K1ExpectActualMemberDiff.Kind.Unknown
                     }
                 }
         }
-            .map { kind -> ExpectActualMemberDiff(kind, actualMember, expect) }
+            .map { kind -> K1ExpectActualMemberDiff(kind, actualMember, expect) }
     }.toSet()
 }
 
@@ -186,28 +186,28 @@ private val CallableMemberDescriptor.functionVsPropertyKind: Kind
 private val CallableMemberDescriptor.psiIfReal: KtCallableDeclaration?
     get() = takeIf { it.kind.isReal }?.source?.let { it as? KotlinSourceElement }?.psi as? KtCallableDeclaration
 
-private fun BindingTrace.reportIfPossible(diff: ExpectActualMemberDiff<CallableMemberDescriptor, ClassDescriptor>) {
+private fun BindingTrace.reportIfPossible(diff: K1ExpectActualMemberDiff<CallableMemberDescriptor, ClassDescriptor>) {
     val psi = diff.actualMember.psiIfReal ?: return
     val diagnostic = when (diff.kind) {
-        ExpectActualMemberDiff.Kind.ReturnTypeChangedInOverride ->
+        K1ExpectActualMemberDiff.Kind.ReturnTypeChangedInOverride ->
             Errors.RETURN_TYPE_CHANGED_IN_NON_FINAL_EXPECT_CLASSIFIER_ACTUALIZATION_WARNING.on(psi, diff)
-        ExpectActualMemberDiff.Kind.ModalityChangedInOverride ->
+        K1ExpectActualMemberDiff.Kind.ModalityChangedInOverride ->
             Errors.MODALITY_CHANGED_IN_NON_FINAL_EXPECT_CLASSIFIER_ACTUALIZATION_WARNING.on(psi, diff)
-        ExpectActualMemberDiff.Kind.VisibilityChangedInOverride ->
+        K1ExpectActualMemberDiff.Kind.VisibilityChangedInOverride ->
             Errors.VISIBILITY_CHANGED_IN_NON_FINAL_EXPECT_CLASSIFIER_ACTUALIZATION_WARNING.on(psi, diff)
-        ExpectActualMemberDiff.Kind.SetterVisibilityChangedInOverride ->
+        K1ExpectActualMemberDiff.Kind.SetterVisibilityChangedInOverride ->
             Errors.SETTER_VISIBILITY_CHANGED_IN_NON_FINAL_EXPECT_CLASSIFIER_ACTUALIZATION_WARNING.on((psi as? KtProperty)?.setter ?: return, diff)
-        ExpectActualMemberDiff.Kind.ParameterNameChangedInOverride ->
+        K1ExpectActualMemberDiff.Kind.ParameterNameChangedInOverride ->
             Errors.PARAMETER_NAME_CHANGED_IN_NON_FINAL_EXPECT_CLASSIFIER_ACTUALIZATION_WARNING.on(psi, diff)
-        ExpectActualMemberDiff.Kind.PropertyKindChangedInOverride ->
+        K1ExpectActualMemberDiff.Kind.PropertyKindChangedInOverride ->
             Errors.PROPERTY_KIND_CHANGED_IN_NON_FINAL_EXPECT_CLASSIFIER_ACTUALIZATION_WARNING.on(psi, diff)
-        ExpectActualMemberDiff.Kind.LateinitChangedInOverride ->
+        K1ExpectActualMemberDiff.Kind.LateinitChangedInOverride ->
             Errors.LATEINIT_CHANGED_IN_NON_FINAL_EXPECT_CLASSIFIER_ACTUALIZATION_WARNING.on(psi, diff)
-        ExpectActualMemberDiff.Kind.VarargChangedInOverride ->
+        K1ExpectActualMemberDiff.Kind.VarargChangedInOverride ->
             Errors.VARARG_CHANGED_IN_NON_FINAL_EXPECT_CLASSIFIER_ACTUALIZATION_WARNING.on(psi, diff)
-        ExpectActualMemberDiff.Kind.TypeParameterNamesChangedInOverride ->
+        K1ExpectActualMemberDiff.Kind.TypeParameterNamesChangedInOverride ->
             Errors.TYPE_PARAMETER_NAMES_CHANGED_IN_NON_FINAL_EXPECT_CLASSIFIER_ACTUALIZATION_WARNING.on(psi, diff)
-        ExpectActualMemberDiff.Kind.Unknown ->
+        K1ExpectActualMemberDiff.Kind.Unknown ->
             Errors.UNKNOWN_PROBLEM_DURING_NON_FINAL_CLASSIFIER_ACTUALIZATION_WARNING.on(psi, diff)
     }
     report(diagnostic)

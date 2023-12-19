@@ -53,14 +53,12 @@ class SafeCollector<T : Any?> : FlowCollector<T> {
 //   Mangled name: CoroutineScope
 //   Public signature: /CoroutineScope|null[0]
 interface CoroutineScope {
-
 }
 
 // CHECK:
 //   Mangled name: Flow
 //   Public signature: /Flow|null[0]
 interface Flow<out T : Any?> {
-
   // CHECK:
   //   Mangled name: Flow#collect(FlowCollector<1:0>){}
   //   Public signature: /Flow.collect|5114876798301803727[0]
@@ -73,7 +71,6 @@ interface Flow<out T : Any?> {
 //   Mangled name: FlowCollector
 //   Public signature: /FlowCollector|null[0]
 interface FlowCollector<in T : Any?> {
-
   // CHECK:
   //   Mangled name: FlowCollector#emit(1:0){}
   //   Public signature: /FlowCollector.emit|-8401228374452471444[0]
@@ -86,7 +83,6 @@ interface FlowCollector<in T : Any?> {
 //   Mangled name: ProducerScope
 //   Public signature: /ProducerScope|null[0]
 interface ProducerScope<in E : Any?> : CoroutineScope, SendChannel<E> {
-
   // CHECK:
   //   Mangled name: ProducerScope#send(1:0){}
   //   Public signature: /ProducerScope.send|-5896904506239336668[0]
@@ -114,14 +110,12 @@ interface ProducerScope<in E : Any?> : CoroutineScope, SendChannel<E> {
 //   Mangled name: ReceiveChannel
 //   Public signature: /ReceiveChannel|null[0]
 interface ReceiveChannel<out E : Any?> {
-
 }
 
 // CHECK:
 //   Mangled name: SendChannel
 //   Public signature: /SendChannel|null[0]
 interface SendChannel<in E : Any?> {
-
   // CHECK:
   //   Mangled name: SendChannel#send(1:0){}
   //   Public signature: /SendChannel.send|-5896904506239336668[0]
@@ -132,16 +126,18 @@ interface SendChannel<in E : Any?> {
 
 // CHECK JVM_IR:
 //   Mangled name: #asChannel@CoroutineScope(Flow<*>){}ReceiveChannel<kotlin.Any>
-//   Public signature: [ File 'castsInsideCoroutineInference.kt' <- /asChannel|-3549601571428075944[0] ]
+//   Public signature: [ File '/castsInsideCoroutineInference.kt' <- /asChannel|-3549601571428075944[0] ]
 // CHECK JS_IR NATIVE:
 //   Mangled name: #asChannel@CoroutineScope(Flow<*>){}
+//   Public signature: [ File '/castsInsideCoroutineInference.kt' <- /asChannel|-2163265367975014424[0] ]
 private fun CoroutineScope.asChannel(flow: Flow<*>): ReceiveChannel<Any>
 
 // CHECK JVM_IR:
 //   Mangled name: #asFairChannel@CoroutineScope(Flow<*>){}ReceiveChannel<kotlin.Any>
-//   Public signature: [ File 'castsInsideCoroutineInference.kt' <- /asFairChannel|-8739457176543595950[0] ]
+//   Public signature: [ File '/castsInsideCoroutineInference.kt' <- /asFairChannel|-8739457176543595950[0] ]
 // CHECK JS_IR NATIVE:
 //   Mangled name: #asFairChannel@CoroutineScope(Flow<*>){}
+//   Public signature: [ File '/castsInsideCoroutineInference.kt' <- /asFairChannel|-1848542361619040771[0] ]
 private fun CoroutineScope.asFairChannel(flow: Flow<*>): ReceiveChannel<Any>
 
 // CHECK:

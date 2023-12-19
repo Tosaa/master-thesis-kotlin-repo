@@ -5,6 +5,7 @@
 
 package org.jetbrains.kotlin.kapt3.test.runners
 
+import org.jetbrains.kotlin.kapt3.base.util.doOpenInternalPackagesIfRequired
 import org.jetbrains.kotlin.kapt3.test.JvmCompilerWithKaptFacade
 import org.jetbrains.kotlin.kapt3.test.KaptContextBinaryArtifact
 import org.jetbrains.kotlin.kapt3.test.KaptEnvironmentConfigurator

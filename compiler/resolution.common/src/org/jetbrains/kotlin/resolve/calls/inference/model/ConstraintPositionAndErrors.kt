@@ -9,6 +9,7 @@ import org.jetbrains.kotlin.resolve.calls.tower.CandidateApplicability
 import org.jetbrains.kotlin.resolve.calls.tower.CandidateApplicability.*
 import org.jetbrains.kotlin.types.EmptyIntersectionTypeKind
 import org.jetbrains.kotlin.types.model.KotlinTypeMarker
+import org.jetbrains.kotlin.types.model.TypeParameterMarker
 import org.jetbrains.kotlin.types.model.TypeVariableMarker
 
 interface OnlyInputTypeConstraintPosition
@@ -93,6 +94,8 @@ object BuilderInferencePosition : ConstraintPosition() {
     override fun toString(): String = "For builder inference call"
 }
 
+data object ProvideDelegateFixationPosition : ConstraintPosition()
+
 // TODO: should be used only in SimpleConstraintSystemImpl, KT-59675
 object SimpleConstraintSystemConstraintPosition : ConstraintPosition()
 
@@ -170,6 +173,11 @@ class OnlyInputTypesDiagnostic(val typeVariable: TypeVariableMarker) : Constrain
 
 class LowerPriorityToPreserveCompatibility(val needToReportWarning: Boolean) :
     ConstraintSystemError(RESOLVED_NEED_PRESERVE_COMPATIBILITY)
+
+open class MultiLambdaBuilderInferenceRestriction<T>(
+    val anonymous: T,
+    val typeParameter: TypeParameterMarker
+) : ConstraintSystemError(RESOLVED_WITH_ERROR)
 
 fun Constraint.isExpectedTypePosition() =
     position.from is ExpectedTypeConstraintPosition<*> || position.from is DelegatedPropertyConstraintPosition<*>

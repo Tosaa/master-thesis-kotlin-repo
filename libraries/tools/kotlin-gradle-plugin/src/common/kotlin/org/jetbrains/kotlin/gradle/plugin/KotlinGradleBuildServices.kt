@@ -6,19 +6,20 @@
 package org.jetbrains.kotlin.gradle.plugin
 
 import org.gradle.api.Project
-import org.gradle.api.invocation.Gradle
 import org.gradle.api.logging.Logging
+import org.gradle.api.provider.Property
 import org.gradle.api.provider.Provider
 import org.gradle.api.services.BuildService
 import org.gradle.api.services.BuildServiceParameters
 import org.jetbrains.kotlin.gradle.logging.kotlinDebug
-import org.jetbrains.kotlin.gradle.utils.projectCacheDir
+import org.jetbrains.kotlin.gradle.utils.kotlinSessionsDir
+import org.jetbrains.kotlin.gradle.utils.registerClassLoaderScopedBuildService
 import java.io.File
 
 internal abstract class KotlinGradleBuildServices : BuildService<KotlinGradleBuildServices.Parameters>, AutoCloseable {
 
     interface Parameters : BuildServiceParameters {
-        var projectCacheDir: File
+        val sessionsDir: Property<File>
     }
 
     private val log = Logging.getLogger(this.javaClass)
@@ -61,7 +62,7 @@ internal abstract class KotlinGradleBuildServices : BuildService<KotlinGradleBui
     }
 
     override fun close() {
-        buildHandler.buildFinished(parameters.projectCacheDir)
+        buildHandler.buildFinished(parameters.sessionsDir.get())
         log.kotlinDebug(DISPOSE_MESSAGE)
     }
 
@@ -70,14 +71,10 @@ internal abstract class KotlinGradleBuildServices : BuildService<KotlinGradleBui
         private val INIT_MESSAGE = "Initialized $CLASS_NAME"
         private val DISPOSE_MESSAGE = "Disposed $CLASS_NAME"
 
-        fun registerIfAbsent(gradle: Gradle): Provider<KotlinGradleBuildServices> =
-            gradle.sharedServices.registerIfAbsent(
-                "kotlin-build-service-${KotlinGradleBuildServices::class.java.canonicalName}_${KotlinGradleBuildServices::class.java.classLoader.hashCode()}",
-                KotlinGradleBuildServices::class.java
-            ) { service ->
-                service.parameters.projectCacheDir = gradle.projectCacheDir
+        fun registerIfAbsent(project: Project): Provider<KotlinGradleBuildServices> =
+            project.gradle.registerClassLoaderScopedBuildService(KotlinGradleBuildServices::class) {
+                it.parameters.sessionsDir.set(project.kotlinSessionsDir)
             }
-
     }
 }
 

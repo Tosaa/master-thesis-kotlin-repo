@@ -19,6 +19,8 @@ data class SourceRangeInfo(
     val endColumnNumber: Int
 )
 
+data class LineAndColumn(val line: Int, val column: Int)
+
 interface IrFileEntry {
     val name: String
     val maxOffset: Int
@@ -26,4 +28,44 @@ interface IrFileEntry {
     fun getSourceRangeInfo(beginOffset: Int, endOffset: Int): SourceRangeInfo
     fun getLineNumber(offset: Int): Int
     fun getColumnNumber(offset: Int): Int
+    fun getLineAndColumnNumbers(offset: Int): LineAndColumn
+}
+
+abstract class AbstractIrFileEntry : IrFileEntry {
+    protected abstract val lineStartOffsets: IntArray
+
+    override fun getLineNumber(offset: Int): Int {
+        if (offset < 0) return UNDEFINED_LINE_NUMBER
+        val index = lineStartOffsets.binarySearch(offset)
+        return if (index >= 0) index else -index - 2
+    }
+
+    override fun getColumnNumber(offset: Int): Int {
+        if (offset < 0) return UNDEFINED_COLUMN_NUMBER
+        val lineNumber = getLineNumber(offset)
+        if (lineNumber < 0) return UNDEFINED_COLUMN_NUMBER
+        return offset - lineStartOffsets[lineNumber]
+    }
+
+    override fun getLineAndColumnNumbers(offset: Int): LineAndColumn {
+        if (offset < 0) return LineAndColumn(UNDEFINED_LINE_NUMBER, UNDEFINED_COLUMN_NUMBER)
+        val lineNumber = getLineNumber(offset)
+        if (lineNumber < 0) return LineAndColumn(lineNumber, UNDEFINED_COLUMN_NUMBER)
+        val columnNumber = offset - lineStartOffsets[lineNumber]
+        return LineAndColumn(lineNumber, columnNumber)
+    }
+
+    override fun getSourceRangeInfo(beginOffset: Int, endOffset: Int): SourceRangeInfo {
+        val (startLineNumber, startColumnNumber) = getLineAndColumnNumbers(beginOffset)
+        val (endLineNumber, endColumnNumber) = getLineAndColumnNumbers(endOffset)
+        return SourceRangeInfo(
+            filePath = name,
+            startOffset = beginOffset,
+            startLineNumber = startLineNumber,
+            startColumnNumber = startColumnNumber,
+            endOffset = endOffset,
+            endLineNumber = endLineNumber,
+            endColumnNumber = endColumnNumber
+        )
+    }
 }

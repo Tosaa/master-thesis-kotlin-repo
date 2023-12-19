@@ -28,6 +28,7 @@ import org.jetbrains.kotlin.generators.model.annotation
 import org.jetbrains.kotlin.generators.tests.IncrementalTestsGeneratorUtil.Companion.IcTestTypes.PURE_KOTLIN
 import org.jetbrains.kotlin.generators.tests.IncrementalTestsGeneratorUtil.Companion.IcTestTypes.WITH_JAVA
 import org.jetbrains.kotlin.generators.tests.IncrementalTestsGeneratorUtil.Companion.incrementalJvmTestData
+import org.jetbrains.kotlin.generators.util.TestGeneratorUtil
 import org.jetbrains.kotlin.incremental.*
 import org.jetbrains.kotlin.jvm.abi.AbstractCompareJvmAbiTest
 import org.jetbrains.kotlin.jvm.abi.AbstractCompileAgainstJvmAbiTest
@@ -49,6 +50,22 @@ import org.jetbrains.kotlinx.atomicfu.AbstractAtomicfuJsIrTest
 import org.jetbrains.kotlinx.atomicfu.AbstractAtomicfuJvmIrTest
 import org.junit.jupiter.api.Tag
 
+
+private class ExcludePattern {
+    companion object {
+        private const val MEMBER_ALIAS = "(^removeMemberTypeAlias)|(^addMemberTypeAlias)"
+
+        private const val ALL_EXPECT = "(^.*Expect.*)"
+        private const val COMPANION_CONSTANT = "(^companionConstantChanged)"
+
+        internal val forK2 = listOf(
+            ALL_EXPECT, // KT-63125 - Partially related to single-module expect-actual tests, but regexp is really wide
+            MEMBER_ALIAS, // KT-55195 - Invalid for K2
+            COMPANION_CONSTANT // KT-56242 - Work in progress
+        ).joinToString("|")
+    }
+}
+
 fun main(args: Array<String>) {
     System.setProperty("java.awt.headless", "true")
     generateTestGroupSuite(args) {
@@ -68,9 +85,7 @@ fun main(args: Array<String>) {
                 init = incrementalJvmTestData(
                     TargetBackend.JVM_IR,
                     folderToExcludePatternMap = mapOf(
-                        PURE_KOTLIN to "(^.*Expect.*)"
-                                + "|(^removeMemberTypeAlias)|(^addMemberTypeAlias)" //KT-55195
-                                + "|(^companionConstantChanged)" //KT-56242
+                        PURE_KOTLIN to ExcludePattern.forK2
                     )
                 )
             )
@@ -79,9 +94,7 @@ fun main(args: Array<String>) {
                 init = incrementalJvmTestData(
                     TargetBackend.JVM_IR,
                     folderToExcludePatternMap = mapOf(
-                        PURE_KOTLIN to "(^.*Expect.*)"
-                                + "|(^removeMemberTypeAlias)|(^addMemberTypeAlias)" //KT-55195
-                                + "|(^companionConstantChanged)", //KT-56242
+                        PURE_KOTLIN to ExcludePattern.forK2,
                         WITH_JAVA to "^classToPackageFacade" // KT-56698
                     )
                 )
@@ -90,25 +103,27 @@ fun main(args: Array<String>) {
                 init = incrementalJvmTestData(
                     TargetBackend.JVM_IR,
                     folderToExcludePatternMap = mapOf(
-                        PURE_KOTLIN to "(^.*Expect.*)"
-                                + "|(^removeMemberTypeAlias)|(^addMemberTypeAlias)" //KT-55195
-                                + "|(^companionConstantChanged)" //KT-56242
+                        PURE_KOTLIN to ExcludePattern.forK2
                     )
                 )
             )
 
-            testClass<AbstractIncrementalJsKlibCompilerRunnerTest>() {
+            testClass<AbstractIncrementalK1JsKlibCompilerRunnerTest> {
                 // IC of sealed interfaces are not supported in JS
                 model("incremental/pureKotlin", extension = null, recursive = false, excludedPattern = "(^sealed.*)|(.*SinceK2)")
                 model("incremental/classHierarchyAffected", extension = null, recursive = false)
                 model("incremental/js", extension = null, excludeParentDirs = true)
             }
 
-            testClass<AbstractIncrementalMultiModuleJsKlibCompilerRunnerTest> {
+            testClass<AbstractIncrementalK1JsKlibMultiModuleCompilerRunnerTest> {
                 model("incremental/multiModule/common", extension = null, excludeParentDirs = true)
             }
 
-            testClass<AbstractIncrementalJsKlibCompilerWithScopeExpansionRunnerTest> {
+            testClass<AbstractIncrementalK2JsKlibMultiModuleCompilerRunnerTest> {
+                model("incremental/multiModule/common", extension = null, excludeParentDirs = true)
+            }
+
+            testClass<AbstractIncrementalK1JsKlibCompilerWithScopeExpansionRunnerTest> {
                 // IC of sealed interfaces are not supported in JS
                 model("incremental/pureKotlin", extension = null, recursive = false, excludedPattern = "^sealed.*")
                 model("incremental/classHierarchyAffected", extension = null, recursive = false)
@@ -117,31 +132,32 @@ fun main(args: Array<String>) {
             }
 
             // TODO: https://youtrack.jetbrains.com/issue/KT-61602/JS-K2-ICL-Fix-muted-tests
-            testClass<AbstractIncrementalJsFirKlibCompilerWithScopeExpansionRunnerTest> {
+            testClass<AbstractIncrementalK2JsKlibCompilerWithScopeExpansionRunnerTest> {
                 // IC of sealed interfaces are not supported in JS
-                model("incremental/pureKotlin", extension = null, recursive = false,
+                model(
+                    "incremental/pureKotlin", extension = null, recursive = false,
                     // TODO: 'fileWithConstantRemoved' should be fixed in https://youtrack.jetbrains.com/issue/KT-58824
                     excludedPattern = "^(sealed.*|fileWithConstantRemoved|propertyRedeclaration|funRedeclaration|funVsConstructorOverloadConflict)"
                 )
-                model("incremental/classHierarchyAffected", extension = null, recursive = false,
+                model(
+                    "incremental/classHierarchyAffected", extension = null, recursive = false,
                     excludedPattern = "secondaryConstructorAdded"
                 )
                 model("incremental/js", extension = null, excludeParentDirs = true)
-
-                //model("incremental/scopeExpansion", extension = null, excludeParentDirs = true)
             }
 
-            testClass<AbstractIncrementalJsCompilerRunnerWithFriendModulesDisabledTest> {
+            testClass<AbstractIncrementalK1JsKlibCompilerRunnerWithFriendModulesDisabledTest> {
                 model("incremental/js/friendsModuleDisabled", extension = null, recursive = false)
             }
 
             testClass<AbstractIncrementalMultiplatformJvmCompilerRunnerTest> {
                 model("incremental/mpp/allPlatforms", extension = null, excludeParentDirs = true)
-                model("incremental/mpp/jvmOnly", extension = null, excludeParentDirs = true)
+                model("incremental/mpp/jvmOnlyK1", extension = null, excludeParentDirs = true)
             }
-            testClass<AbstractIncrementalMultiplatformJsCompilerRunnerTest> {
+            testClass<AbstractIncrementalK1JsKlibMultiplatformJsCompilerRunnerTest> {
                 model("incremental/mpp/allPlatforms", extension = null, excludeParentDirs = true)
             }
+            //TODO: write a proper k2 multiplatform test runner KT-63183
         }
 
         testGroup(
@@ -221,7 +237,7 @@ fun main(args: Array<String>) {
     }
 
     generateTestGroupSuiteWithJUnit5 {
-        val excludedFirTestdataPattern = "^(.+)\\.fir\\.kts?\$"
+        val excludedFirTestdataPattern = TestGeneratorUtil.KT_OR_KTS_WITH_FIR_PREFIX
 
         testGroup("plugins/parcelize/parcelize-compiler/tests-gen", "plugins/parcelize/parcelize-compiler/testData") {
             testClass<AbstractParcelizeIrBoxTest> {
@@ -284,9 +300,6 @@ fun main(args: Array<String>) {
         }
 
         testGroup("plugins/allopen/tests-gen", "plugins/allopen/testData") {
-            testClass<AbstractBytecodeListingTestForAllOpen> {
-                model("bytecodeListing", excludedPattern = excludedFirTestdataPattern)
-            }
             testClass<AbstractIrBytecodeListingTestForAllOpen> {
                 model("bytecodeListing", excludedPattern = excludedFirTestdataPattern)
             }
@@ -310,9 +323,6 @@ fun main(args: Array<String>) {
             }
             testClass<AbstractFirPsiDiagnosticsTestForNoArg> {
                 model("diagnostics", excludedPattern = excludedFirTestdataPattern)
-            }
-            testClass<AbstractBytecodeListingTestForNoArg> {
-                model("bytecodeListing", excludedPattern = excludedFirTestdataPattern)
             }
             testClass<AbstractIrBytecodeListingTestForNoArg> {
                 model("bytecodeListing", excludedPattern = excludedFirTestdataPattern)

@@ -19,9 +19,11 @@
 
 #include <utility>
 
+#include "Alignment.hpp"
 #include "KAssert.h"
 #include "Common.h"
 #include "TypeInfo.h"
+#include "TypeLayout.hpp"
 #include "Atomic.h"
 #include "PointerBits.h"
 #include "Utils.hpp"
@@ -75,11 +77,7 @@ struct ObjHeader {
    * Hardware guaranties on many supported platforms doesn't allow this to happen.
    */
   const TypeInfo* type_info() const {
-#ifdef KONAN_TARGET_HAS_ADDRESS_DEPENDENCY
       return atomicGetRelaxed(&clearPointerBits(typeInfoOrMetaRelaxed(), OBJECT_TAG_MASK)->typeInfo_);
-#else
-      return atomicGetRelaxed(&clearPointerBits(typeInfoOrMetaAcquire(), OBJECT_TAG_MASK)->typeInfo_);
-#endif
   }
 
   bool has_meta_object() const {
@@ -125,6 +123,7 @@ struct ObjHeader {
   static MetaObjHeader* createMetaObject(ObjHeader* object);
   static void destroyMetaObject(ObjHeader* object);
 };
+static_assert(alignof(ObjHeader) <= kotlin::kObjectAlignment);
 
 // Header of value type array objects. Keep layout in sync with that of object header.
 struct ArrayHeader {
@@ -140,6 +139,60 @@ struct ArrayHeader {
   // Elements count. Element size is stored in instanceSize_ field of TypeInfo, negated.
   uint32_t count_;
 };
+static_assert(alignof(ArrayHeader) <= kotlin::kObjectAlignment);
+
+namespace kotlin {
+
+struct ObjectBody;
+struct ArrayBody;
+
+template <>
+struct type_layout::descriptor<ObjectBody> {
+    class type {
+    public:
+        using value_type = ObjectBody;
+
+        explicit type(const TypeInfo* typeInfo) noexcept : size_(typeInfo->instanceSize_ - sizeof(ObjHeader)) {}
+
+        static constexpr size_t alignment() noexcept { return kObjectAlignment; }
+        uint64_t size() const noexcept { return size_; }
+
+        value_type* construct(uint8_t* ptr) noexcept {
+            RuntimeAssert(isZeroed(std_support::span<uint8_t>(ptr, size_)), "ObjectBodyDescriptor::construct@%p memory is not zeroed", ptr);
+            return reinterpret_cast<value_type*>(ptr);
+        }
+
+    private:
+        uint64_t size_;
+    };
+};
+
+template <>
+struct type_layout::descriptor<ArrayBody> {
+    class type {
+    public:
+        using value_type = ArrayBody;
+
+        explicit type(const TypeInfo* typeInfo, uint32_t count) noexcept :
+            // -(int32_t min) * uint32_t max cannot overflow uint64_t. And are capped
+            // at about half of uint64_t max.
+            size_(static_cast<uint64_t>(-typeInfo->instanceSize_) * count) {}
+
+        static constexpr size_t alignment() noexcept { return kObjectAlignment; }
+        uint64_t size() const noexcept { return size_; }
+
+        value_type* construct(uint8_t* ptr) noexcept {
+            RuntimeAssert(isZeroed(std_support::span<uint8_t>(ptr, size_)), "ArrayBodyDescriptor::construct@%p memory is not zeroed", ptr);
+            return reinterpret_cast<ArrayBody*>(ptr);
+        }
+
+    private:
+        uint64_t size_;
+    };
+};
+
+
+} // namespace kotlin
 
 ALWAYS_INLINE bool isPermanentOrFrozen(const ObjHeader* obj);
 ALWAYS_INLINE bool isShareable(const ObjHeader* obj);
@@ -240,10 +293,6 @@ enum class MemoryModel {
 // Controls the current memory model, is compile-time constant.
 extern const MemoryModel CurrentMemoryModel;
 
-// Sets stack location.
-void SetStackRef(ObjHeader** location, const ObjHeader* object) RUNTIME_NOTHROW;
-// Sets heap location.
-void SetHeapRef(ObjHeader** location, const ObjHeader* object) RUNTIME_NOTHROW;
 // Zeroes heap location.
 void ZeroHeapRef(ObjHeader** location) RUNTIME_NOTHROW;
 // Zeroes an array.
@@ -263,18 +312,8 @@ OBJ_GETTER(GetAndSetVolatileHeapRef, ObjHeader** location, ObjHeader* newValue) 
 // Updates heap/static data in one array.
 void UpdateHeapRefsInsideOneArray(const ArrayHeader* array, int fromIndex, int toIndex, int count) RUNTIME_NOTHROW;
 // Updates location if it is null, atomically.
-void UpdateHeapRefIfNull(ObjHeader** location, const ObjHeader* object) RUNTIME_NOTHROW;
 // Updates reference in return slot.
 void UpdateReturnRef(ObjHeader** returnSlot, const ObjHeader* object) RUNTIME_NOTHROW;
-// Compares and swaps reference with taken lock.
-OBJ_GETTER(SwapHeapRefLocked,
-    ObjHeader** location, ObjHeader* expectedValue, ObjHeader* newValue, int32_t* spinlock,
-    int32_t* cookie) RUNTIME_NOTHROW;
-// Sets reference with taken lock.
-void SetHeapRefLocked(ObjHeader** location, ObjHeader* newValue, int32_t* spinlock,
-    int32_t* cookie) RUNTIME_NOTHROW;
-// Reads reference with taken lock.
-OBJ_GETTER(ReadHeapRefLocked, ObjHeader** location, int32_t* spinlock, int32_t* cookie) RUNTIME_NOTHROW;
 OBJ_GETTER(ReadHeapRefNoLock, ObjHeader* object, int32_t index);
 // Called on frame enter, if it has object slots.
 void EnterFrame(ObjHeader** start, int parameters, int count) RUNTIME_NOTHROW;
@@ -369,6 +408,7 @@ struct FrameOverlay {
 };
 
 // Class holding reference to an object, holding object during C++ scope.
+// TODO adopt ref accessors
 class ObjHolder {
  public:
    ObjHolder() : obj_(nullptr) {
@@ -377,7 +417,7 @@ class ObjHolder {
 
    explicit ObjHolder(const ObjHeader* obj) {
      EnterFrame(frame(), 0, sizeof(*this)/sizeof(void*));
-     ::SetStackRef(slot(), obj);
+     ::UpdateStackRef(slot(), obj);
    }
 
    ~ObjHolder() {
@@ -403,11 +443,9 @@ class ObjHolder {
 
 class ExceptionObjHolder {
 public:
-#if !KONAN_NO_EXCEPTIONS
     static void Throw(ObjHeader* exception) RUNTIME_NORETURN;
 
     ObjHeader* GetExceptionObject() noexcept;
-#endif
 
     // Exceptions are not on a hot path, so having virtual dispatch is fine.
     virtual ~ExceptionObjHolder() = default;
@@ -553,6 +591,9 @@ void StartFinalizerThreadIfNeeded() noexcept;
 bool FinalizersThreadIsRunning() noexcept;
 
 void OnMemoryAllocation(size_t totalAllocatedBytes) noexcept;
+
+void initObjectPool() noexcept;
+void compactObjectPoolInCurrentThread() noexcept;
 
 } // namespace kotlin
 

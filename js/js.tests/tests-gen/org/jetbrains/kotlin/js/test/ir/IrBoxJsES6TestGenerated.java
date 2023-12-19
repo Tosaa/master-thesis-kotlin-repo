@@ -957,6 +957,12 @@ public class IrBoxJsES6TestGenerated extends AbstractIrBoxJsES6Test {
         }
 
         @Test
+        @TestMetadata("suspendInvokeWithSuspendKlassRef.kt")
+        public void testSuspendInvokeWithSuspendKlassRef() throws Exception {
+            runTest("js/js.translator/testData/box/coroutines/suspendInvokeWithSuspendKlassRef.kt");
+        }
+
+        @Test
         @TestMetadata("suspendLambdaWithValueClass.kt")
         public void testSuspendLambdaWithValueClass() throws Exception {
             runTest("js/js.translator/testData/box/coroutines/suspendLambdaWithValueClass.kt");
@@ -1733,6 +1739,12 @@ public class IrBoxJsES6TestGenerated extends AbstractIrBoxJsES6Test {
         }
 
         @Test
+        @TestMetadata("dynamicArraySetWithLambda.kt")
+        public void testDynamicArraySetWithLambda() throws Exception {
+            runTest("js/js.translator/testData/box/dynamic/dynamicArraySetWithLambda.kt");
+        }
+
+        @Test
         @TestMetadata("equals.kt")
         public void testEquals() throws Exception {
             runTest("js/js.translator/testData/box/dynamic/equals.kt");
@@ -2166,6 +2178,24 @@ public class IrBoxJsES6TestGenerated extends AbstractIrBoxJsES6Test {
             }
 
             @Test
+            @TestMetadata("eagerInitializationGlobal1.kt")
+            public void testEagerInitializationGlobal1() throws Exception {
+                runTest("js/js.translator/testData/box/esModules/crossModuleRefPerFile/eagerInitializationGlobal1.kt");
+            }
+
+            @Test
+            @TestMetadata("eagerInitializationGlobal2.kt")
+            public void testEagerInitializationGlobal2() throws Exception {
+                runTest("js/js.translator/testData/box/esModules/crossModuleRefPerFile/eagerInitializationGlobal2.kt");
+            }
+
+            @Test
+            @TestMetadata("eagerInitializationGlobal3.kt")
+            public void testEagerInitializationGlobal3() throws Exception {
+                runTest("js/js.translator/testData/box/esModules/crossModuleRefPerFile/eagerInitializationGlobal3.kt");
+            }
+
+            @Test
             @TestMetadata("inheritance.kt")
             public void testInheritance() throws Exception {
                 runTest("js/js.translator/testData/box/esModules/crossModuleRefPerFile/inheritance.kt");
@@ -2450,6 +2480,12 @@ public class IrBoxJsES6TestGenerated extends AbstractIrBoxJsES6Test {
             }
 
             @Test
+            @TestMetadata("fileNameClash.kt")
+            public void testFileNameClash() throws Exception {
+                runTest("js/js.translator/testData/box/esModules/export/fileNameClash.kt");
+            }
+
+            @Test
             @TestMetadata("nonIndetifierModuleName.kt")
             public void testNonIndetifierModuleName() throws Exception {
                 runTest("js/js.translator/testData/box/esModules/export/nonIndetifierModuleName.kt");
@@ -2689,6 +2725,128 @@ public class IrBoxJsES6TestGenerated extends AbstractIrBoxJsES6Test {
             @TestMetadata("jsTopLevelClashes.kt")
             public void testJsTopLevelClashes() throws Exception {
                 runTest("js/js.translator/testData/box/esModules/jsName/jsTopLevelClashes.kt");
+            }
+        }
+
+        @Nested
+        @TestMetadata("js/js.translator/testData/box/esModules/kotlin.test")
+        @TestDataPath("$PROJECT_ROOT")
+        public class Kotlin_test {
+            @Test
+            public void testAllFilesPresentInKotlin_test() throws Exception {
+                KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("js/js.translator/testData/box/esModules/kotlin.test"), Pattern.compile("^([^_](.+))\\.kt$"), null, TargetBackend.JS_IR_ES6, true);
+            }
+
+            @Test
+            @TestMetadata("beforeAfter.kt")
+            public void testBeforeAfter() throws Exception {
+                runTest("js/js.translator/testData/box/esModules/kotlin.test/beforeAfter.kt");
+            }
+
+            @Test
+            @TestMetadata("ignore.kt")
+            public void testIgnore() throws Exception {
+                runTest("js/js.translator/testData/box/esModules/kotlin.test/ignore.kt");
+            }
+
+            @Test
+            @TestMetadata("illegalParameters.kt")
+            public void testIllegalParameters() throws Exception {
+                runTest("js/js.translator/testData/box/esModules/kotlin.test/illegalParameters.kt");
+            }
+
+            @Test
+            @TestMetadata("incremental.kt")
+            public void testIncremental() throws Exception {
+                runTest("js/js.translator/testData/box/esModules/kotlin.test/incremental.kt");
+            }
+
+            @Test
+            @TestMetadata("inherited.kt")
+            public void testInherited() throws Exception {
+                runTest("js/js.translator/testData/box/esModules/kotlin.test/inherited.kt");
+            }
+
+            @Test
+            @TestMetadata("mpp.kt")
+            public void testMpp() throws Exception {
+                runTest("js/js.translator/testData/box/esModules/kotlin.test/mpp.kt");
+            }
+
+            @Test
+            @TestMetadata("nested.kt")
+            public void testNested() throws Exception {
+                runTest("js/js.translator/testData/box/esModules/kotlin.test/nested.kt");
+            }
+
+            @Test
+            @TestMetadata("returnTestResult.kt")
+            public void testReturnTestResult() throws Exception {
+                runTest("js/js.translator/testData/box/esModules/kotlin.test/returnTestResult.kt");
+            }
+
+            @Test
+            @TestMetadata("simple.kt")
+            public void testSimple() throws Exception {
+                runTest("js/js.translator/testData/box/esModules/kotlin.test/simple.kt");
+            }
+        }
+
+        @Nested
+        @TestMetadata("js/js.translator/testData/box/esModules/main")
+        @TestDataPath("$PROJECT_ROOT")
+        public class Main {
+            @Test
+            public void testAllFilesPresentInMain() throws Exception {
+                KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("js/js.translator/testData/box/esModules/main"), Pattern.compile("^([^_](.+))\\.kt$"), null, TargetBackend.JS_IR_ES6, true);
+            }
+
+            @Test
+            @TestMetadata("differentMains.kt")
+            public void testDifferentMains() throws Exception {
+                runTest("js/js.translator/testData/box/esModules/main/differentMains.kt");
+            }
+
+            @Test
+            @TestMetadata("incremental.kt")
+            public void testIncremental() throws Exception {
+                runTest("js/js.translator/testData/box/esModules/main/incremental.kt");
+            }
+
+            @Test
+            @TestMetadata("noArgs.kt")
+            public void testNoArgs() throws Exception {
+                runTest("js/js.translator/testData/box/esModules/main/noArgs.kt");
+            }
+
+            @Test
+            @TestMetadata("simple.kt")
+            public void testSimple() throws Exception {
+                runTest("js/js.translator/testData/box/esModules/main/simple.kt");
+            }
+
+            @Test
+            @TestMetadata("suspendMain.kt")
+            public void testSuspendMain() throws Exception {
+                runTest("js/js.translator/testData/box/esModules/main/suspendMain.kt");
+            }
+
+            @Test
+            @TestMetadata("suspendMainNoArgs.kt")
+            public void testSuspendMainNoArgs() throws Exception {
+                runTest("js/js.translator/testData/box/esModules/main/suspendMainNoArgs.kt");
+            }
+
+            @Test
+            @TestMetadata("suspendMainThrows.kt")
+            public void testSuspendMainThrows() throws Exception {
+                runTest("js/js.translator/testData/box/esModules/main/suspendMainThrows.kt");
+            }
+
+            @Test
+            @TestMetadata("twoMains.kt")
+            public void testTwoMains() throws Exception {
+                runTest("js/js.translator/testData/box/esModules/main/twoMains.kt");
             }
         }
 
@@ -5249,6 +5407,12 @@ public class IrBoxJsES6TestGenerated extends AbstractIrBoxJsES6Test {
         }
 
         @Test
+        @TestMetadata("classInheritsJsNameFromOtherModule.kt")
+        public void testClassInheritsJsNameFromOtherModule() throws Exception {
+            runTest("js/js.translator/testData/box/inheritance/classInheritsJsNameFromOtherModule.kt");
+        }
+
+        @Test
         @TestMetadata("complexInitializationOrder.kt")
         public void testComplexInitializationOrder() throws Exception {
             runTest("js/js.translator/testData/box/inheritance/complexInitializationOrder.kt");
@@ -5282,6 +5446,12 @@ public class IrBoxJsES6TestGenerated extends AbstractIrBoxJsES6Test {
         @TestMetadata("fromNestedNativeClass.kt")
         public void testFromNestedNativeClass() throws Exception {
             runTest("js/js.translator/testData/box/inheritance/fromNestedNativeClass.kt");
+        }
+
+        @Test
+        @TestMetadata("inheritExtensionsWithSameNames.kt")
+        public void testInheritExtensionsWithSameNames() throws Exception {
+            runTest("js/js.translator/testData/box/inheritance/inheritExtensionsWithSameNames.kt");
         }
 
         @Test
@@ -7129,6 +7299,12 @@ public class IrBoxJsES6TestGenerated extends AbstractIrBoxJsES6Test {
         }
 
         @Test
+        @TestMetadata("compileTimeString.kt")
+        public void testCompileTimeString() throws Exception {
+            runTest("js/js.translator/testData/box/jsCode/compileTimeString.kt");
+        }
+
+        @Test
         @TestMetadata("constantExpression.kt")
         public void testConstantExpression() throws Exception {
             runTest("js/js.translator/testData/box/jsCode/constantExpression.kt");
@@ -8444,6 +8620,12 @@ public class IrBoxJsES6TestGenerated extends AbstractIrBoxJsES6Test {
         @TestMetadata("overloadMethodsWithSameParameterTypeName.kt")
         public void testOverloadMethodsWithSameParameterTypeName() throws Exception {
             runTest("js/js.translator/testData/box/nameClashes/overloadMethodsWithSameParameterTypeName.kt");
+        }
+
+        @Test
+        @TestMetadata("promiseThen.kt")
+        public void testPromiseThen() throws Exception {
+            runTest("js/js.translator/testData/box/nameClashes/promiseThen.kt");
         }
 
         @Test
@@ -10133,9 +10315,21 @@ public class IrBoxJsES6TestGenerated extends AbstractIrBoxJsES6Test {
         }
 
         @Test
+        @TestMetadata("kClassCompanion.kt")
+        public void testKClassCompanion() throws Exception {
+            runTest("js/js.translator/testData/box/reflection/kClassCompanion.kt");
+        }
+
+        @Test
         @TestMetadata("kClassIsInstance.kt")
         public void testKClassIsInstance() throws Exception {
             runTest("js/js.translator/testData/box/reflection/kClassIsInstance.kt");
+        }
+
+        @Test
+        @TestMetadata("kClassLambda.kt")
+        public void testKClassLambda() throws Exception {
+            runTest("js/js.translator/testData/box/reflection/kClassLambda.kt");
         }
 
         @Test
@@ -10166,6 +10360,12 @@ public class IrBoxJsES6TestGenerated extends AbstractIrBoxJsES6Test {
         @TestMetadata("kClassSimpleName.kt")
         public void testKClassSimpleName() throws Exception {
             runTest("js/js.translator/testData/box/reflection/kClassSimpleName.kt");
+        }
+
+        @Test
+        @TestMetadata("kClassSuspendFunction.kt")
+        public void testKClassSuspendFunction() throws Exception {
+            runTest("js/js.translator/testData/box/reflection/kClassSuspendFunction.kt");
         }
 
         @Test

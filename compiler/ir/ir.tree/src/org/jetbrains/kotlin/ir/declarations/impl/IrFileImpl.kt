@@ -16,6 +16,7 @@
 
 package org.jetbrains.kotlin.ir.declarations.impl
 
+import org.jetbrains.kotlin.descriptors.ModuleDescriptor
 import org.jetbrains.kotlin.descriptors.PackageFragmentDescriptor
 import org.jetbrains.kotlin.ir.IrFileEntry
 import org.jetbrains.kotlin.ir.ObsoleteDescriptorBasedAPI
@@ -25,6 +26,7 @@ import org.jetbrains.kotlin.ir.declarations.IrModuleFragment
 import org.jetbrains.kotlin.ir.declarations.MetadataSource
 import org.jetbrains.kotlin.ir.expressions.IrConstructorCall
 import org.jetbrains.kotlin.ir.symbols.IrFileSymbol
+import org.jetbrains.kotlin.ir.symbols.UnsafeDuringIrConstructionAPI
 import org.jetbrains.kotlin.ir.symbols.impl.IrFileSymbolImpl
 import org.jetbrains.kotlin.name.FqName
 
@@ -69,6 +71,16 @@ class IrFileImpl(
     override val packageFragmentDescriptor: PackageFragmentDescriptor
         get() = symbol.descriptor
 
+    @OptIn(ObsoleteDescriptorBasedAPI::class)
+    override val moduleDescriptor: ModuleDescriptor
+        get() {
+            return if (this::module.isInitialized)
+                module.descriptor
+            else
+                packageFragmentDescriptor.containingDeclaration
+        }
+
+    @UnsafeDuringIrConstructionAPI
     override val declarations: MutableList<IrDeclaration> = ArrayList()
 
     override var annotations: List<IrConstructorCall> = emptyList()

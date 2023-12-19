@@ -12,6 +12,9 @@ import com.intellij.openapi.vfs.impl.jar.CoreJarFileSystem
 import org.jetbrains.kotlin.analysis.decompiler.stub.file.ClsKotlinBinaryClassCache
 import org.jetbrains.kotlin.analysis.decompiler.stub.file.DummyFileAttributeService
 import org.jetbrains.kotlin.analysis.decompiler.stub.file.FileAttributeService
+import org.jetbrains.kotlin.cli.common.arguments.CommonCompilerArguments
+import org.jetbrains.kotlin.cli.common.arguments.K2JVMCompilerArguments
+import org.jetbrains.kotlin.cli.common.arguments.cliArgument
 import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment
 import org.jetbrains.kotlin.config.LanguageVersion
 import org.jetbrains.kotlin.test.*
@@ -56,12 +59,12 @@ abstract class AbstractDecompiledClassTest : KotlinTestWithEnvironment() {
 
     internal fun getClassFileToDecompile(testData: TestData, useStringTable: Boolean): VirtualFile {
         val extraOptions = buildList {
-            this.add("-Xallow-kotlin-package")
+            this.add(CommonCompilerArguments::allowKotlinPackage.cliArgument)
             if (useStringTable) {
-                this.add("-Xuse-type-table")
+                this.add(K2JVMCompilerArguments::useTypeTable.cliArgument)
             }
             this.addAll(testData.additionalCompilerOptions)
-            addAll(listOf("-language-version", getLanguageVersionToCompile().versionString))
+            addAll(listOf(CommonCompilerArguments::languageVersion.cliArgument, getLanguageVersionToCompile().versionString))
         }
         val library = CompilerTestUtil.compileJvmLibrary(
             src = testData.directory.toFile(),
@@ -144,9 +147,7 @@ internal data class TestData(
     companion object {
         fun createFromDirectory(directory: Path): TestData {
             val allFiles = Files.list(directory).collect(Collectors.toList())
-            val mainKotlinFile = allFiles.single { path: Path ->
-                path.name.replaceFirstChar { Character.toUpperCase(it) } == "${directory.name.removeSuffix("Kt")}.kt"
-            }
+            val mainKotlinFile = findMainTestKotlinFile(directory)
             val fileText = mainKotlinFile.readText()
             val jvmFileName = InTextDirectivesUtils.findStringWithPrefixes(fileText, "JVM_FILE_NAME:") ?: directory.name
             val additionalCompilerOptions = InTextDirectivesUtils.findListWithPrefixes(fileText, "// !LANGUAGE: ").map { "-XXLanguage:$it" }
@@ -179,3 +180,9 @@ internal data class TestData(
     }
 }
 
+fun findMainTestKotlinFile(directory: Path): Path {
+    val allFiles = Files.list(directory).collect(Collectors.toList())
+    return allFiles.singleOrNull { path: Path ->
+        path.name.replaceFirstChar { Character.toUpperCase(it) } == "${directory.name.removeSuffix("Kt")}.kt"
+    } ?: error("Test directory should contain a single primary kt source file")
+}

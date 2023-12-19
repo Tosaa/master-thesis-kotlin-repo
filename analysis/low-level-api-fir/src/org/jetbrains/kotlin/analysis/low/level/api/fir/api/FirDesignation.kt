@@ -8,11 +8,9 @@ package org.jetbrains.kotlin.analysis.low.level.api.fir.api
 import org.jetbrains.kotlin.analysis.low.level.api.fir.providers.nullableJavaSymbolProvider
 import org.jetbrains.kotlin.analysis.low.level.api.fir.sessions.LLFirLibraryOrLibrarySourceResolvableModuleSession
 import org.jetbrains.kotlin.analysis.low.level.api.fir.util.FirElementFinder
-import org.jetbrains.kotlin.analysis.low.level.api.fir.util.containingClass
+import org.jetbrains.kotlin.analysis.low.level.api.fir.util.containingClassId
 import org.jetbrains.kotlin.analysis.low.level.api.fir.util.getContainingFile
-import org.jetbrains.kotlin.fir.utils.exceptions.withFirEntry
-import org.jetbrains.kotlin.utils.exceptions.errorWithAttachment
-import org.jetbrains.kotlin.utils.exceptions.checkWithAttachment
+import org.jetbrains.kotlin.analysis.low.level.api.fir.util.isScriptDependentDeclaration
 import org.jetbrains.kotlin.analysis.utils.errors.requireIsInstance
 import org.jetbrains.kotlin.analysis.utils.errors.unexpectedElementError
 import org.jetbrains.kotlin.builtins.StandardNames
@@ -20,15 +18,18 @@ import org.jetbrains.kotlin.descriptors.Visibilities
 import org.jetbrains.kotlin.fir.*
 import org.jetbrains.kotlin.fir.declarations.*
 import org.jetbrains.kotlin.fir.declarations.synthetic.FirSyntheticProperty
+import org.jetbrains.kotlin.fir.declarations.synthetic.FirSyntheticPropertyAccessor
 import org.jetbrains.kotlin.fir.declarations.utils.isLocal
 import org.jetbrains.kotlin.fir.diagnostics.ConeDestructuringDeclarationsOnTopLevel
 import org.jetbrains.kotlin.fir.expressions.FirStatement
 import org.jetbrains.kotlin.fir.resolve.providers.firProvider
 import org.jetbrains.kotlin.fir.resolve.providers.symbolProvider
 import org.jetbrains.kotlin.fir.resolve.toSymbol
+import org.jetbrains.kotlin.fir.utils.exceptions.withFirEntry
 import org.jetbrains.kotlin.fir.visitors.FirVisitorVoid
 import org.jetbrains.kotlin.name.ClassId
-import org.jetbrains.kotlin.analysis.low.level.api.fir.util.isScriptDependentDeclaration
+import org.jetbrains.kotlin.utils.exceptions.checkWithAttachment
+import org.jetbrains.kotlin.utils.exceptions.errorWithAttachment
 
 class FirDesignationWithFile(
     path: List<FirRegularClass>,
@@ -44,6 +45,12 @@ class FirDesignationWithFile(
         if (includeTarget) yield(target)
     }
 }
+
+class FirDesignationWithScript(
+    path: List<FirRegularClass>,
+    target: FirElementWithResolveState,
+    val firScript: FirScript,
+): FirDesignation(path, target)
 
 open class FirDesignation(
     val path: List<FirRegularClass>,
@@ -99,7 +106,7 @@ private fun collectDesignationPath(target: FirElementWithResolveState): List<Fir
         }
 
         is FirAnonymousInitializer -> {
-            val containingClassId = target.containingClass().symbol.classId
+            val containingClassId = target.containingClassId()
             if (containingClassId.isLocal) return null
             return collectDesignationPathWithContainingClass(target, containingClassId)
         }
@@ -217,10 +224,6 @@ private fun collectDesignationPathWithTreeTraversal(target: FirDeclaration): Lis
 }
 
 private fun getTargetSession(target: FirDeclaration): FirSession {
-    if (target is FirSyntheticProperty) {
-        return getTargetSession(target.getter)
-    }
-
     if (target is FirCallableDeclaration) {
         val containingSymbol = target.containingClassLookupTag()?.toSymbol(target.moduleData.session)
         if (containingSymbol != null) {
@@ -275,6 +278,7 @@ fun FirElementWithResolveState.tryCollectDesignationWithFile(): FirDesignationWi
             FirDesignationWithFile(path = emptyList(), this, firFile)
         }
 
+        is FirSyntheticProperty, is FirSyntheticPropertyAccessor -> unexpectedElementError<FirElementWithResolveState>(this)
         is FirDeclaration -> {
             val scriptDesignation = scriptDesignation()
             if (scriptDesignation != null) return scriptDesignation

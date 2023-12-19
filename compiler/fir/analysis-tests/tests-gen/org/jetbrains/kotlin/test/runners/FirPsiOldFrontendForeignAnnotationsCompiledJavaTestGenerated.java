@@ -23,7 +23,7 @@ public class FirPsiOldFrontendForeignAnnotationsCompiledJavaTestGenerated extend
     public class Tests {
         @Test
         public void testAllFilesPresentInTests() throws Exception {
-            KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("compiler/testData/diagnostics/foreignAnnotationsTests/tests"), Pattern.compile("^(.+)\\.kt$"), Pattern.compile("^(.+)\\.(reversed|fir|ll)\\.kts?$"), true);
+            KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("compiler/testData/diagnostics/foreignAnnotationsTests/tests"), Pattern.compile("^(.+)\\.kt$"), Pattern.compile("^(.+)\\.(reversed|fir|ll)\\.kts?$"), true, "externalAnnotations");
         }
 
         @Test
@@ -217,6 +217,12 @@ public class FirPsiOldFrontendForeignAnnotationsCompiledJavaTestGenerated extend
                 }
 
                 @Test
+                @TestMetadata("expressionBodiedFunction.kt")
+                public void testExpressionBodiedFunction() throws Exception {
+                    runTest("compiler/testData/diagnostics/foreignAnnotationsTests/tests/jsr305/nullabilityWarnings/expressionBodiedFunction.kt");
+                }
+
+                @Test
                 @TestMetadata("localInference.kt")
                 public void testLocalInference() throws Exception {
                     runTest("compiler/testData/diagnostics/foreignAnnotationsTests/tests/jsr305/nullabilityWarnings/localInference.kt");
@@ -232,6 +238,12 @@ public class FirPsiOldFrontendForeignAnnotationsCompiledJavaTestGenerated extend
                 @TestMetadata("nullabilityNicknames.kt")
                 public void testNullabilityNicknames() throws Exception {
                     runTest("compiler/testData/diagnostics/foreignAnnotationsTests/tests/jsr305/nullabilityWarnings/nullabilityNicknames.kt");
+                }
+
+                @Test
+                @TestMetadata("override.kt")
+                public void testOverride() throws Exception {
+                    runTest("compiler/testData/diagnostics/foreignAnnotationsTests/tests/jsr305/nullabilityWarnings/override.kt");
                 }
 
                 @Test
@@ -679,9 +691,21 @@ public class FirPsiOldFrontendForeignAnnotationsCompiledJavaTestGenerated extend
                 }
 
                 @Test
+                @TestMetadata("DerivedAsNullableOrNotNull.kt")
+                public void testDerivedAsNullableOrNotNull() throws Exception {
+                    runTest("compiler/testData/diagnostics/foreignAnnotationsTests/java8Tests/jspecify/strictMode/DerivedAsNullableOrNotNull.kt");
+                }
+
+                @Test
                 @TestMetadata("IgnoreAnnotations.kt")
                 public void testIgnoreAnnotations() throws Exception {
                     runTest("compiler/testData/diagnostics/foreignAnnotationsTests/java8Tests/jspecify/strictMode/IgnoreAnnotations.kt");
+                }
+
+                @Test
+                @TestMetadata("interconnectedGenerics.kt")
+                public void testInterconnectedGenerics() throws Exception {
+                    runTest("compiler/testData/diagnostics/foreignAnnotationsTests/java8Tests/jspecify/strictMode/interconnectedGenerics.kt");
                 }
 
                 @Test
@@ -782,6 +806,12 @@ public class FirPsiOldFrontendForeignAnnotationsCompiledJavaTestGenerated extend
                 @TestMetadata("Defaults.kt")
                 public void testDefaults() throws Exception {
                     runTest("compiler/testData/diagnostics/foreignAnnotationsTests/java8Tests/jspecify/warnMode/Defaults.kt");
+                }
+
+                @Test
+                @TestMetadata("DerivedAsNullableOrNotNull.kt")
+                public void testDerivedAsNullableOrNotNull() throws Exception {
+                    runTest("compiler/testData/diagnostics/foreignAnnotationsTests/java8Tests/jspecify/warnMode/DerivedAsNullableOrNotNull.kt");
                 }
 
                 @Test
@@ -1175,6 +1205,12 @@ public class FirPsiOldFrontendForeignAnnotationsCompiledJavaTestGenerated extend
             @TestMetadata("methodWithTypeParameter.kt")
             public void testMethodWithTypeParameter() throws Exception {
                 runTest("compiler/testData/diagnostics/foreignAnnotationsTests/java8Tests/misc/methodWithTypeParameter.kt");
+            }
+
+            @Test
+            @TestMetadata("mutabilityAndNullabilityForWarning.kt")
+            public void testMutabilityAndNullabilityForWarning() throws Exception {
+                runTest("compiler/testData/diagnostics/foreignAnnotationsTests/java8Tests/misc/mutabilityAndNullabilityForWarning.kt");
             }
 
             @Test

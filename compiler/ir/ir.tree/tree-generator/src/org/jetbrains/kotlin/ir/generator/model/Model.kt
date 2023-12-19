@@ -5,148 +5,227 @@
 
 package org.jetbrains.kotlin.ir.generator.model
 
-import com.squareup.kotlinpoet.CodeBlock
-import org.jetbrains.kotlin.ir.generator.config.ElementConfig
-import org.jetbrains.kotlin.ir.generator.config.FieldConfig
-import org.jetbrains.kotlin.ir.generator.util.*
-import org.jetbrains.kotlin.utils.topologicalSort
+import org.jetbrains.kotlin.generators.tree.*
+import org.jetbrains.kotlin.generators.tree.ListField as AbstractListField
+import org.jetbrains.kotlin.ir.generator.BASE_PACKAGE
+import org.jetbrains.kotlin.ir.generator.IrTree
+import org.jetbrains.kotlin.ir.generator.elementBaseType
+import org.jetbrains.kotlin.utils.SmartPrinter
+import org.jetbrains.kotlin.generators.tree.ElementOrRef as GenericElementOrRef
+import org.jetbrains.kotlin.generators.tree.ElementRef as GenericElementRef
 
 class Element(
-    config: ElementConfig,
-    val name: String,
-    val packageName: String,
-    val params: List<TypeVariable>,
-    val fields: MutableList<Field>,
-    val additionalFactoryMethodParameters: MutableList<Field>,
-) {
-    var elementParents: List<ElementRef> = emptyList()
-    var otherParents: List<ClassRef<*>> = emptyList()
-    var visitorParent: ElementRef? = null
-    var transformerReturnType: Element? = null
-    val targetKind = config.typeKind
-    var kind: Kind? = null
-    val typeName
-        get() = elementName2typeName(name)
-    val allParents: List<ClassOrElementRef>
-        get() = elementParents + otherParents
-    var isLeaf = config.isForcedLeaf
-    val childrenOrderOverride: List<String>? = config.childrenOrderOverride
-    var walkableChildren: List<Field> = emptyList()
-    val transformableChildren get() = walkableChildren.filter { it.transformable }
+    name: String,
+    override val propertyName: String,
+    category: Category,
+) : AbstractElement<Element, Field, Nothing>(name) {
 
-    val visitFunName = "visit" + (config.visitorName ?: name).replaceFirstChar(Char::uppercaseChar)
-    val visitorParam = config.visitorParam ?: config.category.defaultVisitorParam
-    var accept = config.accept
-    val transform = config.transform
-    val transformByChildren = config.transformByChildren
-    val ownsChildren = config.ownsChildren
-    val generateIrFactoryMethod = config.generateIrFactoryMethod
-    val fieldsToSkipInIrFactoryMethod = config.fieldsToSkipInIrFactoryMethod
+    enum class Category(private val packageDir: String, val defaultVisitorParam: String) {
+        Expression("expressions", "expression"),
+        Declaration("declarations", "declaration"),
+        Other("", "element");
 
-    val generationCallback = config.generationCallback
-    val suppressPrint = config.suppressPrint
-    val propertyName = config.propertyName
-    val kDoc = config.kDoc
-    val additionalImports: List<Import> = config.additionalImports
+        val packageName: String get() = BASE_PACKAGE + if (packageDir.isNotEmpty()) ".$packageDir" else ""
+    }
+
+    override val packageName: String = category.packageName
+
+    override val elementParents = mutableListOf<ElementRef>()
+    override var otherParents: MutableList<ClassRef<*>> = mutableListOf()
+
+    override val params = mutableListOf<TypeVariable>()
+
+    override val fields = mutableSetOf<Field>()
+
+    val additionalIrFactoryMethodParameters = mutableListOf<Field>()
+    var generateIrFactoryMethod = category == Category.Declaration
+    val fieldsToSkipInIrFactoryMethod = hashSetOf<String>()
+
+    override val element: Element
+        get() = this
+
+    override val nullable: Boolean
+        get() = false
+
+    override val args: Map<NamedTypeParameterRef, TypeRef>
+        get() = emptyMap()
+
+    /**
+     * Allows to forcibly skip generation of the method for this element in visitors.
+     */
+    var generateVisitorMethod = true
+
+    override val parentInVisitor: Element?
+        get() {
+            if (!generateVisitorMethod) return null
+            return customParentInVisitor
+                ?: elementParents.singleOrNull { it.typeKind == TypeKind.Class }?.element
+                ?: IrTree.rootElement.takeIf { elementBaseType in otherParents }
+        }
+
+
+    var typeKind: TypeKind? = null
+        set(value) {
+            kind = when (value) {
+                TypeKind.Class -> ImplementationKind.AbstractClass
+                TypeKind.Interface -> ImplementationKind.Interface
+                null -> null
+            }
+            field = value
+        }
+
+    override var kind: ImplementationKind? = null
+
+    override val namePrefix: String
+        get() = "Ir"
+
+    /**
+     * Whether this element is semantically a leaf element in the hierarchy.
+     *
+     * This is set automatically by the [markLeaves] function for all true leaves, but can also be set manually to `true` if
+     * this element should be considered a leaf semantically.
+     *
+     * For example, we only generate [org.jetbrains.kotlin.ir.declarations.IrFactory] methods for leaf elements.
+     * If we want to generate a method for this element, but it has subclasses, it can be done by manually setting this property to `true`.
+     */
+    var isLeaf = false
+
+    override var childrenOrderOverride: List<String>? = null
+
+    override var visitorParameterName = category.defaultVisitorParam
+
+    var customHasAcceptMethod: Boolean? = null
+
+    override val hasAcceptMethod: Boolean
+        get() = customHasAcceptMethod ?: (isLeaf && parentInVisitor != null)
+
+
+    override var hasTransformMethod = false
+
+    override val hasAcceptChildrenMethod: Boolean
+        get() = hasAcceptOrTransformChildrenMethod(Element::walkableChildren)
+
+    override val hasTransformChildrenMethod: Boolean
+        get() = hasAcceptOrTransformChildrenMethod(Element::transformableChildren)
+
+    private fun hasAcceptOrTransformChildrenMethod(walkableOrTransformableChildren: Element.() -> List<Field>): Boolean {
+        if (!ownsChildren) return false
+        if (!isRootElement && walkableOrTransformableChildren().isEmpty()) return false
+        val atLeastOneParentHasAcceptOrTransformChildrenMethod = traverseParentsUntil { parent ->
+            parent != this && parent.hasAcceptOrTransformChildrenMethod(walkableOrTransformableChildren) && !parent.isRootElement
+        }
+        return !atLeastOneParentHasAcceptOrTransformChildrenMethod
+    }
+
+    var transformByChildren = false
+    var ownsChildren = true // If false, acceptChildren/transformChildren will NOT be generated.
+
+    var generationCallback: (context(ImportCollector) SmartPrinter.() -> Unit)? = null
+
+    override var kDoc: String? = null
+
+    val usedTypes = mutableListOf<Importable>()
 
     override fun toString() = name
 
-    enum class Kind(val typeKind: TypeKind) {
-        FinalClass(TypeKind.Class),
-        OpenClass(TypeKind.Class),
-        AbstractClass(TypeKind.Class),
-        SealedClass(TypeKind.Class),
-        Interface(TypeKind.Interface),
-        SealedInterface(TypeKind.Interface),
+    operator fun TypeVariable.unaryPlus() = apply {
+        params.add(this)
     }
 
-    companion object {
-        fun elementName2typeName(name: String) = "Ir" + name.replaceFirstChar(Char::uppercaseChar)
-    }
-
-    fun elementParentsRecursively(): List<ElementRef> {
-        val linkedSet = buildSet {
-            fun recurse(element: Element) {
-                addAll(element.elementParents)
-                element.elementParents.forEach { recurse(it.element) }
-            }
-            recurse(this@Element)
-        }
-        return topologicalSort(linkedSet) {
-            element.elementParents
-        }
-    }
-
-    fun allFieldsRecursively(): List<Field> {
-        val parentFields = elementParentsRecursively()
-            .reversed()
-            .flatMap { it.element.fields }
-        return (parentFields + fields)
-            .asReversed()
-            .distinctBy { it.name }
-            .asReversed()
+    operator fun Field.unaryPlus() = apply {
+        fields.add(this)
     }
 }
 
-data class ElementRef(
-    val element: Element,
-    override val args: Map<NamedTypeParameterRef, TypeRef> = emptyMap(),
-    override val nullable: Boolean = false,
-) : ParametrizedTypeRef<ElementRef, NamedTypeParameterRef>, ClassOrElementRef {
-    override fun copy(args: Map<NamedTypeParameterRef, TypeRef>) = ElementRef(element, args, nullable)
-    override fun copy(nullable: Boolean) = ElementRef(element, args, nullable)
-    override fun toString() = "${element.name}<${args}>"
-}
+typealias ElementRef = GenericElementRef<Element>
+typealias ElementOrRef = GenericElementOrRef<Element>
 
 sealed class Field(
-    config: FieldConfig,
-    val name: String,
-    val nullable: Boolean,
-    val mutable: Boolean,
-    val isChild: Boolean,
-) {
-    abstract val type: TypeRef
-    abstract val baseDefaultValue: CodeBlock?
-    abstract val baseGetter: CodeBlock?
-    var isOverride = false
-    var needsDescriptorApiAnnotation = false
-    abstract val transformable: Boolean
+    override val name: String,
+    override var isMutable: Boolean,
+) : AbstractField<Field>() {
+    var baseDefaultValue: String? = null
+    var baseGetter: String? = null
 
-    val useInIrFactoryStrategy = config.useFieldInIrFactoryStrategy
-    val kdoc = config.kdoc
+    sealed class UseFieldAsParameterInIrFactoryStrategy {
 
-    val printProperty = config.printProperty
-    val generationCallback = config.generationCallback
+        data object No : UseFieldAsParameterInIrFactoryStrategy()
 
-    override fun toString() = "$name: $type"
+        data class Yes(val defaultValue: String?) : UseFieldAsParameterInIrFactoryStrategy()
+    }
+
+    var customUseInIrFactoryStrategy: UseFieldAsParameterInIrFactoryStrategy? = null
+
+    val useInIrFactoryStrategy: UseFieldAsParameterInIrFactoryStrategy
+        get() = customUseInIrFactoryStrategy
+            ?: if (isChild && containsElement) {
+                UseFieldAsParameterInIrFactoryStrategy.No
+            } else {
+                UseFieldAsParameterInIrFactoryStrategy.Yes(null)
+            }
+
+    override val withGetter: Boolean
+        get() = baseGetter != null
+
+    override val defaultValueInImplementation: String?
+        get() = baseGetter ?: baseDefaultValue
+
+    override var customSetter: String? = null
+
+    override fun toString() = "$name: $typeRef"
+
+    override val isVolatile: Boolean
+        get() = false
+
+    override val isFinal: Boolean
+        get() = defaultValueInImplementation != null
+
+    override val isParameter: Boolean
+        get() = false
+
+    override fun copy() = internalCopy().also(::updateFieldsInCopy)
+
+    override fun updateFieldsInCopy(copy: Field) {
+        super.updateFieldsInCopy(copy)
+        copy.baseDefaultValue = baseDefaultValue
+        copy.baseGetter = baseGetter
+        copy.customUseInIrFactoryStrategy = customUseInIrFactoryStrategy
+        copy.customSetter = customSetter
+    }
+
+    protected abstract fun internalCopy(): Field
 }
 
 class SingleField(
-    config: FieldConfig,
     name: String,
-    override var type: TypeRef,
-    nullable: Boolean,
+    override var typeRef: TypeRefWithNullability,
     mutable: Boolean,
-    isChild: Boolean,
-    override val baseDefaultValue: CodeBlock?,
-    override val baseGetter: CodeBlock?,
-) : Field(config, name, nullable, mutable, isChild) {
-    override val transformable: Boolean
-        get() = mutable
+) : Field(name, mutable) {
+
+    override fun replaceType(newType: TypeRefWithNullability) =
+        SingleField(name, newType, isMutable).also(::updateFieldsInCopy)
+
+    override fun internalCopy() = SingleField(name, typeRef, isMutable)
 }
 
 class ListField(
-    config: FieldConfig,
     name: String,
-    var elementType: TypeRef,
-    private val listType: ClassRef<PositionTypeParameterRef>,
-    nullable: Boolean,
+    override var baseType: TypeRef,
+    private val isNullable: Boolean,
+    override val listType: ClassRef<PositionTypeParameterRef>,
     mutable: Boolean,
-    isChild: Boolean,
-    override val transformable: Boolean,
-    override val baseDefaultValue: CodeBlock?,
-    override val baseGetter: CodeBlock?,
-) : Field(config, name, nullable, mutable, isChild) {
-    override val type: TypeRef
-        get() = listType.withArgs(elementType)
+) : Field(name, mutable), AbstractListField {
+
+    override val typeRef: ClassRef<PositionTypeParameterRef>
+        get() = listType.withArgs(baseType).copy(isNullable)
+
+    override fun replaceType(newType: TypeRefWithNullability) = copy()
+
+    override fun internalCopy() = ListField(name, baseType, isNullable, listType, isMutable)
+
+    enum class Mutability {
+        Var,
+        MutableList,
+        Array
+    }
 }

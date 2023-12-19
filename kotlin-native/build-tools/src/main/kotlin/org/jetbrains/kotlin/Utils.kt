@@ -17,17 +17,16 @@ import org.jetbrains.kotlin.konan.properties.propertyList
 import org.jetbrains.kotlin.konan.properties.saveProperties
 import org.jetbrains.kotlin.konan.target.*
 import java.io.File
-import java.util.concurrent.TimeUnit
 import java.nio.file.Path
 import org.jetbrains.kotlin.konan.file.File as KFile
 import org.gradle.api.tasks.TaskProvider
-import java.util.*
 import kotlin.collections.HashSet
 
 /**
  * Copy-pasted from [org.jetbrains.kotlin.library.KLIB_PROPERTY_NATIVE_TARGETS]
  */
 private const val KLIB_PROPERTY_NATIVE_TARGETS = "native_targets"
+private const val KLIB_PROPERTY_COMPILER_VERSION = "compiler_version"
 
 //region Project properties.
 
@@ -48,9 +47,6 @@ val Project.testOutputRoot
 
 val Project.testOutputLocal
     get() = (findProperty("testOutputLocal") as File).toString()
-
-val Project.testOutputStdlib
-    get() = (findProperty("testOutputStdlib") as File).toString()
 
 val Project.testOutputFramework
     get() = (findProperty("testOutputFramework") as File).toString()
@@ -157,12 +153,6 @@ fun isSimulatorTarget(project: Project, target: KonanTarget): Boolean =
     project.platformManager.platform(target).targetTriple.isSimulator
 
 /**
- * Check that [target] is an Apple device.
- */
-fun supportsRunningTestsOnDevice(target: KonanTarget): Boolean =
-    target == KonanTarget.IOS_ARM32 || target == KonanTarget.IOS_ARM64
-
-/**
  * Creates a list of file paths to be compiled from the given [compile] list with regard to [exclude] list.
  */
 fun Project.getFilesToCompile(compile: List<String>, exclude: List<String>): List<String> {
@@ -213,14 +203,13 @@ private val Project.hasPlatformLibs: Boolean
         return false
     }
 
-private val Project.isCrossDist: Boolean
-    get() {
-        if (!isDefaultNativeHome) {
-            return File(buildDistribution(project.kotlinNativeDist.absolutePath).runtime(project.testTarget))
+private fun Project.isCrossDist(target: KonanTarget): Boolean {
+    if (!isDefaultNativeHome) {
+        return File(buildDistribution(project.kotlinNativeDist.absolutePath).runtime(target))
                 .exists()
-        }
-        return false
     }
+    return false
+}
 
 fun Task.dependsOnDist() {
     val target = project.testTarget
@@ -232,7 +221,7 @@ fun Task.dependsOnDist() {
             dependsOn(":kotlin-native:${target.name}CrossDist")
         }
     } else {
-        if (!project.isCrossDist) {
+        if (!project.isCrossDist(project.testTarget)) {
             dependsOn(":kotlin-native:${target.name}CrossDist")
         }
     }
@@ -246,7 +235,7 @@ fun Task.dependsOnCrossDist(target: KonanTarget) {
             dependsOn(":kotlin-native:${target.name}CrossDist")
         }
     } else {
-        if (!project.isCrossDist) {
+        if (!project.isCrossDist(target)) {
             dependsOn(":kotlin-native:${target.name}CrossDist")
         }
     }
@@ -297,22 +286,25 @@ fun Task.dependsOnKonanBuildingTask(artifact: String, target: KonanTarget) {
 @JvmOverloads
 fun compileSwift(
     project: Project, target: KonanTarget, sources: List<String>, options: List<String>,
-    output: Path, fullBitcode: Boolean = false
+    output: Path
 ) {
     val platform = project.platformManager.platform(target)
     assert(platform.configurables is AppleConfigurables)
     val configs = platform.configurables as AppleConfigurables
-    val compiler = configs.absoluteTargetToolchain + "/usr/bin/swiftc"
+    val compiler = with(configs.absoluteTargetToolchain) {
+        // This is a follow up to the change "Consolidate toolchain paths between platforms" (3aeca1956e1a)
+        // The absoluteTargetToolchain has started to include usr subdir, but the bootstrap version still has the old path without.
+        this + if (this.endsWith("/usr")) "/bin/swiftc" else "/usr/bin/swiftc"
+    }
 
     val swiftTarget = configs.targetTriple.withOSVersion(configs.osVersionMin).toString()
 
     val args = listOf("-sdk", configs.absoluteTargetSysRoot, "-target", swiftTarget) +
-            options + "-o" + output.toString() + sources +
-            if (fullBitcode) listOf("-embed-bitcode", "-Xlinker", "-bitcode_verify") else listOf("-embed-bitcode-marker")
+            options + "-o" + output.toString() + sources
 
     val (stdOut, stdErr, exitCode) = runProcess(
             executor = localExecutor(project), executable = compiler, args = args,
-            env = mapOf("DYLD_FALLBACK_FRAMEWORK_PATH" to configs.absoluteTargetToolchain + "/ExtraFrameworks")
+            env = mapOf("DYLD_FALLBACK_FRAMEWORK_PATH" to File(configs.absoluteTargetToolchain).parent + "/ExtraFrameworks")
     )
 
     println(
@@ -352,7 +344,7 @@ fun Project.mergeManifestsByTargets(source: File, destination: File) {
     val mismatchedProperties = (sourceProperties.keys + destinationProperties.keys)
         .asSequence()
         .map { it.toString() }
-        .filter { it != KLIB_PROPERTY_NATIVE_TARGETS }
+        .filterNot { it == KLIB_PROPERTY_NATIVE_TARGETS || it == KLIB_PROPERTY_COMPILER_VERSION }
         .sorted()
         .mapNotNull { propertyKey: String ->
             val sourceProperty: String? = sourceProperties.getProperty(propertyKey)
@@ -392,6 +384,10 @@ fun Project.mergeManifestsByTargets(source: File, destination: File) {
 
     destinationProperties[KLIB_PROPERTY_NATIVE_TARGETS] = mergedNativeTargets.joinToString(" ")
 
+    // Get KLIB_PROPERTY_COMPILER_VERSION source property and override the version
+    destinationProperties[KLIB_PROPERTY_COMPILER_VERSION] = sourceProperties.getProperty(KLIB_PROPERTY_COMPILER_VERSION)
+
+    // Now save the properties to the destination file
     destinationFile.saveProperties(destinationProperties)
 }
 

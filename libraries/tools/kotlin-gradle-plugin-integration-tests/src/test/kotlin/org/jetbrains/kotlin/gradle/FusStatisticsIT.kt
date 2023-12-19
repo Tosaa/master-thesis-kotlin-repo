@@ -6,6 +6,7 @@
 package org.jetbrains.kotlin.gradle
 
 import org.gradle.util.GradleVersion
+import org.jetbrains.kotlin.gradle.report.BuildReportType
 import org.jetbrains.kotlin.gradle.testbase.*
 import org.jetbrains.kotlin.gradle.util.replaceText
 import org.junit.jupiter.api.DisplayName
@@ -166,6 +167,28 @@ class FusStatisticsIT : KGPDaemonsBaseTest() {
         }
     }
 
+    @DisplayName("fus metric for multiproject")
+    @GradleTest
+    @GradleTestVersions(
+        additionalVersions = [TestVersions.Gradle.G_7_6, TestVersions.Gradle.G_8_0],
+    )
+    fun testFusStatisticsForMultiproject(gradleVersion: GradleVersion) {
+        project(
+            "incrementalMultiproject", gradleVersion,
+        ) {
+            //Collect metrics from BuildMetricsService also
+            build("compileKotlin", "-Pkotlin.session.logger.root.path=$projectPath",
+                  buildOptions = defaultBuildOptions.copy(buildReport = listOf(BuildReportType.FILE))) {
+                assertFileContains(
+                    fusStatisticsPath,
+                    "CONFIGURATION_IMPLEMENTATION_COUNT=2",
+                    "NUMBER_OF_SUBPROJECTS=2",
+                    "COMPILATIONS_COUNT=2"
+                )
+            }
+        }
+    }
+
     @DisplayName("general fields with configuration cache")
     @GradleTest
     @GradleTestVersions(
@@ -189,6 +212,28 @@ class FusStatisticsIT : KGPDaemonsBaseTest() {
                 "-Pkotlin.session.logger.root.path=$projectPath",
             ) {
                 assertConfigurationCacheReused()
+            }
+        }
+    }
+
+    @DisplayName("configuration type metrics")
+    @GradleTest
+    @GradleTestVersions(
+        additionalVersions = [TestVersions.Gradle.G_7_6, TestVersions.Gradle.G_8_0],
+    )
+    fun testConfigurationTypeFusMetrics(gradleVersion: GradleVersion) {
+        project("simpleProject", gradleVersion) {
+            build(
+                "compileKotlin",
+                "-Pkotlin.session.logger.root.path=$projectPath",
+            ) {
+                assertFileContains(
+                    fusStatisticsPath,
+                    "CONFIGURATION_COMPILE_ONLY_COUNT=1",
+                    "CONFIGURATION_API_COUNT=1",
+                    "CONFIGURATION_IMPLEMENTATION_COUNT=1",
+                    "CONFIGURATION_RUNTIME_ONLY_COUNT=1",
+                )
             }
         }
     }

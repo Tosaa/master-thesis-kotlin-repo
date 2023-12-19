@@ -1,6 +1,5 @@
-// TARGET_BACKEND: JVM_IR
-// TARGET_BACKEND: JS_IR
-// TARGET_BACKEND: NATIVE
+// DONT_TARGET_EXACT_BACKEND: JVM
+// DONT_TARGET_EXACT_BACKEND: JS
 
 // MODULE: lib
 // FILE: lib.kt
@@ -22,7 +21,7 @@ annotation class IntegerNumberValid(
 
 @Target(AnnotationTarget.CLASS)
 @Retention(AnnotationRetention.BINARY)
-annotation class AnnotationWithDefault(val str: String = "Str" <!EVALUATED("String")!>+ "ing"<!>)
+annotation class AnnotationWithDefault(val str: String = <!EVALUATED("String")!>"Str" + "ing"<!>)
 
 @AnnotationWithDefault()
 class A

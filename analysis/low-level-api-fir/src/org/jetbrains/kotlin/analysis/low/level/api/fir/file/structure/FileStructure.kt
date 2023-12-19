@@ -10,25 +10,25 @@ import com.intellij.psi.PsiErrorElement
 import com.intellij.psi.util.PsiTreeUtil
 import org.jetbrains.kotlin.analysis.low.level.api.fir.LLFirModuleResolveComponents
 import org.jetbrains.kotlin.analysis.low.level.api.fir.api.DiagnosticCheckerFilter
+import org.jetbrains.kotlin.analysis.low.level.api.fir.element.builder.canBePartOfParentDeclaration
 import org.jetbrains.kotlin.analysis.low.level.api.fir.element.builder.getNonLocalContainingOrThisDeclaration
+import org.jetbrains.kotlin.analysis.low.level.api.fir.util.codeFragment
 import org.jetbrains.kotlin.analysis.low.level.api.fir.util.errorWithFirSpecificEntries
 import org.jetbrains.kotlin.analysis.low.level.api.fir.util.findSourceByTraversingWholeTree
 import org.jetbrains.kotlin.analysis.low.level.api.fir.util.findSourceNonLocalFirDeclaration
 import org.jetbrains.kotlin.diagnostics.KtPsiDiagnostic
+import org.jetbrains.kotlin.fir.correspondingProperty
 import org.jetbrains.kotlin.fir.declarations.FirDanglingModifierList
 import org.jetbrains.kotlin.fir.declarations.FirFile
 import org.jetbrains.kotlin.fir.declarations.FirResolvePhase
+import org.jetbrains.kotlin.fir.declarations.impl.FirPrimaryConstructor
 import org.jetbrains.kotlin.fir.resolve.providers.firProvider
 import org.jetbrains.kotlin.fir.symbols.lazyResolveToPhase
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.isAncestor
-import java.util.concurrent.ConcurrentHashMap
-import org.jetbrains.kotlin.analysis.low.level.api.fir.element.builder.canBePartOfParentDeclaration
-import org.jetbrains.kotlin.analysis.low.level.api.fir.util.codeFragment
-import org.jetbrains.kotlin.fir.correspondingProperty
-import org.jetbrains.kotlin.fir.declarations.impl.FirPrimaryConstructor
 import org.jetbrains.kotlin.utils.exceptions.errorWithAttachment
 import org.jetbrains.kotlin.utils.exceptions.withPsiEntry
+import java.util.concurrent.ConcurrentHashMap
 
 internal class FileStructure private constructor(
     private val ktFile: KtFile,
@@ -49,7 +49,24 @@ internal class FileStructure private constructor(
 
     private val structureElements = ConcurrentHashMap<KtElement, FileStructureElement>()
 
+    /**
+     * Must be called only under write-lock.
+     *
+     * This method is responsible for "invalidation" of re-analyzable declarations.
+     *
+     * @see LLFirDeclarationModificationService
+     */
+    fun invalidateElement(element: KtElement) {
+        val container = getContainerKtElement(element)
+        structureElements.remove(container)
+    }
+
     fun getStructureElementFor(element: KtElement): FileStructureElement {
+        val container = getContainerKtElement(element)
+        return structureElements.getOrPut(container) { createStructureElement(container) }
+    }
+
+    private fun getContainerKtElement(element: KtElement): KtElement {
         val declaration = getStructureKtElement(element)
         val container: KtElement
         if (declaration != null) {
@@ -63,7 +80,7 @@ internal class FileStructure private constructor(
             }
         }
 
-        return getStructureElementForDeclaration(container)
+        return container
     }
 
     private fun getStructureKtElement(element: KtElement): KtDeclaration? {
@@ -72,7 +89,7 @@ internal class FileStructure private constructor(
         }
 
         val resultedContainer = when {
-            container is KtClassOrObject && container.isInsideSuperClassCall(element) -> {
+            container is KtClassOrObject && container.isPartOfSuperClassCall(element) -> {
                 container.primaryConstructor
             }
             else -> null
@@ -81,40 +98,24 @@ internal class FileStructure private constructor(
         return resultedContainer ?: container
     }
 
-    private fun KtClassOrObject.isInsideSuperClassCall(element: KtElement): Boolean {
+    private fun KtClassOrObject.isPartOfSuperClassCall(element: KtElement): Boolean {
         for (entry in superTypeListEntries) {
-            if (entry is KtSuperTypeCallEntry && entry.isAncestor(element, strict = false)) return true
+            if (entry !is KtSuperTypeCallEntry) continue
+
+            // the structure element for `KtTypeReference` inside super class call is class declaration and not primary constructor
+            val typeReferenceIsAncestor = entry.calleeExpression.typeReference?.isAncestor(element, strict = false) == true
+            if (typeReferenceIsAncestor) return false
+
+            // the structure element for `KtSuperTypeCallEntry` is primary constructor
+            if (entry.isAncestor(element, strict = false)) return true
         }
 
         return false
     }
 
-    private fun getStructureElementForDeclaration(declaration: KtElement): FileStructureElement {
-        val elementFromCache = structureElements[declaration]
-        if (elementFromCache == null) {
-            val newElement = createStructureElement(declaration)
-            return structureElements.putIfAbsent(declaration, newElement) ?: newElement
-        }
-
-        if (elementFromCache !is ReanalyzableStructureElement<*, *> || elementFromCache.isUpToDate()) {
-            return elementFromCache
-        }
-
-        val reanalyzedElement = elementFromCache.reanalyze()
-        return structureElements.merge(declaration, reanalyzedElement) { _, oldElement ->
-            if (oldElement === elementFromCache) {
-                reanalyzedElement
-            } else {
-                // Another thread already reanalyzed the declaration
-                oldElement
-            }
-        } ?: errorWithFirSpecificEntries(
-            "${reanalyzedElement::class.simpleName} for ${declaration::class.simpleName} is gone",
-            psi = declaration,
-        )
-    }
-
-    fun getAllDiagnosticsForFile(diagnosticCheckerFilter: DiagnosticCheckerFilter): Collection<KtPsiDiagnostic> {
+    fun getAllDiagnosticsForFile(diagnosticCheckerFilter: DiagnosticCheckerFilter): List<KtPsiDiagnostic> {
+        // TODO, KT-60799: Add a new FileStructure for file diagnostics
+        firFile.lazyResolveToPhase(FirResolvePhase.BODY_RESOLVE)
         val structureElements = getAllStructureElements()
         return buildList {
             collectDiagnosticsFromStructureElements(structureElements, diagnosticCheckerFilter)
@@ -142,7 +143,10 @@ internal class FileStructure private constructor(
             override fun visitDeclaration(dcl: KtDeclaration) {
                 val structureElement = getStructureElementFor(dcl)
                 structureElements += structureElement
-                if (structureElement !is ReanalyzableStructureElement<*, *>) {
+
+                // Go down only in the case of container declaration
+                val canHaveInnerStructure = dcl is KtClassOrObject || dcl is KtScript
+                if (canHaveInnerStructure) {
                     dcl.acceptChildren(this)
                 }
             }
@@ -173,20 +177,19 @@ internal class FileStructure private constructor(
 
         return FileElementFactory.createFileStructureElement(
             firDeclaration = firDeclaration,
-            ktDeclaration = declaration,
             firFile = firFile,
             moduleComponents = moduleComponents
         )
     }
 
-    private fun createDanglingModifierListStructure(container: KtElement): FileStructureElement {
+    private fun createDanglingModifierListStructure(container: KtModifierList): FileStructureElement {
         val firDanglingModifierList = container.findSourceByTraversingWholeTree(
             moduleComponents.firFileBuilder,
             firFile,
         ) as? FirDanglingModifierList ?: errorWithFirSpecificEntries("No dangling modifier found", psi = container)
 
         firDanglingModifierList.lazyResolveToPhase(FirResolvePhase.BODY_RESOLVE)
-        return DanglingTopLevelModifierListStructureElement(firFile, firDanglingModifierList, moduleComponents, container.containingKtFile)
+        return DeclarationStructureElement(firFile, firDanglingModifierList, moduleComponents)
     }
 
     private fun createStructureElement(container: KtElement): FileStructureElement = when {
@@ -194,21 +197,14 @@ internal class FileStructure private constructor(
             val firCodeFragment = firFile.codeFragment
             firCodeFragment.lazyResolveToPhase(FirResolvePhase.BODY_RESOLVE)
 
-            ReanalyzableCodeFragmentStructureElement(firFile, container, firCodeFragment.symbol, moduleComponents)
+            DeclarationStructureElement(firFile, firCodeFragment, moduleComponents)
         }
         container is KtFile -> {
             val firFile = moduleComponents.firFileBuilder.buildRawFirFileWithCaching(ktFile)
             firFile.lazyResolveToPhase(FirResolvePhase.IMPORTS)
+            firFile.annotationsContainer?.lazyResolveToPhase(FirResolvePhase.BODY_RESOLVE)
 
-            firFile.annotationsContainer?.let {
-                moduleComponents.firModuleLazyDeclarationResolver.lazyResolve(
-                    target = it,
-                    scopeSession = moduleComponents.scopeSessionProvider.getScopeSession(),
-                    FirResolvePhase.BODY_RESOLVE,
-                )
-            }
-
-            RootStructureElement(firFile, container, moduleComponents)
+            RootStructureElement(firFile, moduleComponents)
         }
         container is KtDeclaration -> createDeclarationStructure(container)
         container is KtModifierList && container.nextSibling is PsiErrorElement -> createDanglingModifierListStructure(container)

@@ -60,6 +60,9 @@ fun KGPBaseTest.project(
     projectPath.addDefaultBuildFiles()
     projectPath.enableCacheRedirector()
     projectPath.enableAndroidSdk()
+    if (buildOptions.languageVersion != null || buildOptions.languageApiVersion != null) {
+        projectPath.applyKotlinCompilerArgsPlugin()
+    }
 
     val gradleRunner = GradleRunner
         .create()
@@ -82,7 +85,8 @@ fun KGPBaseTest.project(
     addHeapDumpOptions.ifTrue { testProject.addHeapDumpOptions() }
     localRepoDir?.let { testProject.configureLocalRepository(localRepoDir) }
     if (buildJdk != null) testProject.setupNonDefaultJdk(buildJdk)
-    testProject.addKotlinCompilerArgumentsPlugin()
+
+    testProject.customizeProject()
 
     testProject.customizeProject()
 
@@ -155,6 +159,7 @@ fun TestProject.build(
     assertions: BuildResult.() -> Unit = {},
 ) {
     if (enableBuildScan) agreeToBuildScanService()
+    ensureKotlinCompilerArgumentsPluginAppliedCorrectly(buildOptions)
 
     val allBuildArguments = commonBuildSetup(
         buildArguments.toList(),
@@ -194,6 +199,7 @@ fun TestProject.buildAndFail(
     assertions: BuildResult.() -> Unit = {},
 ) {
     if (enableBuildScan) agreeToBuildScanService()
+    ensureKotlinCompilerArgumentsPluginAppliedCorrectly(buildOptions)
 
     val allBuildArguments = commonBuildSetup(
         buildArguments.toList(),
@@ -221,6 +227,14 @@ fun TestProject.buildAndFail(
 private fun BuildResult.additionalAssertions(buildOptions: BuildOptions) {
     if (buildOptions.warningMode != WarningMode.Fail) {
         assertDeprecationWarningsArePresent(buildOptions.warningMode)
+    }
+}
+
+private fun TestProject.ensureKotlinCompilerArgumentsPluginAppliedCorrectly(buildOptions: BuildOptions) {
+    if (this.buildOptions.languageVersion != null || this.buildOptions.languageApiVersion != null) return // plugin is applied
+    // plugin's not applied
+    check(buildOptions.languageVersion == null && buildOptions.languageApiVersion == null) {
+        "Kotlin language or API version passed on the build level, but the plugin wasn't applied"
     }
 }
 
@@ -305,12 +319,14 @@ open class GradleProject(
 
     fun classesDir(
         sourceSet: String = "main",
-        language: String = "kotlin",
-    ): Path = projectPath.resolve("build/classes/$language/$sourceSet/")
+        targetName: String? = null,
+        language: String = "kotlin"
+    ): Path = projectPath.resolve("build/classes/$language/${targetName.orEmpty()}/$sourceSet/")
 
     fun kotlinClassesDir(
         sourceSet: String = "main",
-    ): Path = classesDir(sourceSet, language = "kotlin")
+        targetName: String? = null
+    ): Path = classesDir(sourceSet, targetName, language = "kotlin")
 
     fun javaClassesDir(
         sourceSet: String = "main",
@@ -329,6 +345,9 @@ open class GradleProject(
     ): List<Path> = files.map { projectPath.relativize(it) }
 }
 
+/**
+ * You need at least [TestVersions.Gradle.G_7_0] for supporting environment variables with gradle runner
+ */
 @JvmInline
 value class EnvironmentalVariables @EnvironmentalVariablesOverride constructor(val environmentalVariables: Map<String, String> = emptyMap()) {
     @EnvironmentalVariablesOverride constructor(vararg environmentVariables: Pair<String, String>) : this(mapOf(*environmentVariables))
@@ -360,27 +379,6 @@ class TestProject(
     val environmentVariables: EnvironmentalVariables = EnvironmentalVariables(),
 ) : GradleProject(projectName, projectPath) {
     fun subProject(name: String) = GradleProject(name, projectPath.resolve(name))
-
-    fun addKotlinCompilerArgumentsPlugin() {
-        if (buildOptions.languageVersion != null || buildOptions.languageApiVersion != null) {
-            projectPath.toFile().walkTopDown().forEach { file ->
-                when {
-                    file.name.equals("build.gradle") -> file.modify {
-                        it.replaceFirst(
-                            "plugins {",
-                            "plugins {\nid \"org.jetbrains.kotlin.test.kotlin-compiler-args-properties\""
-                        )
-                    }
-                    file.name.equals("build.gradle.kts") -> file.modify {
-                        it.replaceFirst(
-                            "plugins {",
-                            "plugins {\nid(\"org.jetbrains.kotlin.test.kotlin-compiler-args-properties\")"
-                        )
-                    }
-                }
-            }
-        }
-    }
 
     /**
      * Includes another project as a submodule in the current project.
@@ -481,9 +479,21 @@ private fun TestProject.withBuildSummary(
 val konanDir get() = Paths.get(".").resolve("../../../build").resolve("konan-for-gradle-tests")
 
 /**
+ * This property is configured reade konan from specific directory, which in teamcity will be filled with k/n built from master.
+ * NOTE: On changing test konan dir location update related location in kotlin-teamcity-build repository
+ */
+val konanDir
+    get() =
+        System.getProperty("konanDataDirForIntegrationTests")?.let {
+            Paths.get(it)
+        } ?: Paths.get(".")
+            .resolve("../../../.kotlin")
+            .resolve("konan-for-gradle-tests")
+
+/**
  * On changing test kit dir location update related location in 'cleanTestKitCache' task.
  */
-private val testKitDir get() = Paths.get(".").resolve("build").resolve("testKitCache")
+internal val testKitDir get() = Paths.get(".").resolve("build").resolve("testKitCache")
 
 private val hashAlphabet: List<Char> = ('a'..'z') + ('A'..'Z') + ('0'..'9')
 private fun randomHash(length: Int = 15): String {
@@ -609,7 +619,6 @@ internal fun Path.enableAndroidSdk() {
     acceptAndroidSdkLicenses(androidSdk)
     applyAndroidTestFixes()
 }
-
 
 internal fun Path.enableCacheRedirector() {
     // Path relative to the current gradle module project dir

@@ -17,16 +17,43 @@ import org.jetbrains.kotlin.psi.KtElement
 import org.jetbrains.kotlin.psi.KtFile
 
 /**
- * The entry point into all frontend-related work. Has the following contracts:
- * - Should not be accessed from event dispatch thread
- * - Should not be accessed outside read action
- * - Should not be leaked outside read action it was created in
- * - To be sure that session is not leaked it is forbidden to store it in a variable, consider working with it only in [analyse] context
- * - All entities retrieved from analysis session should not be leaked outside the read action KtAnalysisSession was created in
+ * [KtAnalysisSession] is the entry point to all frontend-related work. It has the following contracts:
  *
- * To pass a symbol from one read action to another use [KtSymbolPointer] which can be created from a symbol by [KtSymbol.createPointer]
+ * - It should not be accessed from the event dispatch thread or outside a read action.
+ * - It should not be leaked outside the read action it was created in. To ensure that an analysis session isn't leaked, there are
+ *   additional conventions, explained further below.
+ * - All entities retrieved from an analysis session should not be leaked outside the read action the analysis session was created in.
  *
- * To create analysis session consider using [analyse]
+ * To pass a symbol from one read action to another, use [KtSymbolPointer], which can be created from a symbol by [KtSymbol.createPointer].
+ *
+ * To create a [KtAnalysisSession], please use [analyze] or one of its siblings.
+ *
+ * ### Conventions to avoid leakage
+ *
+ * It is crucial to avoid leaking the analysis session outside the read action it was created in, as the analysis session itself and all
+ * entities retrieved from it will become invalid. An analysis session also shouldn't be leaked from the [analyze] call it was created in.
+ *
+ * It is forbidden to store an analysis session in a variable, parameter, or property. From the [analyze] block which provides the analysis
+ * session, the analysis session should be passed to functions via context receivers. For example:
+ *
+ * ```kotlin
+ * context(KtAnalysisSession)
+ * fun foo() { ... }
+ * ```
+ *
+ * **Class context receivers** should not be used to pass analysis sessions. While a context receiver on a class will make the analysis
+ * session available in the constructor, it will also be captured by the class as a property. This behavior is easy to miss and a high risk
+ * for unintentional leakage. For example:
+ *
+ * ```kotlin
+ * // DO NOT DO THIS
+ * context(KtAnalysisSession)
+ * class Usage {
+ *     fun foo() {
+ *         // The `KtAnalysisSession` is available here.
+ *     }
+ * }
+ * ```
  */
 @OptIn(KtAnalysisApiInternals::class, KtAnalysisNonPublicApi::class)
 @Suppress("AnalysisApiMissingLifetimeCheck")
@@ -66,12 +93,19 @@ public abstract class KtAnalysisSession(final override val token: KtLifetimeToke
     KtSymbolProviderByJavaPsiMixIn,
     KtResolveExtensionInfoProviderMixIn,
     KtCompilerFacilityMixIn,
-    KtMetadataCalculatorMixIn {
+    KtMetadataCalculatorMixIn,
+    KtSubstitutorProviderMixIn {
 
     public abstract val useSiteModule: KtModule
 
     override val analysisSession: KtAnalysisSession get() = this
 
+    /**
+     * Creates a new [KtAnalysisSession] which depends on this analysis session, but additionally provides its own symbols derived from
+     * analyzing [elementToReanalyze].
+     *
+     * @see analyzeInDependedAnalysisSession
+     */
     public abstract fun createContextDependentCopy(originalKtFile: KtFile, elementToReanalyze: KtElement): KtAnalysisSession
 
     internal val smartCastProvider: KtSmartCastProvider get() = smartCastProviderImpl
@@ -186,6 +220,9 @@ public abstract class KtAnalysisSession(final override val token: KtLifetimeToke
     internal val typesCreator: KtTypeCreator
         get() = typesCreatorImpl
     protected abstract val typesCreatorImpl: KtTypeCreator
+
+    internal val substitutorProvider: KtSubstitutorProvider get() = substitutorProviderImpl
+    protected abstract val substitutorProviderImpl: KtSubstitutorProvider
 }
 
 public fun KtAnalysisSession.getModule(element: PsiElement): KtModule {

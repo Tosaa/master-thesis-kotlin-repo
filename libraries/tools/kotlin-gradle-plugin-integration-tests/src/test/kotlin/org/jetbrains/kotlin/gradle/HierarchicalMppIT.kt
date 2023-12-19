@@ -41,7 +41,7 @@ open class HierarchicalMppIT : KGPBaseTest() {
     fun testPublishedModules(gradleVersion: GradleVersion, @TempDir tempDir: Path) {
         val buildOptions = defaultBuildOptions.copy(logLevel = LogLevel.DEBUG)
 
-        publishThirdPartyLib(withGranularMetadata = false, gradleVersion = gradleVersion, localRepoDir = tempDir)
+        publishThirdPartyLib(withGranularMetadata = true, gradleVersion = gradleVersion, localRepoDir = tempDir)
 
         nativeProject(
             "my-lib-foo".withPrefix,
@@ -201,7 +201,7 @@ open class HierarchicalMppIT : KGPBaseTest() {
     @GradleTest
     @DisplayName("Dependencies in project should be correct with third-party library")
     fun testProjectDependencies(gradleVersion: GradleVersion, @TempDir tempDir: Path) {
-        publishThirdPartyLib(withGranularMetadata = false, gradleVersion = gradleVersion, localRepoDir = tempDir)
+        publishThirdPartyLib(withGranularMetadata = true, gradleVersion = gradleVersion, localRepoDir = tempDir)
 
         with(
             nativeProject(
@@ -281,7 +281,9 @@ open class HierarchicalMppIT : KGPBaseTest() {
                         "my-lib-bar-metadata-1.0-all.jar",
                         "third-party-lib-metadata-1.0.jar",
                         "kotlin-stdlib-${buildOptions.kotlinVersion}-all.jar",
-                        "kotlin-dom-api-compat-${buildOptions.kotlinVersion}.klib"
+                        "kotlin-dom-api-compat-${buildOptions.kotlinVersion}.klib",
+                        "kotlin-stdlib-js-${buildOptions.kotlinVersion}.klib",
+                        "kotlin-test-js-${buildOptions.kotlinVersion}.klib",
                     ).toSortedSet(),
                     transformedArtifacts().toSortedSet()
                 )
@@ -420,13 +422,13 @@ open class HierarchicalMppIT : KGPBaseTest() {
                 "META-INF/$MULTIPLATFORM_PROJECT_METADATA_JSON_FILE_NAME",
 
                 "commonMain/default/manifest",
-                "commonMain/default/linkdata/package_com.example/",
+                "commonMain/default/linkdata/package_com.example.foo/",
 
                 "jvmAndJsMain/default/manifest",
-                "jvmAndJsMain/default/linkdata/package_com.example/",
+                "jvmAndJsMain/default/linkdata/package_com.example.foo/",
 
                 "linuxAndJsMain/default/manifest",
-                "linuxAndJsMain/default/linkdata/package_com.example/"
+                "linuxAndJsMain/default/linkdata/package_com.example.foo/"
             )
 
             val parsedProjectStructureMetadata: KotlinProjectStructureMetadata = publishedMetadataJar.getProjectStructureMetadata()
@@ -526,7 +528,7 @@ open class HierarchicalMppIT : KGPBaseTest() {
             shouldNotInclude = listOf(
                 "my-lib-foo" to "jvmAndJsMain",
                 "my-lib-foo" to "linuxAndJsMain",
-                "third-party-lib-metadata-1.0" to ""
+                "third-party-lib-1.0" to "commonMain"
             )
         )
 
@@ -535,7 +537,7 @@ open class HierarchicalMppIT : KGPBaseTest() {
             shouldInclude = listOf(
                 "my-lib-foo" to "main",
                 "my-lib-foo" to "jvmAndJsMain",
-                "third-party-lib-metadata-1.0" to ""
+                "third-party-lib-1.0" to "commonMain"
             ),
             shouldNotInclude = listOf(
                 "my-lib-foo" to "linuxAndJsMain"
@@ -550,7 +552,7 @@ open class HierarchicalMppIT : KGPBaseTest() {
             ),
             shouldNotInclude = listOf(
                 "my-lib-foo" to "jvmAndJsMain",
-                "third-party-lib-metadata-1.0" to ""
+                "third-party-lib-1.0" to "commonMain"
             )
         )
     }
@@ -570,7 +572,7 @@ open class HierarchicalMppIT : KGPBaseTest() {
                 "my-lib-bar" to "linuxAndJsMain",
                 "my-lib-foo" to "jvmAndJsMain",
                 "my-lib-foo" to "linuxAndJsMain",
-                "third-party-lib-metadata-1.0" to ""
+                "third-party-lib-1.0" to "commonMain"
             )
         )
 
@@ -581,7 +583,7 @@ open class HierarchicalMppIT : KGPBaseTest() {
                 "my-lib-bar" to "jvmAndJsMain",
                 "my-lib-foo" to "main",
                 "my-lib-foo" to "jvmAndJsMain",
-                "third-party-lib-metadata-1.0" to ""
+                "third-party-lib-1.0" to "commonMain"
             ),
             shouldNotInclude = listOf(
                 "my-lib-bar" to "linuxAndJsMain",
@@ -600,7 +602,7 @@ open class HierarchicalMppIT : KGPBaseTest() {
             shouldNotInclude = listOf(
                 "my-lib-bar" to "jvmAndJsMain",
                 "my-lib-foo" to "jvmAndJsMain",
-                "third-party-lib-metadata-1.0" to ""
+                "third-party-lib-1.0" to "commonMain"
             )
         )
 
@@ -1239,9 +1241,8 @@ open class HierarchicalMppIT : KGPBaseTest() {
         }
     }
 
-    @Disabled("Disabled until kotlin-native fix from MR https://jetbrains.team/p/kt/reviews/12079/timeline is deployed and can be tested")
     @GradleTest
-    @DisplayName("K2: Check native stdlib is not shadowed by commonMain metadata")
+    @DisplayName("K2: Check native stdlib is not shadowed by commonMain stdlib metadata")
     fun testK2NativeStdlibConflict(gradleVersion: GradleVersion) {
         nativeProject("kt61430", gradleVersion, buildOptions = defaultBuildOptions.copyEnsuringK2()) {
             build("assemble")

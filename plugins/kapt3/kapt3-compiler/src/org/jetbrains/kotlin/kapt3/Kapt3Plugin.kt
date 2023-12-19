@@ -19,7 +19,6 @@ package org.jetbrains.kotlin.kapt3
 import com.intellij.mock.MockProject
 import com.intellij.openapi.project.Project
 import org.jetbrains.kotlin.analyzer.AnalysisResult
-import org.jetbrains.kotlin.base.kapt3.*
 import org.jetbrains.kotlin.cli.common.CLIConfigurationKeys
 import org.jetbrains.kotlin.cli.common.messages.MessageRenderer
 import org.jetbrains.kotlin.cli.common.messages.PrintingMessageCollector
@@ -41,10 +40,10 @@ import org.jetbrains.kotlin.extensions.StorageComponentContainerContributor
 import org.jetbrains.kotlin.kapt.cli.KaptCliOption
 import org.jetbrains.kotlin.kapt.cli.KaptCliOption.*
 import org.jetbrains.kotlin.kapt.cli.KaptCliOption.Companion.ANNOTATION_PROCESSING_COMPILER_PLUGIN_ID
-import org.jetbrains.kotlin.kapt3.base.Kapt
+import org.jetbrains.kotlin.kapt3.base.*
 import org.jetbrains.kotlin.kapt3.base.util.KaptLogger
+import org.jetbrains.kotlin.kapt3.base.util.doOpenInternalPackagesIfRequired
 import org.jetbrains.kotlin.kapt3.util.MessageCollectorBackedKaptLogger
-import org.jetbrains.kotlin.kapt3.util.doOpenInternalPackagesIfRequired
 import org.jetbrains.kotlin.platform.TargetPlatform
 import org.jetbrains.kotlin.platform.jvm.isJvm
 import org.jetbrains.kotlin.psi.KtFile
@@ -125,7 +124,7 @@ class Kapt3CommandLineProcessor : CommandLineProcessor {
             STRIP_METADATA_OPTION -> setFlag(KaptFlag.STRIP_METADATA, value)
             KEEP_KDOC_COMMENTS_IN_STUBS -> setFlag(KaptFlag.KEEP_KDOC_COMMENTS_IN_STUBS, value)
             USE_JVM_IR -> setFlag(KaptFlag.USE_JVM_IR, value)
-            USE_K2 -> setFlag(KaptFlag.USE_K2, value)
+            USE_K2 -> {}
 
             SHOW_PROCESSOR_STATS -> setFlag(KaptFlag.SHOW_PROCESSOR_STATS, value)
             DUMP_PROCESSOR_STATS -> processorsStatsReportFile = File(value)
@@ -169,11 +168,11 @@ class Kapt3CommandLineProcessor : CommandLineProcessor {
 @Suppress("DEPRECATION")
 class Kapt3ComponentRegistrar : ComponentRegistrar {
     override val supportsK2: Boolean
-        get() = false
+        get() = true
 
     override fun registerProjectComponents(project: MockProject, configuration: CompilerConfiguration) {
         val optionsBuilder = (configuration[KAPT_OPTIONS] ?: KaptOptions.Builder())
-        if (configuration.getBoolean(USE_FIR) || KaptFlag.USE_K2 in optionsBuilder.flags) return
+        if (configuration.getBoolean(USE_FIR)) return
 
         doOpenInternalPackagesIfRequired()
         val contentRoots = configuration[CLIConfigurationKeys.CONTENT_ROOTS] ?: emptyList()

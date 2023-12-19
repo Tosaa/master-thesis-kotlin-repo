@@ -8,8 +8,7 @@ package org.jetbrains.kotlin.gradle.plugin
 import org.gradle.api.Project
 import org.gradle.api.provider.Provider
 import org.gradle.util.GradleVersion
-import org.jetbrains.kotlin.cli.common.CompilerSystemProperties
-import org.jetbrains.kotlin.cli.common.toBooleanLenient
+import org.jetbrains.kotlin.compilerRunner.KotlinCompilerArgumentsLogLevel
 import org.jetbrains.kotlin.gradle.dsl.NativeCacheKind
 import org.jetbrains.kotlin.gradle.dsl.NativeCacheOrchestration
 import org.jetbrains.kotlin.gradle.dsl.jvm.JvmTargetValidationMode
@@ -18,8 +17,10 @@ import org.jetbrains.kotlin.gradle.plugin.KotlinJsCompilerType.Companion.jsCompi
 import org.jetbrains.kotlin.gradle.plugin.PropertiesProvider.PropertyNames.KOTLIN_ABI_SNAPSHOT
 import org.jetbrains.kotlin.gradle.plugin.PropertiesProvider.PropertyNames.KOTLIN_COMPILER_KEEP_INCREMENTAL_COMPILATION_CACHES_IN_MEMORY
 import org.jetbrains.kotlin.gradle.plugin.PropertiesProvider.PropertyNames.KOTLIN_COMPILER_USE_PRECISE_COMPILATION_RESULTS_BACKUP
+import org.jetbrains.kotlin.gradle.plugin.PropertiesProvider.PropertyNames.KOTLIN_CREATE_ARCHIVE_TASKS_FOR_CUSTOM_COMPILATIONS
 import org.jetbrains.kotlin.gradle.plugin.PropertiesProvider.PropertyNames.KOTLIN_CREATE_DEFAULT_MULTIPLATFORM_PUBLICATIONS
-import org.jetbrains.kotlin.gradle.plugin.PropertiesProvider.PropertyNames.KOTLIN_EXPERIMENTAL_TRY_K2
+import org.jetbrains.kotlin.gradle.plugin.PropertiesProvider.PropertyNames.KOTLIN_INCREMENTAL_USE_CLASSPATH_SNAPSHOT
+import org.jetbrains.kotlin.gradle.plugin.PropertiesProvider.PropertyNames.KOTLIN_EXPERIMENTAL_TRY_NEXT
 import org.jetbrains.kotlin.gradle.plugin.PropertiesProvider.PropertyNames.KOTLIN_INTERNAL_DIAGNOSTICS_SHOW_STACKTRACE
 import org.jetbrains.kotlin.gradle.plugin.PropertiesProvider.PropertyNames.KOTLIN_INTERNAL_DIAGNOSTICS_USE_PARSABLE_FORMATTING
 import org.jetbrains.kotlin.gradle.plugin.PropertiesProvider.PropertyNames.KOTLIN_JS_KARMA_BROWSERS
@@ -46,7 +47,6 @@ import org.jetbrains.kotlin.gradle.plugin.PropertiesProvider.PropertyNames.KOTLI
 import org.jetbrains.kotlin.gradle.plugin.PropertiesProvider.PropertyNames.KOTLIN_RUN_COMPILER_VIA_BUILD_TOOLS_API
 import org.jetbrains.kotlin.gradle.plugin.PropertiesProvider.PropertyNames.KOTLIN_STDLIB_DEFAULT_DEPENDENCY
 import org.jetbrains.kotlin.gradle.plugin.PropertiesProvider.PropertyNames.KOTLIN_STDLIB_JDK_VARIANTS_VERSION_ALIGNMENT
-import org.jetbrains.kotlin.gradle.plugin.PropertiesProvider.PropertyNames.KOTLIN_SUPPRESS_EXPERIMENTAL_IC_OPTIMIZATIONS_WARNING
 import org.jetbrains.kotlin.gradle.plugin.PropertiesProvider.PropertyNames.MPP_13X_FLAGS_SET_BY_PLUGIN
 import org.jetbrains.kotlin.gradle.plugin.diagnostics.KotlinToolingDiagnostics
 import org.jetbrains.kotlin.gradle.plugin.diagnostics.reportDiagnosticOncePerBuild
@@ -160,22 +160,15 @@ internal class PropertiesProvider private constructor(private val project: Proje
     val useClasspathSnapshot: Boolean
         get() {
             val reporter = KotlinBuildStatsService.getInstance()
-            // The feature should be controlled by a Gradle property.
-            // Currently, we also allow it to be controlled by a system property to make it easier to test the feature during development.
-            // TODO: Remove the system property later.
 
-            val gradleProperty = booleanProperty(CompilerSystemProperties.COMPILE_INCREMENTAL_WITH_ARTIFACT_TRANSFORM.property)
+            val gradleProperty = booleanProperty(KOTLIN_INCREMENTAL_USE_CLASSPATH_SNAPSHOT)
             if (gradleProperty != null) {
                 reporter?.report(StringMetrics.USE_CLASSPATH_SNAPSHOT, gradleProperty.toString())
                 return gradleProperty
+            } else {
+                reporter?.report(StringMetrics.USE_CLASSPATH_SNAPSHOT, "default-true")
+                return true
             }
-            val systemProperty = CompilerSystemProperties.COMPILE_INCREMENTAL_WITH_ARTIFACT_TRANSFORM.value?.toBooleanLenient()
-            if (systemProperty != null) {
-                reporter?.report(StringMetrics.USE_CLASSPATH_SNAPSHOT, systemProperty.toString())
-                return systemProperty
-            }
-            reporter?.report(StringMetrics.USE_CLASSPATH_SNAPSHOT, "default-true")
-            return true
         }
 
     val useKotlinAbiSnapshot: Boolean
@@ -227,9 +220,6 @@ internal class PropertiesProvider private constructor(private val project: Proje
 
     val wasmStabilityNoWarn: Boolean
         get() = booleanProperty("kotlin.wasm.stability.nowarn") ?: false
-
-    val jsCompilerNoWarn: Boolean
-        get() = booleanProperty("$jsCompilerProperty.nowarn") ?: false
 
     val ignoreDisabledNativeTargets: Boolean?
         get() = booleanProperty(KOTLIN_NATIVE_IGNORE_DISABLED_TARGETS)
@@ -286,7 +276,7 @@ internal class PropertiesProvider private constructor(private val project: Proje
      * Makes downloader search for bundles in maven repositories specified in the project.
      */
     val nativeDownloadFromMaven: Boolean
-        get() = this.booleanProperty("kotlin.native.distribution.downloadFromMaven") ?: false
+        get() = this.booleanProperty("kotlin.native.distribution.downloadFromMaven") ?: true
 
     /**
      * Allows a user to provide a local Kotlin/Native distribution instead of a downloaded one.
@@ -428,25 +418,10 @@ internal class PropertiesProvider private constructor(private val project: Proje
         get() = booleanProperty("kotlin.js.generate.externals")
 
     /**
-     * Use Kotlin/JS backend compiler type
-     */
-    val jsCompiler: KotlinJsCompilerType?
-        get() = this.property(jsCompilerProperty).orNull?.let { KotlinJsCompilerType.byArgumentOrNull(it) }
-
-    /**
      * Use Kotlin/JS backend compiler publishing attribute
      */
     val publishJsCompilerAttribute: Boolean
         get() = this.booleanProperty("$jsCompilerProperty.publish.attribute") ?: true
-
-    /**
-     * Use Kotlin/JS backend compiler type
-     */
-    val jsGenerateExecutableDefault: Boolean
-        get() = (booleanProperty("kotlin.js.generate.executable.default") ?: true).also {
-            KotlinBuildStatsService.getInstance()
-                ?.report(StringMetrics.JS_GENERATE_EXECUTABLE_DEFAULT, it.toString())
-        }
 
     val stdlibDefaultDependency: Boolean
         get() = booleanProperty(KOTLIN_STDLIB_DEFAULT_DEPENDENCY) ?: true
@@ -481,19 +456,19 @@ internal class PropertiesProvider private constructor(private val project: Proje
         get() = booleanProperty("kotlin.daemon.useFallbackStrategy") ?: true
 
     val preciseCompilationResultsBackup: Boolean
-        get() = booleanProperty(KOTLIN_COMPILER_USE_PRECISE_COMPILATION_RESULTS_BACKUP) ?: false
+        get() = booleanProperty(KOTLIN_COMPILER_USE_PRECISE_COMPILATION_RESULTS_BACKUP) ?: true
 
     /**
      * This property should be enabled together with [preciseCompilationResultsBackup]
      */
     val keepIncrementalCompilationCachesInMemory: Boolean
-        get() = booleanProperty(KOTLIN_COMPILER_KEEP_INCREMENTAL_COMPILATION_CACHES_IN_MEMORY) ?: false
-
-    val suppressExperimentalICOptimizationsWarning: Boolean
-        get() = booleanProperty(KOTLIN_SUPPRESS_EXPERIMENTAL_IC_OPTIMIZATIONS_WARNING) ?: false
+        get() = booleanProperty(KOTLIN_COMPILER_KEEP_INCREMENTAL_COMPILATION_CACHES_IN_MEMORY) ?: true
 
     val createDefaultMultiplatformPublications: Boolean
         get() = booleanProperty(KOTLIN_CREATE_DEFAULT_MULTIPLATFORM_PUBLICATIONS) ?: true
+
+    val createArchiveTasksForCustomCompilations: Boolean
+        get() = booleanProperty(KOTLIN_CREATE_ARCHIVE_TASKS_FOR_CUSTOM_COMPILATIONS) ?: false
 
     val runKotlinCompilerViaBuildToolsApi: Boolean
         get() = booleanProperty(KOTLIN_RUN_COMPILER_VIA_BUILD_TOOLS_API) ?: false
@@ -501,9 +476,9 @@ internal class PropertiesProvider private constructor(private val project: Proje
     val allowLegacyMppDependencies: Boolean
         get() = booleanProperty(KOTLIN_MPP_ALLOW_LEGACY_DEPENDENCIES) ?: false
 
-    val kotlinExperimentalTryK2: Provider<Boolean> = project.providers
+    val kotlinExperimentalTryNext: Provider<Boolean> = project.providers
         .provider<Boolean> {
-            booleanProperty(KOTLIN_EXPERIMENTAL_TRY_K2)
+            booleanProperty(KOTLIN_EXPERIMENTAL_TRY_NEXT)
         }
         .orElse(false)
 
@@ -539,11 +514,47 @@ internal class PropertiesProvider private constructor(private val project: Proje
     val konanDataDir: String?
         get() = property(PropertyNames.KONAN_DATA_DIR).orNull
 
+    /**
+     * Allows suppressing the diagnostic [KotlinToolingDiagnostics.BuildToolsApiVersionInconsistency].
+     * Required only for Kotlin repo bootstrapping.
+     */
+    val suppressBuildToolsApiVersionConsistencyChecks: Boolean
+        get() = booleanProperty(PropertyNames.KOTLIN_SUPPRESS_BUILD_TOOLS_API_VERSION_CONSISTENCY_CHECKS) ?: false
+
     private val propertiesBuildService = PropertiesBuildService.registerIfAbsent(project).get()
 
     internal fun property(propertyName: String): Provider<String> = propertiesBuildService.property(propertyName, project)
 
     internal fun get(propertyName: String): String? = propertiesBuildService.get(propertyName, project)
+
+    internal fun getProvider(propertyName: String): Provider<String> = propertiesBuildService.property(propertyName, project)
+
+    /**
+     * The directory where Kotlin global caches, logs, or project persistent data are stored.
+     *
+     * If the property is not set, the plugin will use `<user_home>/.kotlin` as default.
+     */
+    val kotlinUserHomeDir: String?
+        get() = get(PropertyNames.KOTLIN_USER_HOME_DIR)
+
+    /**
+     * The directory where Kotlin stores project-specific persistent caches.
+     *
+     * If the property is not set, the plugin will use `<project_dir>/.kotlin` as default.
+     */
+    val kotlinProjectPersistentDir: String?
+        get() = get(PropertyNames.KOTLIN_PROJECT_PERSISTENT_DIR)
+
+    /**
+     * Disable writing into `<project_dir>/.gradle` directory.
+     */
+    val kotlinProjectPersistentDirGradleDisableWrite: Boolean
+        get() = booleanProperty(PropertyNames.KOTLIN_PROJECT_PERSISTENT_DIR_GRADLE_DISABLE_WRITE) ?: false
+
+    val kotlinCompilerArgumentsLogLevel: Provider<KotlinCompilerArgumentsLogLevel>
+        get() = getProvider(PropertyNames.KOTLIN_COMPILER_ARGUMENTS_LOG_LEVEL)
+            .map { KotlinCompilerArgumentsLogLevel.fromPropertyValue(it) }
+            .orElse(KotlinCompilerArgumentsLogLevel.DEFAULT)
 
     /**
      * Retrieves a comma-separated list of browsers to use when running karma tests for [target]
@@ -556,7 +567,7 @@ internal class PropertiesProvider private constructor(private val project: Proje
     private fun propertyWithDeprecatedVariant(propName: String, deprecatedPropName: String): String? {
         val deprecatedProperty = get(deprecatedPropName)
         if (deprecatedProperty != null) {
-            project.reportDiagnosticOncePerBuild(KotlinToolingDiagnostics.DeprecatedPropertyWithReplacement(deprecatedProperty, propName))
+            project.reportDiagnosticOncePerBuild(KotlinToolingDiagnostics.DeprecatedPropertyWithReplacement(deprecatedPropName, propName))
         }
         return get(propName) ?: deprecatedProperty
     }
@@ -603,7 +614,8 @@ internal class PropertiesProvider private constructor(private val project: Proje
         val KOTLIN_MPP_HIERARCHICAL_STRUCTURE_SUPPORT = property("kotlin.mpp.hierarchicalStructureSupport")
         val KOTLIN_MPP_ANDROID_GRADLE_PLUGIN_COMPATIBILITY_NO_WARN = property("kotlin.mpp.androidGradlePluginCompatibility.nowarn")
         val KOTLIN_MPP_ANDROID_SOURCE_SET_LAYOUT_VERSION = property("kotlin.mpp.androidSourceSetLayoutVersion")
-        val KOTLIN_MPP_ANDROID_SOURCE_SET_LAYOUT_ANDROID_STYLE_NO_WARN = property("kotlin.mpp.androidSourceSetLayoutV2AndroidStyleDirs.nowarn")
+        val KOTLIN_MPP_ANDROID_SOURCE_SET_LAYOUT_ANDROID_STYLE_NO_WARN =
+            property("kotlin.mpp.androidSourceSetLayoutV2AndroidStyleDirs.nowarn")
         val KOTLIN_MPP_IMPORT_ENABLE_KGP_DEPENDENCY_RESOLUTION = property("kotlin.mpp.import.enableKgpDependencyResolution")
         val KOTLIN_MPP_IMPORT_ENABLE_SLOW_SOURCES_JAR_RESOLVER = property("kotlin.mpp.import.enableSlowSourcesJarResolver")
         val KOTLIN_MPP_ENABLE_INTRANSITIVE_METADATA_CONFIGURATION = property("kotlin.mpp.enableIntransitiveMetadataConfiguration")
@@ -620,28 +632,38 @@ internal class PropertiesProvider private constructor(private val project: Proje
         val KOTLIN_BUILD_REPORT_HTTP_URL = property("kotlin.build.report.http.url")
         val KOTLIN_OPTIONS_SUPPRESS_FREEARGS_MODIFICATION_WARNING = property("kotlin.options.suppressFreeCompilerArgsModificationWarning")
         val KOTLIN_NATIVE_USE_XCODE_MESSAGE_STYLE = property("kotlin.native.useXcodeMessageStyle")
+        val KOTLIN_INCREMENTAL_USE_CLASSPATH_SNAPSHOT = property("kotlin.incremental.useClasspathSnapshot")
         val KOTLIN_COMPILER_USE_PRECISE_COMPILATION_RESULTS_BACKUP = property("kotlin.compiler.preciseCompilationResultsBackup")
-        val KOTLIN_COMPILER_KEEP_INCREMENTAL_COMPILATION_CACHES_IN_MEMORY = property("kotlin.compiler.keepIncrementalCompilationCachesInMemory")
-        val KOTLIN_SUPPRESS_EXPERIMENTAL_IC_OPTIMIZATIONS_WARNING = property("kotlin.compiler.suppressExperimentalICOptimizationsWarning")
+        val KOTLIN_COMPILER_KEEP_INCREMENTAL_COMPILATION_CACHES_IN_MEMORY =
+            property("kotlin.compiler.keepIncrementalCompilationCachesInMemory")
         val KOTLIN_RUN_COMPILER_VIA_BUILD_TOOLS_API = property("kotlin.compiler.runViaBuildToolsApi")
         val KOTLIN_MPP_ALLOW_LEGACY_DEPENDENCIES = property("kotlin.mpp.allow.legacy.dependencies")
         val KOTLIN_PUBLISH_JVM_ENVIRONMENT_ATTRIBUTE = property("kotlin.publishJvmEnvironmentAttribute")
-        val KOTLIN_EXPERIMENTAL_TRY_K2 = property("kotlin.experimental.tryK2")
+        val KOTLIN_EXPERIMENTAL_TRY_NEXT = property("kotlin.experimental.tryNext")
         val KOTLIN_SUPPRESS_GRADLE_PLUGIN_WARNINGS = property("kotlin.suppressGradlePluginWarnings")
         val KOTLIN_NATIVE_IGNORE_DISABLED_TARGETS = property("kotlin.native.ignoreDisabledTargets")
         val KOTLIN_NATIVE_SUPPRESS_EXPERIMENTAL_ARTIFACTS_DSL_WARNING = property("kotlin.native.suppressExperimentalArtifactsDslWarning")
         val KONAN_DATA_DIR = property("konan.data.dir")
+        val KOTLIN_SUPPRESS_BUILD_TOOLS_API_VERSION_CONSISTENCY_CHECKS =
+            property("kotlin.internal.suppress.buildToolsApiVersionConsistencyChecks")
+        val KOTLIN_USER_HOME_DIR = property("kotlin.user.home")
+        val KOTLIN_PROJECT_PERSISTENT_DIR = property("kotlin.project.persistent.dir")
+        val KOTLIN_PROJECT_PERSISTENT_DIR_GRADLE_DISABLE_WRITE = property("kotlin.project.persistent.dir.gradle.disableWrite")
 
         /**
          * Internal properties: builds get big non-suppressible warning when such properties are used
          * See [org.jetbrains.kotlin.gradle.plugin.diagnostics.checkers.InternalGradlePropertiesUsageChecker]
          **/
         val KOTLIN_MPP_HIERARCHICAL_STRUCTURE_BY_DEFAULT = property("$KOTLIN_INTERNAL_NAMESPACE.mpp.hierarchicalStructureByDefault")
-        val KOTLIN_CREATE_DEFAULT_MULTIPLATFORM_PUBLICATIONS = property("$KOTLIN_INTERNAL_NAMESPACE.mpp.createDefaultMultiplatformPublications")
+        val KOTLIN_CREATE_DEFAULT_MULTIPLATFORM_PUBLICATIONS =
+            property("$KOTLIN_INTERNAL_NAMESPACE.mpp.createDefaultMultiplatformPublications")
         val KOTLIN_INTERNAL_DIAGNOSTICS_USE_PARSABLE_FORMATTING = property("$KOTLIN_INTERNAL_NAMESPACE.diagnostics.useParsableFormatting")
         val KOTLIN_INTERNAL_DIAGNOSTICS_SHOW_STACKTRACE = property("$KOTLIN_INTERNAL_NAMESPACE.diagnostics.showStacktrace")
         val KOTLIN_SUPPRESS_GRADLE_PLUGIN_ERRORS = property("$KOTLIN_INTERNAL_NAMESPACE.suppressGradlePluginErrors")
         val MPP_13X_FLAGS_SET_BY_PLUGIN = property("$KOTLIN_INTERNAL_NAMESPACE.mpp.13X.flags.setByPlugin")
+        val KOTLIN_CREATE_ARCHIVE_TASKS_FOR_CUSTOM_COMPILATIONS =
+            property("$KOTLIN_INTERNAL_NAMESPACE.mpp.createArchiveTasksForCustomCompilations")
+        val KOTLIN_COMPILER_ARGUMENTS_LOG_LEVEL = property("$KOTLIN_INTERNAL_NAMESPACE.compiler.arguments.log.level")
     }
 
     companion object {

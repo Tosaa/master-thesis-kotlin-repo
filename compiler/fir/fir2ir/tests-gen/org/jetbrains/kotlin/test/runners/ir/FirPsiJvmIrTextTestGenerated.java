@@ -161,6 +161,12 @@ public class FirPsiJvmIrTextTestGenerated extends AbstractFirPsiJvmIrTextTest {
         }
 
         @Test
+        @TestMetadata("fakeOverridesForAnyMembers.kt")
+        public void testFakeOverridesForAnyMembers() throws Exception {
+            runTest("compiler/testData/ir/irText/classes/fakeOverridesForAnyMembers.kt");
+        }
+
+        @Test
         @TestMetadata("fakeOverridesForJavaNonStaticMembers.kt")
         public void testFakeOverridesForJavaNonStaticMembers() throws Exception {
             runTest("compiler/testData/ir/irText/classes/fakeOverridesForJavaNonStaticMembers.kt");
@@ -284,6 +290,12 @@ public class FirPsiJvmIrTextTestGenerated extends AbstractFirPsiJvmIrTextTest {
         @TestMetadata("primaryConstructorWithSuperConstructorCall.kt")
         public void testPrimaryConstructorWithSuperConstructorCall() throws Exception {
             runTest("compiler/testData/ir/irText/classes/primaryConstructorWithSuperConstructorCall.kt");
+        }
+
+        @Test
+        @TestMetadata("privateInterface.kt")
+        public void testPrivateInterface() throws Exception {
+            runTest("compiler/testData/ir/irText/classes/privateInterface.kt");
         }
 
         @Test
@@ -496,12 +508,6 @@ public class FirPsiJvmIrTextTestGenerated extends AbstractFirPsiJvmIrTextTest {
         @TestMetadata("kt35550.kt")
         public void testKt35550() throws Exception {
             runTest("compiler/testData/ir/irText/declarations/kt35550.kt");
-        }
-
-        @Test
-        @TestMetadata("kt45308.kt")
-        public void testKt45308() throws Exception {
-            runTest("compiler/testData/ir/irText/declarations/kt45308.kt");
         }
 
         @Test
@@ -1571,6 +1577,12 @@ public class FirPsiJvmIrTextTestGenerated extends AbstractFirPsiJvmIrTextTest {
         }
 
         @Test
+        @TestMetadata("genericReceiverOnExtensionWithSmartcast.kt")
+        public void testGenericReceiverOnExtensionWithSmartcast() throws Exception {
+            runTest("compiler/testData/ir/irText/expressions/genericReceiverOnExtensionWithSmartcast.kt");
+        }
+
+        @Test
         @TestMetadata("identity.kt")
         public void testIdentity() throws Exception {
             runTest("compiler/testData/ir/irText/expressions/identity.kt");
@@ -1634,6 +1646,12 @@ public class FirPsiJvmIrTextTestGenerated extends AbstractFirPsiJvmIrTextTest {
         @TestMetadata("interfaceThisRef.kt")
         public void testInterfaceThisRef() throws Exception {
             runTest("compiler/testData/ir/irText/expressions/interfaceThisRef.kt");
+        }
+
+        @Test
+        @TestMetadata("intersectedSmartcastForExtensionReceiverWithSameConstructor.kt")
+        public void testIntersectedSmartcastForExtensionReceiverWithSameConstructor() throws Exception {
+            runTest("compiler/testData/ir/irText/expressions/intersectedSmartcastForExtensionReceiverWithSameConstructor.kt");
         }
 
         @Test
@@ -2000,6 +2018,18 @@ public class FirPsiJvmIrTextTestGenerated extends AbstractFirPsiJvmIrTextTest {
         @TestMetadata("simpleUnaryOperators.kt")
         public void testSimpleUnaryOperators() throws Exception {
             runTest("compiler/testData/ir/irText/expressions/simpleUnaryOperators.kt");
+        }
+
+        @Test
+        @TestMetadata("smartCastAside.kt")
+        public void testSmartCastAside() throws Exception {
+            runTest("compiler/testData/ir/irText/expressions/smartCastAside.kt");
+        }
+
+        @Test
+        @TestMetadata("smartCastAside2.kt")
+        public void testSmartCastAside2() throws Exception {
+            runTest("compiler/testData/ir/irText/expressions/smartCastAside2.kt");
         }
 
         @Test
@@ -2659,6 +2689,12 @@ public class FirPsiJvmIrTextTestGenerated extends AbstractFirPsiJvmIrTextTest {
         }
 
         @Test
+        @TestMetadata("delegatedSetterShouldBeSpecialized.kt")
+        public void testDelegatedSetterShouldBeSpecialized() throws Exception {
+            runTest("compiler/testData/ir/irText/firProblems/delegatedSetterShouldBeSpecialized.kt");
+        }
+
+        @Test
         @TestMetadata("DelegationAndInheritanceFromJava.kt")
         public void testDelegationAndInheritanceFromJava() throws Exception {
             runTest("compiler/testData/ir/irText/firProblems/DelegationAndInheritanceFromJava.kt");
@@ -2668,6 +2704,12 @@ public class FirPsiJvmIrTextTestGenerated extends AbstractFirPsiJvmIrTextTest {
         @TestMetadata("deprecated.kt")
         public void testDeprecated() throws Exception {
             runTest("compiler/testData/ir/irText/firProblems/deprecated.kt");
+        }
+
+        @Test
+        @TestMetadata("elvisOnBackingFieldInGetter.kt")
+        public void testElvisOnBackingFieldInGetter() throws Exception {
+            runTest("compiler/testData/ir/irText/firProblems/elvisOnBackingFieldInGetter.kt");
         }
 
         @Test
@@ -2737,6 +2779,12 @@ public class FirPsiJvmIrTextTestGenerated extends AbstractFirPsiJvmIrTextTest {
         }
 
         @Test
+        @TestMetadata("IntArrayAsVararg.kt")
+        public void testIntArrayAsVararg() throws Exception {
+            runTest("compiler/testData/ir/irText/firProblems/IntArrayAsVararg.kt");
+        }
+
+        @Test
         @TestMetadata("integerLiteralWithExpectedTypealiasType.kt")
         public void testIntegerLiteralWithExpectedTypealiasType() throws Exception {
             runTest("compiler/testData/ir/irText/firProblems/integerLiteralWithExpectedTypealiasType.kt");
@@ -2800,6 +2848,12 @@ public class FirPsiJvmIrTextTestGenerated extends AbstractFirPsiJvmIrTextTest {
         @TestMetadata("LocalSuspendFun.kt")
         public void testLocalSuspendFun() throws Exception {
             runTest("compiler/testData/ir/irText/firProblems/LocalSuspendFun.kt");
+        }
+
+        @Test
+        @TestMetadata("MissingFieldInJavaClass.kt")
+        public void testMissingFieldInJavaClass() throws Exception {
+            runTest("compiler/testData/ir/irText/firProblems/MissingFieldInJavaClass.kt");
         }
 
         @Test
@@ -2878,6 +2932,12 @@ public class FirPsiJvmIrTextTestGenerated extends AbstractFirPsiJvmIrTextTest {
         @TestMetadata("SimpleTypeMarker.kt")
         public void testSimpleTypeMarker() throws Exception {
             runTest("compiler/testData/ir/irText/firProblems/SimpleTypeMarker.kt");
+        }
+
+        @Test
+        @TestMetadata("substitutionOverrideWithDelegate.kt")
+        public void testSubstitutionOverrideWithDelegate() throws Exception {
+            runTest("compiler/testData/ir/irText/firProblems/substitutionOverrideWithDelegate.kt");
         }
 
         @Test

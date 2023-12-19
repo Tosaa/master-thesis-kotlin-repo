@@ -1,7 +1,6 @@
 // !LANGUAGE: +IntrinsicConstEvaluation
-// TARGET_BACKEND: JVM_IR
-// TARGET_BACKEND: JS_IR
-// TARGET_BACKEND: NATIVE
+// DONT_TARGET_EXACT_BACKEND: JVM
+// DONT_TARGET_EXACT_BACKEND: JS
 // WITH_STDLIB
 
 fun <T> T.id() = this
@@ -31,7 +30,7 @@ class A {
         val insideStringConcat = "${temp::b.<!EVALUATED("b")!>name<!>}"
 
         val complexExpression1 = A()::a.<!EVALUATED("a")!>name<!> + A()::b.<!EVALUATED("b")!>name<!>
-        val complexExpression2 = A::a.name <!EVALUATED("ab")!>+ A::b.name<!>
+        val complexExpression2 = <!EVALUATED("ab")!>A::a.name + A::b.name<!>
 
         var recursive = ::test.<!EVALUATED("test")!>name<!>
     }

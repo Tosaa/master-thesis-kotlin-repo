@@ -10,16 +10,24 @@ import org.jetbrains.kotlin.fir.declarations.FirConstructor
 import org.jetbrains.kotlin.fir.declarations.FirProperty
 import org.jetbrains.kotlin.fir.declarations.FirPropertyAccessor
 import org.jetbrains.kotlin.fir.expressions.FirReturnExpression
+import org.jetbrains.kotlin.ir.builders.Scope
 import org.jetbrains.kotlin.ir.declarations.*
+import org.jetbrains.kotlin.ir.symbols.*
 import org.jetbrains.kotlin.ir.util.isSetter
 import org.jetbrains.kotlin.ir.util.parentClassOrNull
+import org.jetbrains.kotlin.ir.util.render
+import org.jetbrains.kotlin.types.AbstractTypeChecker
 import org.jetbrains.kotlin.util.PrivateForInline
 
 @OptIn(PrivateForInline::class)
-class Fir2IrConversionScope {
+class Fir2IrConversionScope(val configuration: Fir2IrConfiguration) {
     @PublishedApi
     @PrivateForInline
     internal val parentStack = mutableListOf<IrDeclarationParent>()
+
+    @PublishedApi
+    @PrivateForInline
+    internal val scopeStack = mutableListOf<Scope>()
 
     @PublishedApi
     @PrivateForInline
@@ -27,28 +35,34 @@ class Fir2IrConversionScope {
 
     @PublishedApi
     @PrivateForInline
-    internal val currentlyGeneratedDelegatedConstructors = mutableMapOf<IrClass, IrConstructor>()
+    internal val currentlyGeneratedDelegatedConstructors = mutableMapOf<IrClassSymbol, IrConstructor>()
 
     inline fun <T : IrDeclarationParent, R> withParent(parent: T, f: T.() -> R): R {
         parentStack += parent
+        if (parent is IrDeclaration) {
+            scopeStack += Scope(parent.symbol)
+        }
         try {
             return parent.f()
         } finally {
+            if (parent is IrDeclaration) {
+                scopeStack.removeAt(scopeStack.size - 1)
+            }
             parentStack.removeAt(parentStack.size - 1)
         }
     }
 
     internal fun <T> forDelegatingConstructorCall(constructor: IrConstructor, irClass: IrClass, f: () -> T): T {
-        currentlyGeneratedDelegatedConstructors[irClass] = constructor
+        currentlyGeneratedDelegatedConstructors[irClass.symbol] = constructor
         try {
             return f()
         } finally {
-            currentlyGeneratedDelegatedConstructors.remove(irClass)
+            currentlyGeneratedDelegatedConstructors.remove(irClass.symbol)
         }
     }
 
-    fun getConstructorForCurrentlyGeneratedDelegatedConstructor(itClass: IrClass): IrConstructor? =
-        currentlyGeneratedDelegatedConstructors[itClass]
+    fun getConstructorForCurrentlyGeneratedDelegatedConstructor(itClassSymbol: IrClassSymbol): IrConstructor? =
+        currentlyGeneratedDelegatedConstructors[itClassSymbol]
 
     fun containingFileIfAny(): IrFile? = parentStack.getOrNull(0) as? IrFile
 
@@ -63,14 +77,45 @@ class Fir2IrConversionScope {
 
     fun parentFromStack(): IrDeclarationParent = parentStack.last()
 
-    fun parentAccessorOfPropertyFromStack(property: IrProperty): IrSimpleFunction? {
+    fun scope(): Scope = scopeStack.last()
+
+    fun parentAccessorOfPropertyFromStack(propertySymbol: IrPropertySymbol): IrSimpleFunction {
+        // It is safe to access an owner of property symbol here, because this function may be called
+        // only from property accessor of corresponding property
+        // We inside accessor -> accessor is built -> property is built
+        @OptIn(UnsafeDuringIrConstructionAPI::class)
+        val property = propertySymbol.owner
         for (parent in parentStack.asReversed()) {
             when (parent) {
-                property.getter -> return property.getter
-                property.setter -> return property.setter
+                property.getter -> return parent as IrSimpleFunction
+                property.setter -> return parent as IrSimpleFunction
             }
         }
-        return null
+        error("Accessor of property ${property.render()} not found on parent stack")
+    }
+
+    @Suppress("INVISIBLE_REFERENCE", "INVISIBLE_MEMBER")
+    inline fun <reified D : IrDeclaration> findDeclarationInParentsStack(symbol: IrSymbol): @kotlin.internal.NoInfer D {
+        // This is an unsafe fast path for production
+        if (!AbstractTypeChecker.RUN_SLOW_ASSERTIONS) {
+            @OptIn(UnsafeDuringIrConstructionAPI::class)
+            return symbol.owner as D
+        }
+        // With slow assertions the following code guarantees that taking owner from symbol is safe
+        for (parent in parentStack.asReversed()) {
+            if ((parent as? IrDeclaration)?.symbol == symbol) {
+                return parent as D
+            }
+        }
+        /*
+         * In case of IDE (when allowNonCachedDeclarations is set to true) we may be in scope of some already compiled class,
+         *   for which we have Fir2IrLazyClass in symbol
+         */
+        if (configuration.allowNonCachedDeclarations) {
+            @OptIn(UnsafeDuringIrConstructionAPI::class)
+            return symbol.owner as D
+        }
+        error("Declaration with symbol $symbol is not found in parents stack")
     }
 
     fun <T : IrDeclaration> applyParentFromStackTo(declaration: T): T {
@@ -145,28 +190,29 @@ class Fir2IrConversionScope {
         }
     }
 
-    fun returnTarget(expression: FirReturnExpression, declarationStorage: Fir2IrDeclarationStorage): IrFunction {
+    fun returnTarget(expression: FirReturnExpression, declarationStorage: Fir2IrDeclarationStorage): IrFunctionSymbol {
         val irTarget = when (val firTarget = expression.target.labeledElement) {
-            is FirConstructor -> declarationStorage.getCachedIrConstructor(firTarget)
+            is FirConstructor -> declarationStorage.getCachedIrConstructorSymbol(firTarget)
             is FirPropertyAccessor -> {
-                var answer: IrFunction? = null
+                var answer: IrFunctionSymbol? = null
                 for ((property, firProperty) in propertyStack.asReversed()) {
                     if (firProperty?.getter === firTarget) {
-                        answer = property.getter
+                        answer = property.getter?.symbol
                     } else if (firProperty?.setter === firTarget) {
-                        answer = property.setter
+                        answer = property.setter?.symbol
                     }
                 }
                 answer
             }
-            else -> declarationStorage.getCachedIrFunction(firTarget)
+            else -> declarationStorage.getCachedIrFunctionSymbol(firTarget)
         }
         for (potentialTarget in functionStack.asReversed()) {
-            if (potentialTarget == irTarget) {
-                return potentialTarget
+            val targetSymbol = potentialTarget.symbol
+            if (targetSymbol == irTarget) {
+                return targetSymbol
             }
         }
-        return functionStack.last()
+        return functionStack.last().symbol
     }
 
     fun parent(): IrDeclarationParent? = parentStack.lastOrNull()

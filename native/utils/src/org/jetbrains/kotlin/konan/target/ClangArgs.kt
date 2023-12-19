@@ -43,9 +43,6 @@ sealed class ClangArgs(
                     "WINDOWS".takeIf { target.family == Family.MINGW },
                     "MACOSX".takeIf { target.family == Family.OSX },
 
-                    "NO_THREADS".takeUnless { target.supportsThreads() },
-                    "NO_EXCEPTIONS".takeUnless { target.supportsExceptions() },
-                    "NO_MEMMEM".takeUnless { target.suportsMemMem() },
                     "NO_64BIT_ATOMIC".takeUnless { target.supports64BitAtomics() },
                     "NO_UNALIGNED_ACCESS".takeUnless { target.supportsUnalignedAccess() },
                     "FORBID_BUILTIN_MUL_OVERFLOW".takeUnless { target.supports64BitMulOverflow() },
@@ -55,8 +52,8 @@ sealed class ClangArgs(
                     "HAS_UIKIT_FRAMEWORK".takeIf { target.hasUIKitFramework() },
                     "REPORT_BACKTRACE_TO_IOS_CRASH_LOG".takeIf { target.supportsIosCrashLog() },
                     "NEED_SMALL_BINARY".takeIf { target.needSmallBinary() },
-                    "TARGET_HAS_ADDRESS_DEPENDENCY".takeIf { target.hasAddressDependencyInMemoryModel() },
                     "SUPPORTS_GRAND_CENTRAL_DISPATCH".takeIf { target.supportsGrandCentralDispatch },
+                    "SUPPORTS_SIGNPOSTS".takeIf { target.supportsSignposts },
             ).map { "KONAN_$it=1" }
             val otherOptions = listOfNotNull(
                     "USE_ELF_SYMBOLS=1".takeIf { target.binaryFormat() == BinaryFormat.ELF },
@@ -71,17 +68,10 @@ sealed class ClangArgs(
                     // so just undefine it.
                     "NS_FORMAT_ARGUMENT(A)=".takeIf { target.family.isAppleFamily },
             )
-            val customOptions = target.customArgsForKonanSources()
-            return (konanOptions + otherOptions + customOptions).map { "-D$it" }
+            return (konanOptions + otherOptions).map { "-D$it" }
         }
 
-    private val binDir = when (HostManager.host) {
-        KonanTarget.LINUX_X64 -> "$absoluteTargetToolchain/bin"
-        KonanTarget.MINGW_X64 -> "$absoluteTargetToolchain/bin"
-        KonanTarget.MACOS_X64,
-        KonanTarget.MACOS_ARM64 -> "$absoluteTargetToolchain/usr/bin"
-        else -> throw TargetSupportException("Unexpected host platform")
-    }
+    private val binDir = "$absoluteTargetToolchain/bin"
     // TODO: Use buildList
     private val commonClangArgs: List<String> = mutableListOf<List<String>>().apply {
         // Currently, MinGW toolchain contains old LLVM 8, and -fuse-ld=lld picks linker from there.

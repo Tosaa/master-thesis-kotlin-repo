@@ -10,15 +10,13 @@ import org.jetbrains.kotlin.ir.symbols.FqNameEqualityChecker
 import org.jetbrains.kotlin.ir.symbols.IrClassifierSymbol
 import org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol
 import org.jetbrains.kotlin.ir.types.*
-import org.jetbrains.kotlin.utils.compactIfPossible
+import org.jetbrains.kotlin.ir.util.render
 import org.jetbrains.kotlin.types.KotlinType
 import org.jetbrains.kotlin.types.Variance
+import org.jetbrains.kotlin.types.model.CaptureStatus
+import org.jetbrains.kotlin.utils.compactIfPossible
 
 abstract class IrAbstractSimpleType(kotlinType: KotlinType?) : IrSimpleType(kotlinType) {
-
-    override val variance: Variance
-        get() = Variance.INVARIANT
-
     abstract override val classifier: IrClassifierSymbol
     abstract override val nullability: SimpleTypeNullability
     abstract override val arguments: List<IrTypeArgument>
@@ -93,30 +91,62 @@ class IrSimpleTypeBuilder {
     var arguments: List<IrTypeArgument> = emptyList()
     var annotations: List<IrConstructorCall> = emptyList()
     var abbreviation: IrTypeAbbreviation? = null
-    var variance = Variance.INVARIANT
+
+    var captureStatus: CaptureStatus? = null
+    var capturedLowerType: IrType? = null
+    var capturedTypeConstructor: IrCapturedType.Constructor? = null
 }
 
-fun IrSimpleType.toBuilder() =
+fun IrSimpleType.toBuilder(): IrSimpleTypeBuilder =
     IrSimpleTypeBuilder().also { b ->
         b.kotlinType = originalKotlinType
-        b.classifier = classifier
+        if (this is IrCapturedType) {
+            b.captureStatus = captureStatus
+            b.capturedLowerType = lowerType
+            b.capturedTypeConstructor = constructor
+        } else {
+            b.classifier = classifier
+        }
         b.nullability = nullability
         b.arguments = arguments
         b.annotations = annotations
         b.abbreviation = abbreviation
     }
 
-fun IrSimpleTypeBuilder.buildSimpleType() =
-    IrSimpleTypeImpl(
-        kotlinType,
-        classifier ?: throw AssertionError("Classifier not provided"),
-        nullability,
-        arguments.compactIfPossible(),
-        annotations.compactIfPossible(),
-        abbreviation
-    )
+fun IrSimpleTypeBuilder.buildSimpleType(): IrSimpleType =
+    if (classifier == null) {
+        check(captureStatus != null && capturedTypeConstructor != null) {
+            "Neither classifier nor captured type constructor is provided"
+        }
+        check(arguments.isEmpty()) {
+            "Arguments should be empty when creating a captured type: ${capturedTypeConstructor?.argument?.render()}"
+        }
+        IrCapturedType(
+            captureStatus!!,
+            capturedLowerType,
+            capturedTypeConstructor!!.argument,
+            capturedTypeConstructor!!.typeParameter,
+            nullability,
+            annotations.compactIfPossible(),
+            abbreviation,
+        ).apply {
+            constructor.initSuperTypes(capturedTypeConstructor!!.superTypes)
+        }
+    } else {
+        check(captureStatus == null && capturedTypeConstructor == null) {
+            "Both classifier and captured type constructor are provided"
+        }
+        IrSimpleTypeImpl(
+            kotlinType,
+            classifier ?: throw AssertionError("Classifier not provided"),
+            nullability,
+            arguments.compactIfPossible(),
+            annotations.compactIfPossible(),
+            abbreviation
+        )
+    }
 
-fun IrSimpleTypeBuilder.buildTypeProjection() =
+fun IrSimpleTypeBuilder.buildTypeProjection(variance: Variance): IrTypeProjection =
     if (variance == Variance.INVARIANT)
         buildSimpleType()
     else
@@ -140,12 +170,11 @@ fun makeTypeProjection(type: IrType, variance: Variance): IrTypeProjection =
     when {
         type is IrCapturedType -> IrTypeProjectionImpl(type, variance)
         type is IrTypeProjection && type.variance == variance -> type
-        type is IrSimpleType -> type.toBuilder().apply { this.variance = variance }.buildTypeProjection()
+        type is IrSimpleType -> type.toBuilder().buildTypeProjection(variance)
         type is IrDynamicType -> IrDynamicTypeImpl(null, type.annotations, variance)
         type is IrErrorType -> IrErrorTypeImpl(null, type.annotations, variance)
         else -> IrTypeProjectionImpl(type, variance)
     }
-
 
 fun makeTypeIntersection(types: List<IrType>): IrType =
     with(types.map { makeTypeProjection(it, Variance.INVARIANT).type }.distinct()) {

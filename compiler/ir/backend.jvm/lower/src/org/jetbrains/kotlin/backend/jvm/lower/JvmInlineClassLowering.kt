@@ -381,8 +381,8 @@ internal class JvmInlineClassLowering(context: JvmBackendContext) : JvmValueClas
         get() {
             if (!isSingleFieldValueClass) return false
             // Before version 1.4, we cannot rely on the Result.equals-impl0 method
-            return fqNameWhenAvailable != StandardNames.RESULT_FQ_NAME ||
-                    context.state.languageVersionSettings.apiVersion >= ApiVersion.KOTLIN_1_4
+            return !isClassWithFqName(StandardNames.RESULT_FQ_NAME) ||
+                    context.config.languageVersionSettings.apiVersion >= ApiVersion.KOTLIN_1_4
         }
 
     override fun visitGetField(expression: IrGetField): IrExpression {

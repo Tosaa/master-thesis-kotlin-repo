@@ -5,69 +5,48 @@
 
 package org.jetbrains.kotlin.fir.tree.generator.model
 
-import org.jetbrains.kotlin.fir.tree.generator.context.AbstractFirTreeBuilder
-import org.jetbrains.kotlin.fir.tree.generator.context.type
-import org.jetbrains.kotlin.fir.tree.generator.printer.typeWithArguments
+import org.jetbrains.kotlin.generators.tree.*
 
 // ----------- Simple field -----------
 
-fun field(name: String, type: String, packageName: String?, customType: Importable? = null, nullable: Boolean = false, withReplace: Boolean = false): Field {
-    return SimpleField(name, type, packageName, customType, nullable, withReplace)
+fun field(name: String, type: TypeRefWithNullability, nullable: Boolean = false, withReplace: Boolean = false): Field {
+    return SimpleField(name, type.copy(nullable), withReplace)
 }
 
-fun field(name: String, type: Type, nullable: Boolean = false, withReplace: Boolean = false): Field {
-    return SimpleField(name, type.typeWithArguments, type.packageName, null, nullable, withReplace)
-}
-
-fun field(name: String, typeWithArgs: Pair<Type, List<Importable>>, nullable: Boolean = false, withReplace: Boolean = false): Field {
-    val (type, args) = typeWithArgs
-    return SimpleField(name, type.typeWithArguments, type.packageName, null, nullable, withReplace).apply {
-        arguments += args
-    }
-}
-
-fun field(type: Type, nullable: Boolean = false, withReplace: Boolean = false): Field {
-    return SimpleField(type.type.replaceFirstChar(Char::lowercaseChar), type.typeWithArguments, type.packageName, null, nullable, withReplace)
+fun field(type: ClassRef<*>, nullable: Boolean = false, withReplace: Boolean = false): Field {
+    return SimpleField(type.simpleName.replaceFirstChar(Char::lowercaseChar), type.copy(nullable), withReplace)
 }
 
 fun booleanField(name: String, withReplace: Boolean = false): Field {
-    return field(name, AbstractFirTreeBuilder.boolean, null, withReplace = withReplace)
+    return field(name, StandardTypes.boolean, withReplace = withReplace)
 }
 
 fun stringField(name: String, nullable: Boolean = false): Field {
-    return field(name, AbstractFirTreeBuilder.string, null, null, nullable)
+    return field(name, StandardTypes.string, nullable = nullable)
 }
 
 fun intField(name: String, withReplace: Boolean = false): Field {
-    return field(name, AbstractFirTreeBuilder.int, null, withReplace = withReplace)
+    return field(name, StandardTypes.int, withReplace = withReplace)
 }
 
 // ----------- Fir field -----------
 
-fun field(name: String, type: Type, argument: String? = null, nullable: Boolean = false, withReplace: Boolean = false): Field {
-    return if (argument == null) {
-        field(name, type, nullable, withReplace)
-    } else {
-        field(name, type to listOf(type(argument)), nullable, withReplace)
-    }
-}
-
-fun field(name: String, element: AbstractElement, nullable: Boolean = false, withReplace: Boolean = false): Field {
-    return FirField(name, element, nullable, withReplace)
+fun field(name: String, element: ElementOrRef, nullable: Boolean = false, withReplace: Boolean = false): Field {
+    return FirField(name, element.copy(nullable), withReplace)
 }
 
 fun field(element: Element, nullable: Boolean = false, withReplace: Boolean = false): Field {
-    return FirField(element.name.replaceFirstChar(Char::lowercaseChar), element, nullable, withReplace)
+    return FirField(element.name.replaceFirstChar(Char::lowercaseChar), element.copy(nullable), withReplace)
 }
 
 // ----------- Field list -----------
 
-fun fieldList(name: String, type: Importable, withReplace: Boolean = false, useMutableOrEmpty: Boolean = false): Field {
+fun fieldList(name: String, type: TypeRef, withReplace: Boolean = false, useMutableOrEmpty: Boolean = false): Field {
     return FieldList(name, type, withReplace, useMutableOrEmpty)
 }
 
-fun fieldList(element: AbstractElement, withReplace: Boolean = false, useMutableOrEmpty: Boolean = false): Field {
-    return FieldList(element.name.replaceFirstChar(Char::lowercaseChar) + "s", element, withReplace, useMutableOrEmpty)
+fun fieldList(elementOrRef: ElementOrRef, withReplace: Boolean = false, useMutableOrEmpty: Boolean = false): Field {
+    return FieldList(elementOrRef.element.name.replaceFirstChar(Char::lowercaseChar) + "s", elementOrRef, withReplace, useMutableOrEmpty)
 }
 
 // ----------- Field set -----------

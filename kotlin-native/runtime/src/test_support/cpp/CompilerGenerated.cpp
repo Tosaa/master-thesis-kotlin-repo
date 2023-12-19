@@ -5,6 +5,7 @@
 
 #include "TestSupportCompilerGenerated.hpp"
 
+#include "Logging.hpp"
 #include "ObjectTestSupport.hpp"
 #include "Types.h"
 
@@ -21,12 +22,11 @@ testing::MockFunction<void(KRef)>* kotlin::test_support::internal::Kotlin_runUnh
 namespace {
 
 struct EmptyPayload {
-    using Field = ObjHeader* EmptyPayload::*;
-    static constexpr std::array<Field, 0> kFields{};
+    static constexpr kotlin::test_support::NoRefFields<EmptyPayload> kFields{};
 };
 
 kotlin::test_support::TypeInfoHolder theAnyTypeInfoHolder{kotlin::test_support::TypeInfoHolder::ObjectBuilder<EmptyPayload>()};
-kotlin::test_support::TypeInfoHolder theArrayTypeInfoHolder{kotlin::test_support::TypeInfoHolder::ArrayBuilder<ObjHeader*>()};
+kotlin::test_support::TypeInfoHolder theArrayTypeInfoHolder{kotlin::test_support::TypeInfoHolder::ArrayBuilder<kotlin::mm::RefField>()};
 kotlin::test_support::TypeInfoHolder theBooleanArrayTypeInfoHolder{kotlin::test_support::TypeInfoHolder::ArrayBuilder<KBoolean>()};
 kotlin::test_support::TypeInfoHolder theByteArrayTypeInfoHolder{kotlin::test_support::TypeInfoHolder::ArrayBuilder<KByte>()};
 kotlin::test_support::TypeInfoHolder theCharArrayTypeInfoHolder{kotlin::test_support::TypeInfoHolder::ArrayBuilder<KChar>()};
@@ -74,7 +74,7 @@ extern const int32_t Kotlin_disableMmap = 1;
 extern const int32_t Kotlin_disableMmap = 0;
 #endif
 extern const int32_t Kotlin_disableAllocatorOverheadEstimate = 0;
-extern const char* const Kotlin_runtimeLogs = nullptr;
+extern const int32_t Kotlin_runtimeLogs[static_cast<size_t>(kotlin::logging::Tag::kEnumSize)] = {0};
 extern const int32_t Kotlin_concurrentWeakSweep = 1;
 #if KONAN_WINDOWS
 // parallel mark tests hang on mingw due to (presumably) a bug in winpthread

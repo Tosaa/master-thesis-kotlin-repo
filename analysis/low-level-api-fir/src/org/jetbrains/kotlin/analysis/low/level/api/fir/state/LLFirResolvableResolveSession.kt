@@ -5,34 +5,21 @@
 
 package org.jetbrains.kotlin.analysis.low.level.api.fir.state
 
-import com.intellij.openapi.project.Project
-import com.intellij.openapi.util.ModificationTracker
-import com.intellij.psi.util.CachedValueProvider
-import com.intellij.psi.util.CachedValuesManager
 import org.jetbrains.kotlin.analysis.low.level.api.fir.LLFirModuleResolveComponents
 import org.jetbrains.kotlin.analysis.low.level.api.fir.api.LLFirResolveSession
 import org.jetbrains.kotlin.analysis.low.level.api.fir.api.getModule
 import org.jetbrains.kotlin.analysis.low.level.api.fir.element.builder.FirTowerContextProvider
 import org.jetbrains.kotlin.analysis.low.level.api.fir.element.builder.getNonLocalContainingDeclaration
-import org.jetbrains.kotlin.analysis.low.level.api.fir.file.builder.retryOnInvalidSession
-import org.jetbrains.kotlin.analysis.low.level.api.fir.sessions.LLFirResolvableModuleSession
-import org.jetbrains.kotlin.analysis.low.level.api.fir.sessions.LLFirSession
-import org.jetbrains.kotlin.analysis.low.level.api.fir.sessions.LLFirSessionCache
 import org.jetbrains.kotlin.analysis.low.level.api.fir.util.*
 import org.jetbrains.kotlin.analysis.low.level.api.fir.util.FirDeclarationForCompiledElementSearcher
 import org.jetbrains.kotlin.analysis.project.structure.KtModule
-import org.jetbrains.kotlin.utils.exceptions.errorWithAttachment
-import org.jetbrains.kotlin.analysis.utils.errors.requireIsInstance
 import org.jetbrains.kotlin.analysis.utils.errors.withPsiEntry
-import org.jetbrains.kotlin.psi.psiUtil.getElementTextWithContext
 import org.jetbrains.kotlin.fir.FirElement
-import org.jetbrains.kotlin.fir.FirSession
 import org.jetbrains.kotlin.fir.declarations.FirDeclaration
 import org.jetbrains.kotlin.fir.declarations.FirFile
 import org.jetbrains.kotlin.fir.declarations.FirResolvePhase
 import org.jetbrains.kotlin.fir.expressions.FirAnonymousFunctionExpression
 import org.jetbrains.kotlin.fir.expressions.FirAnonymousObjectExpression
-import org.jetbrains.kotlin.fir.resolve.ScopeSession
 import org.jetbrains.kotlin.fir.resolve.providers.firProvider
 import org.jetbrains.kotlin.fir.resolve.providers.symbolProvider
 import org.jetbrains.kotlin.fir.symbols.FirBasedSymbol
@@ -41,74 +28,45 @@ import org.jetbrains.kotlin.psi.KtDeclaration
 import org.jetbrains.kotlin.psi.KtElement
 import org.jetbrains.kotlin.psi.KtExpression
 import org.jetbrains.kotlin.psi.KtFile
+import org.jetbrains.kotlin.psi.psiUtil.getElementTextWithContext
+import org.jetbrains.kotlin.utils.exceptions.errorWithAttachment
 
-internal abstract class LLFirResolvableResolveSession(
-    final override val useSiteKtModule: KtModule,
-    private val useSiteSessionFactory: (KtModule) -> LLFirSession
-) : LLFirResolveSession() {
-    final override val project: Project
-        get() = useSiteKtModule.project
-
-    private val useSiteFirSessionCached = CachedValuesManager.getManager(project).createCachedValue {
-        val session = useSiteSessionFactory(useSiteKtModule)
-        CachedValueProvider.Result.create(session, session.createValidityTracker())
-    }
-
-    final override val useSiteFirSession: LLFirSession
-        get() = useSiteFirSessionCached.value
-
-    override fun getSessionFor(module: KtModule): LLFirSession {
-        return getSession(module, preferBinary = true)
-    }
-
-    private fun getResolvableSessionFor(module: KtModule): LLFirResolvableModuleSession {
-        return getSession(module, preferBinary = false) as LLFirResolvableModuleSession
-    }
-
-    private fun getSession(module: KtModule, preferBinary: Boolean): LLFirSession {
-        if (module == useSiteFirSession.ktModule) {
-            return useSiteFirSession
-        }
-
-        val cache = LLFirSessionCache.getInstance(module.project)
-        return cache.getSession(module, preferBinary)
-    }
-
-    override fun getScopeSessionFor(firSession: FirSession): ScopeSession {
-        requireIsInstance<LLFirSession>(firSession)
-        return firSession.getScopeSession()
-    }
-
+internal class LLFirResolvableResolveSession(
+    moduleProvider: LLModuleProvider,
+    resolutionStrategyProvider: LLModuleResolutionStrategyProvider,
+    sessionProvider: LLSessionProvider,
+    diagnosticProvider: LLDiagnosticProvider
+) : LLFirResolveSession(
+    moduleProvider = moduleProvider,
+    resolutionStrategyProvider = resolutionStrategyProvider,
+    sessionProvider = sessionProvider,
+    scopeSessionProvider = LLDefaultScopeSessionProvider,
+    diagnosticProvider = diagnosticProvider
+) {
     override fun getOrBuildFirFor(element: KtElement): FirElement? {
-        retryOnInvalidSession {
-            val moduleComponents = getModuleComponentsForElement(element)
-            return moduleComponents.elementsBuilder.getOrBuildFirFor(element, this)
-        }
+        val moduleComponents = getModuleComponentsForElement(element)
+        return moduleComponents.elementsBuilder.getOrBuildFirFor(element, this)
     }
 
     override fun getOrBuildFirFile(ktFile: KtFile): FirFile {
-        retryOnInvalidSession {
-            val moduleComponents = getModuleComponentsForElement(ktFile)
-            return moduleComponents.firFileBuilder.buildRawFirFileWithCaching(ktFile)
-        }
+        val moduleComponents = getModuleComponentsForElement(ktFile)
+        return moduleComponents.firFileBuilder.buildRawFirFileWithCaching(ktFile)
     }
 
-    protected fun getModuleComponentsForElement(element: KtElement): LLFirModuleResolveComponents {
+    private fun getModuleComponentsForElement(element: KtElement): LLFirModuleResolveComponents {
         val module = getModule(element)
-        return getResolvableSessionFor(module).moduleComponents
+        return sessionProvider.getResolvableSession(module).moduleComponents
     }
 
     override fun resolveToFirSymbol(
         ktDeclaration: KtDeclaration,
-        phase: FirResolvePhase
+        phase: FirResolvePhase,
     ): FirBasedSymbol<*> {
         val containingKtFile = ktDeclaration.containingKtFile
         val module = getModule(containingKtFile.originalKtFile ?: containingKtFile)
-        retryOnInvalidSession {
-            return when (getModuleKind(module)) {
-                ModuleKind.RESOLVABLE_MODULE -> findSourceFirSymbol(ktDeclaration, module).also { resolveFirToPhase(it.fir, phase) }
-                ModuleKind.BINARY_MODULE -> findFirCompiledSymbol(ktDeclaration, module)
-            }
+        return when (getModuleResolutionStrategy(module)) {
+            LLModuleResolutionStrategy.LAZY -> findSourceFirSymbol(ktDeclaration, module).also { resolveFirToPhase(it.fir, phase) }
+            LLModuleResolutionStrategy.STATIC -> findFirCompiledSymbol(ktDeclaration, module)
         }
     }
 
@@ -128,7 +86,7 @@ internal abstract class LLFirResolvableResolveSession(
     }
 
     private fun findSourceFirDeclarationByDeclaration(ktDeclaration: KtDeclaration, module: KtModule): FirBasedSymbol<*> {
-        require(getModuleKind(module) == ModuleKind.RESOLVABLE_MODULE) {
+        require(getModuleResolutionStrategy(module) == LLModuleResolutionStrategy.LAZY) {
             "Declaration should be resolvable module, instead it had ${module::class}"
         }
 
@@ -139,7 +97,7 @@ internal abstract class LLFirResolvableResolveSession(
             }
 
         if (ktDeclaration == nonLocalDeclaration) {
-            val session = getResolvableSessionFor(module)
+            val session = sessionProvider.getResolvableSession(module)
             return nonLocalDeclaration.findSourceNonLocalFirDeclaration(
                 firFileBuilder = session.moduleComponents.firFileBuilder,
                 provider = session.firProvider,
@@ -149,7 +107,9 @@ internal abstract class LLFirResolvableResolveSession(
         return findDeclarationInSourceViaResolve(ktDeclaration)
     }
 
-    protected abstract fun getModuleKind(module: KtModule): ModuleKind
+    private fun getModuleResolutionStrategy(module: KtModule): LLModuleResolutionStrategy {
+        return resolutionStrategyProvider.getKind(module)
+    }
 
     private fun findDeclarationInSourceViaResolve(ktDeclaration: KtExpression): FirBasedSymbol<*> {
         val firDeclaration = when (val fir = getOrBuildFirFor(ktDeclaration)) {
@@ -171,10 +131,5 @@ internal abstract class LLFirResolvableResolveSession(
 
     override fun getTowerContextProvider(ktFile: KtFile): FirTowerContextProvider {
         return TowerProviderForElementForState(this)
-    }
-
-    protected enum class ModuleKind {
-        RESOLVABLE_MODULE,
-        BINARY_MODULE
     }
 }

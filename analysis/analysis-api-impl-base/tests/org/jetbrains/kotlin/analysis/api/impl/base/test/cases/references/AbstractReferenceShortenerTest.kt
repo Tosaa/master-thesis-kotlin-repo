@@ -5,7 +5,8 @@
 
 package org.jetbrains.kotlin.analysis.api.impl.base.test.cases.references
 
-import org.jetbrains.kotlin.analysis.api.components.ShortenOption
+import org.jetbrains.kotlin.analysis.api.components.ShortenOptions
+import org.jetbrains.kotlin.analysis.api.components.ShortenStrategy
 import org.jetbrains.kotlin.analysis.api.impl.base.test.cases.references.ShorteningResultsRenderer.renderShorteningResults
 import org.jetbrains.kotlin.analysis.test.framework.base.AbstractAnalysisApiBasedSingleModuleTest
 import org.jetbrains.kotlin.analysis.test.framework.services.expressionMarkerProvider
@@ -22,13 +23,21 @@ import org.jetbrains.kotlin.test.services.assertions
  * Note that it tests shortening only a single expression between <expr> and </expr> in the first file.
  */
 abstract class AbstractReferenceShortenerTest : AbstractAnalysisApiBasedSingleModuleTest() {
+
     override fun doTestByFileStructure(ktFiles: List<KtFile>, module: TestModule, testServices: TestServices) {
         val element = testServices.expressionMarkerProvider.getSelectedElementOfType<KtElement>(ktFiles.first())
 
         val shortenings = executeOnPooledThreadInReadAction {
             analyseForTest(element) {
-                ShortenOption.values().map { option ->
-                    Pair(option.name, collectPossibleReferenceShorteningsInElement(element, { option }, { option }))
+                ShortenStrategy.entries.associateWith { option ->
+                    val shorteningsForOption = collectPossibleReferenceShorteningsInElement(
+                        element,
+                        shortenOptions = ShortenOptions.ALL_ENABLED,
+                        classShortenStrategy = { option },
+                        callableShortenStrategy = { option }
+                    )
+
+                    shorteningsForOption
                 }
             }
         }

@@ -10,17 +10,13 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.search.DelegatingGlobalSearchScope
 import com.intellij.psi.search.GlobalSearchScope
-import org.jetbrains.kotlin.analysis.decompiler.psi.KotlinBuiltInFileType
-import org.jetbrains.kotlin.analysis.low.level.api.fir.project.structure.LLFirModuleData
 import org.jetbrains.kotlin.fir.FirSession
 import org.jetbrains.kotlin.fir.declarations.FirDeclarationOrigin
 import org.jetbrains.kotlin.fir.deserialization.SingleModuleDataProvider
 import org.jetbrains.kotlin.fir.resolve.providers.FirSymbolProvider
-import org.jetbrains.kotlin.fir.resolve.providers.impl.FirBuiltinSyntheticFunctionInterfaceProvider
 import org.jetbrains.kotlin.fir.scopes.FirKotlinScopeProvider
-import org.jetbrains.kotlin.fir.symbols.impl.FirClassLikeSymbol
 import org.jetbrains.kotlin.library.KLIB_METADATA_FILE_EXTENSION
-import org.jetbrains.kotlin.name.ClassId
+import org.jetbrains.kotlin.serialization.deserialization.MetadataPackageFragment
 import org.jetbrains.kotlin.serialization.deserialization.builtins.BuiltInSerializerProtocol
 
 internal fun createStubBasedFirSymbolProviderForClassFiles(
@@ -31,7 +27,10 @@ internal fun createStubBasedFirSymbolProviderForClassFiles(
     kotlinScopeProvider: FirKotlinScopeProvider,
 ): FirSymbolProvider = createStubBasedFirSymbolProviderForScopeLimitedByFiles(
     project, baseScope, session, moduleDataProvider, kotlinScopeProvider,
-    fileFilter = { file -> file.extension == JavaClassFileType.INSTANCE.defaultExtension },
+    fileFilter = { file ->
+        val extension = file.extension
+        extension == JavaClassFileType.INSTANCE.defaultExtension || extension == BuiltInSerializerProtocol.BUILTINS_FILE_EXTENSION
+    },
 )
 
 internal fun createStubBasedFirSymbolProviderForCommonMetadataFiles(
@@ -42,7 +41,13 @@ internal fun createStubBasedFirSymbolProviderForCommonMetadataFiles(
     kotlinScopeProvider: FirKotlinScopeProvider,
 ): FirSymbolProvider = createStubBasedFirSymbolProviderForScopeLimitedByFiles(
     project, baseScope, session, moduleDataProvider, kotlinScopeProvider,
-    fileFilter = { file -> file.fileType == KotlinBuiltInFileType },
+    fileFilter = { file ->
+        val extension = file.extension
+        extension == BuiltInSerializerProtocol.BUILTINS_FILE_EXTENSION ||
+                extension == MetadataPackageFragment.METADATA_FILE_EXTENSION ||
+                // klib metadata symbol provider
+                extension == KLIB_METADATA_FILE_EXTENSION
+    },
 )
 
 internal fun createStubBasedFirSymbolProviderForKotlinNativeMetadataFiles(
@@ -56,39 +61,6 @@ internal fun createStubBasedFirSymbolProviderForKotlinNativeMetadataFiles(
     fileFilter = { file -> file.extension == KLIB_METADATA_FILE_EXTENSION },
 )
 
-internal fun createStubBasedFirSymbolProviderForBuiltins(
-    project: Project,
-    session: FirSession,
-    moduleData: LLFirModuleData,
-    kotlinScopeProvider: FirKotlinScopeProvider,
-): StubBasedFirDeserializedSymbolProvider {
-    return createFirSymbolProviderForScopeLimitedByFiles(
-        project, DelegatingGlobalSearchScope.allScope(project),
-        fileFilter = { file -> file.extension == BuiltInSerializerProtocol.BUILTINS_FILE_EXTENSION },
-        symbolProviderFactory = { reducedScope: GlobalSearchScope ->
-            object : StubBasedFirDeserializedSymbolProvider(
-                session,
-                SingleModuleDataProvider(moduleData),
-                kotlinScopeProvider,
-                project,
-                reducedScope,
-                FirDeclarationOrigin.BuiltIns
-            ) {
-                private val syntheticFunctionInterfaceProvider = FirBuiltinSyntheticFunctionInterfaceProvider(
-                    session,
-                    moduleData,
-                    kotlinScopeProvider
-                )
-
-                override fun getClassLikeSymbolByClassId(classId: ClassId): FirClassLikeSymbol<*>? {
-                    return super.getClassLikeSymbolByClassId(classId)
-                        ?: syntheticFunctionInterfaceProvider.getClassLikeSymbolByClassId(classId)
-                }
-            }
-        }
-    )
-}
-
 internal fun createStubBasedFirSymbolProviderForScopeLimitedByFiles(
     project: Project,
     baseScope: GlobalSearchScope,
@@ -101,7 +73,7 @@ internal fun createStubBasedFirSymbolProviderForScopeLimitedByFiles(
         project, baseScope, fileFilter,
         symbolProviderFactory = { reducedScope: GlobalSearchScope ->
             StubBasedFirDeserializedSymbolProvider(
-                session, moduleDataProvider, kotlinScopeProvider, project, reducedScope, FirDeclarationOrigin.Library,
+                session, moduleDataProvider, kotlinScopeProvider, project, reducedScope,
             )
         }
     )

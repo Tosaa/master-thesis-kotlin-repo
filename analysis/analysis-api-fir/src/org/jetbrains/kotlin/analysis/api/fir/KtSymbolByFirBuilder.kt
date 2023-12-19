@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2022 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Copyright 2010-2023 JetBrains s.r.o. and Kotlin Programming Language contributors.
  * Use of this source code is governed by the Apache 2.0 license that can be found in the license/LICENSE.txt file.
  */
 
@@ -10,6 +10,8 @@ import com.intellij.util.containers.ContainerUtil
 import org.jetbrains.kotlin.analysis.api.KtStarTypeProjection
 import org.jetbrains.kotlin.analysis.api.KtTypeArgumentWithVariance
 import org.jetbrains.kotlin.analysis.api.KtTypeProjection
+import org.jetbrains.kotlin.analysis.api.fir.signatures.KtFirFunctionLikeSubstitutorBasedSignature
+import org.jetbrains.kotlin.analysis.api.fir.signatures.KtFirVariableLikeSubstitutorBasedSignature
 import org.jetbrains.kotlin.analysis.api.fir.symbols.*
 import org.jetbrains.kotlin.analysis.api.fir.types.*
 import org.jetbrains.kotlin.analysis.api.lifetime.KtLifetimeToken
@@ -21,16 +23,13 @@ import org.jetbrains.kotlin.analysis.api.types.KtSubstitutor
 import org.jetbrains.kotlin.analysis.api.types.KtType
 import org.jetbrains.kotlin.analysis.low.level.api.fir.api.LLFirResolveSession
 import org.jetbrains.kotlin.analysis.low.level.api.fir.util.errorWithFirSpecificEntries
-import org.jetbrains.kotlin.fir.utils.exceptions.withConeTypeEntry
-import org.jetbrains.kotlin.fir.utils.exceptions.withFirEntry
-import org.jetbrains.kotlin.fir.utils.exceptions.withFirSymbolEntry
 import org.jetbrains.kotlin.analysis.providers.KotlinPackageProvider
-import org.jetbrains.kotlin.utils.exceptions.errorWithAttachment
+import org.jetbrains.kotlin.descriptors.ClassKind
 import org.jetbrains.kotlin.fir.FirElement
 import org.jetbrains.kotlin.fir.FirSession
 import org.jetbrains.kotlin.fir.declarations.*
-import org.jetbrains.kotlin.fir.declarations.impl.FirFieldImpl
 import org.jetbrains.kotlin.fir.declarations.FirOuterClassTypeParameterRef
+import org.jetbrains.kotlin.fir.declarations.impl.FirFieldImpl
 import org.jetbrains.kotlin.fir.diagnostics.ConeCannotInferTypeParameterType
 import org.jetbrains.kotlin.fir.diagnostics.ConeSimpleDiagnostic
 import org.jetbrains.kotlin.fir.java.declarations.FirJavaField
@@ -43,11 +42,14 @@ import org.jetbrains.kotlin.fir.resolve.diagnostics.ConeUnresolvedSymbolError
 import org.jetbrains.kotlin.fir.resolve.getContainingClass
 import org.jetbrains.kotlin.fir.resolve.getSymbolByLookupTag
 import org.jetbrains.kotlin.fir.resolve.inference.ConeTypeParameterBasedTypeVariable
-import org.jetbrains.kotlin.fir.resolve.originalConstructorIfTypeAlias
+import org.jetbrains.kotlin.fir.resolve.providers.FirSymbolProvider
 import org.jetbrains.kotlin.fir.resolve.providers.symbolProvider
+import org.jetbrains.kotlin.fir.resolve.substitution.ChainedSubstitutor
 import org.jetbrains.kotlin.fir.resolve.substitution.ConeSubstitutor
 import org.jetbrains.kotlin.fir.resolve.substitution.ConeSubstitutorByMap
 import org.jetbrains.kotlin.fir.resolve.toSymbol
+import org.jetbrains.kotlin.fir.scopes.impl.importedFromObjectOrStaticData
+import org.jetbrains.kotlin.fir.scopes.impl.originalConstructorIfTypeAlias
 import org.jetbrains.kotlin.fir.scopes.impl.toConeType
 import org.jetbrains.kotlin.fir.symbols.ConeClassLikeLookupTag
 import org.jetbrains.kotlin.fir.symbols.ConeTypeParameterLookupTag
@@ -56,26 +58,27 @@ import org.jetbrains.kotlin.fir.symbols.impl.*
 import org.jetbrains.kotlin.fir.symbols.lazyResolveToPhase
 import org.jetbrains.kotlin.fir.types.*
 import org.jetbrains.kotlin.fir.types.impl.ConeClassLikeTypeImpl
+import org.jetbrains.kotlin.fir.utils.exceptions.withConeTypeEntry
+import org.jetbrains.kotlin.fir.utils.exceptions.withFirEntry
+import org.jetbrains.kotlin.fir.utils.exceptions.withFirSymbolEntry
 import org.jetbrains.kotlin.fir.visitors.FirVisitorVoid
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.types.Variance
+import org.jetbrains.kotlin.utils.exceptions.errorWithAttachment
 import kotlin.contracts.ExperimentalContracts
 import kotlin.contracts.contract
-import org.jetbrains.kotlin.analysis.api.fir.signatures.KtFirFunctionLikeSubstitutorBasedSignature
-import org.jetbrains.kotlin.analysis.api.fir.signatures.KtFirVariableLikeSubstitutorBasedSignature
-import org.jetbrains.kotlin.fir.scopes.impl.importedFromObjectOrStaticData
 
 /**
  * Maps FirElement to KtSymbol & ConeType to KtType, thread safe
  */
-internal class KtSymbolByFirBuilder constructor(
+internal class KtSymbolByFirBuilder(
     private val project: Project,
-    private val analysisSession: KtFirAnalysisSession,
+    val analysisSession: KtFirAnalysisSession,
     val token: KtLifetimeToken,
 ) {
-    private val firResolveSession: LLFirResolveSession = analysisSession.firResolveSession
-    private val firProvider get() = firResolveSession.useSiteFirSession.symbolProvider
+    private val firResolveSession: LLFirResolveSession get() = analysisSession.firResolveSession
+    private val firProvider: FirSymbolProvider get() = rootSession.symbolProvider
     val rootSession: FirSession = firResolveSession.useSiteFirSession
 
     private val symbolsCache = BuilderCache<FirBasedSymbol<*>, KtSymbol>()
@@ -98,6 +101,13 @@ internal class KtSymbolByFirBuilder constructor(
             is FirFileSymbol -> buildFileSymbol(firSymbol)
             is FirScriptSymbol -> buildScriptSymbol(firSymbol)
             else -> throwUnexpectedElementError(firSymbol)
+        }
+    }
+
+
+    fun buildDestructuringDeclarationSymbol(firSymbol: FirVariableSymbol<*>): KtDestructuringDeclarationSymbol {
+        return symbolsCache.cache(firSymbol) {
+            KtFirDestructuringDeclarationSymbol(firSymbol, analysisSession)
         }
     }
 
@@ -153,7 +163,12 @@ internal class KtSymbolByFirBuilder constructor(
         }
 
         fun buildAnonymousObjectSymbol(symbol: FirAnonymousObjectSymbol): KtAnonymousObjectSymbol {
-            return symbolsCache.cache(symbol) { KtFirAnonymousObjectSymbol(symbol, analysisSession) }
+            return symbolsCache.cache(symbol) {
+                when (symbol.classKind) {
+                    ClassKind.ENUM_ENTRY -> KtFirEnumEntryInitializerSymbol(symbol, analysisSession)
+                    else -> KtFirAnonymousObjectSymbol(symbol, analysisSession)
+                }
+            }
         }
 
         fun buildTypeAliasSymbol(symbol: FirTypeAliasSymbol): KtFirTypeAliasSymbol {
@@ -447,15 +462,14 @@ internal class KtSymbolByFirBuilder constructor(
                     // TODO this is a temporary hack to prevent FIR IDE from crashing on builder inference, see KT-50916
                     val typeVariable = coneType.constructor.variable as? ConeTypeParameterBasedTypeVariable
                     val typeParameterSymbol = typeVariable?.typeParameterSymbol ?: throwUnexpectedElementError(coneType)
-                    val coneTypeParameterType = (typeParameterSymbol.toConeType() as ConeTypeParameterType)
-                        .withNullability(coneType.nullability, rootSession.typeContext)
+                    val coneTypeParameterType = typeParameterSymbol.toConeType(coneType.nullability.isNullable)
 
                     KtFirTypeParameterType(coneTypeParameterType, this@KtSymbolByFirBuilder)
                 }
 
                 is ConeTypeVariableType -> {
-                    val diagnostic = when ( val typeParameter = coneType.lookupTag.originalTypeParameter) {
-                        null -> ConeSimpleDiagnostic("Cannot infer parameter type for ${coneType.lookupTag.debugName}")
+                    val diagnostic = when ( val typeParameter = coneType.typeConstructor.originalTypeParameter) {
+                        null -> ConeSimpleDiagnostic("Cannot infer parameter type for ${coneType.typeConstructor.debugName}")
                         else -> ConeCannotInferTypeParameterType((typeParameter as ConeTypeParameterLookupTag).typeParameterSymbol)
                     }
                     buildKtType(ConeErrorType(diagnostic, isUninferredParameter = true, attributes = coneType.attributes))
@@ -492,6 +506,7 @@ internal class KtSymbolByFirBuilder constructor(
             if (substitutor == ConeSubstitutor.Empty) return KtSubstitutor.Empty(token)
             return when (substitutor) {
                 is ConeSubstitutorByMap -> KtFirMapBackedSubstitutor(substitutor, this@KtSymbolByFirBuilder)
+                is ChainedSubstitutor -> KtFirChainedSubstitutor(substitutor, this@KtSymbolByFirBuilder)
                 else -> KtFirGenericSubstitutor(substitutor, this@KtSymbolByFirBuilder)
             }
         }

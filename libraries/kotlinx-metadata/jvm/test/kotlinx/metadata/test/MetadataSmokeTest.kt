@@ -30,7 +30,7 @@ class MetadataSmokeTest {
         val classMetadata = L::class.java.readMetadataAsKmClass()
 
         val inlineFunctions = classMetadata.functions
-            .filter { Flag.Function.IS_INLINE(it.flags) }
+            .filter { it.isInline }
             .mapNotNull { it.signature?.toString() }
 
         assertEquals(
@@ -63,7 +63,7 @@ class MetadataSmokeTest {
             }
         }
 
-        val annotationData = KotlinClassMetadata.writeClass(klass)
+        val annotationData = KotlinClassMetadata.Class(klass, JvmMetadataVersion.LATEST_STABLE_SUPPORTED, 0).write()
 
         // Then, produce the bytecode of a .class file with ASM
 
@@ -146,24 +146,25 @@ class MetadataSmokeTest {
     }
 
     @Test
+    @Suppress("DEPRECATION_ERROR") // flags will become internal eventually
     fun unstableParameterNames() {
         @Suppress("unused", "UNUSED_PARAMETER")
         class Test(a: String, b: Int, c: Boolean) {
             fun foo(a: String, b: Int, c: Boolean) = Unit
         }
 
-        val classWithStableParameterNames = Test::class.java.readMetadataAsKmClass()
+        val classWithStableParameterNames = Test::class.java.readMetadataAsClass()
 
-        classWithStableParameterNames.constructors.forEach { assertFalse(Flag.Constructor.HAS_NON_STABLE_PARAMETER_NAMES(it.flags)) }
-        classWithStableParameterNames.functions.forEach { assertFalse(Flag.Function.HAS_NON_STABLE_PARAMETER_NAMES(it.flags)) }
+        classWithStableParameterNames.kmClass.constructors.forEach { assertFalse(Flag.Constructor.HAS_NON_STABLE_PARAMETER_NAMES(it.flags)) }
+        classWithStableParameterNames.kmClass.functions.forEach { assertFalse(Flag.Function.HAS_NON_STABLE_PARAMETER_NAMES(it.flags)) }
 
-        classWithStableParameterNames.constructors.forEach { assertFalse(it.hasNonStableParameterNames) }
-        classWithStableParameterNames.functions.forEach { assertFalse(it.hasNonStableParameterNames) }
+        classWithStableParameterNames.kmClass.constructors.forEach { assertFalse(it.hasNonStableParameterNames) }
+        classWithStableParameterNames.kmClass.functions.forEach { assertFalse(it.hasNonStableParameterNames) }
 
-        classWithStableParameterNames.constructors.forEach { it.hasNonStableParameterNames = true }
-        classWithStableParameterNames.functions.forEach { it.hasNonStableParameterNames = true }
+        classWithStableParameterNames.kmClass.constructors.forEach { it.hasNonStableParameterNames = true }
+        classWithStableParameterNames.kmClass.functions.forEach { it.hasNonStableParameterNames = true }
 
-        val newMetadata = KotlinClassMetadata.writeClass(classWithStableParameterNames)
+        val newMetadata = classWithStableParameterNames.write()
 
         val classWithUnstableParameterNames = newMetadata.readAsKmClass()
 
@@ -178,12 +179,12 @@ class MetadataSmokeTest {
     @OptIn(UnstableMetadataApi::class)
     fun metadataVersionEarlierThan1_4() {
         val dummy = MetadataSmokeTest::class.java.readMetadataAsKmClass()
-        val mv = intArrayOf(1, 3)
-        assertFailsWith<IllegalArgumentException> { KotlinClassMetadata.writeClass(dummy, mv) } // We can't write empty KmClass()
-        assertFailsWith<IllegalArgumentException> { KotlinClassMetadata.writeFileFacade(KmPackage(), mv) }
-        assertFailsWith<IllegalArgumentException> { KotlinClassMetadata.writeMultiFileClassFacade(listOf("A"), mv) }
-        assertFailsWith<IllegalArgumentException> { KotlinClassMetadata.writeMultiFileClassPart(KmPackage(), "A", mv) }
-        assertFailsWith<IllegalArgumentException> { KotlinClassMetadata.writeSyntheticClass(mv) }
+        val mv = JvmMetadataVersion(1, 3)
+        assertFailsWith<IllegalArgumentException> { KotlinClassMetadata.Class(dummy, mv, 0).write() } // We can't write empty KmClass()
+        assertFailsWith<IllegalArgumentException> { KotlinClassMetadata.FileFacade(KmPackage(), mv, 0).write() }
+        assertFailsWith<IllegalArgumentException> { KotlinClassMetadata.MultiFileClassFacade(listOf("A"), mv, 0).write() }
+        assertFailsWith<IllegalArgumentException> { KotlinClassMetadata.MultiFileClassPart(KmPackage(), "A", mv, 0).write() }
+        assertFailsWith<IllegalArgumentException> { KotlinClassMetadata.SyntheticClass(null, mv, 0).write() }
 
         KotlinModuleMetadata.write(KmModule(), mv)
     }
@@ -195,16 +196,14 @@ class MetadataSmokeTest {
         // flags set. Since the current flags only apply to interfaces with default functions we modify
         // the metadata for the kotlin.coroutines.CoroutineContext interface.
 
-        val metadata = CoroutineContext::class.java.getMetadata()
-        val kmClass = metadata.readAsKmClass()
+        val metadata = CoroutineContext::class.java.readMetadataAsClass()
+        val kmClass = metadata.kmClass
         assertFalse(kmClass.isCompiledInCompatibilityMode)
         assertFalse(kmClass.hasMethodBodiesInInterface)
         kmClass.isCompiledInCompatibilityMode = true
         kmClass.hasMethodBodiesInInterface = true
 
-        val kmClassCopy = KotlinClassMetadata
-            .writeClass(kmClass, metadata.metadataVersion, metadata.extraInt)
-            .readAsKmClass()
+        val kmClassCopy = metadata.write().readAsKmClass()
         assertTrue(kmClassCopy.isCompiledInCompatibilityMode)
         assertTrue(kmClassCopy.hasMethodBodiesInInterface)
     }

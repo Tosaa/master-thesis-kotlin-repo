@@ -20,10 +20,12 @@ import org.jetbrains.kotlin.fir.backend.FirMetadataSource
 import org.jetbrains.kotlin.fir.declarations.*
 import org.jetbrains.kotlin.fir.declarations.utils.*
 import org.jetbrains.kotlin.fir.expressions.FirAnnotation
+import org.jetbrains.kotlin.fir.java.hasJvmFieldAnnotation
 import org.jetbrains.kotlin.fir.languageVersionSettings
 import org.jetbrains.kotlin.fir.render
 import org.jetbrains.kotlin.fir.resolve.ScopeSession
-import org.jetbrains.kotlin.fir.resolve.providers.firProvider
+import org.jetbrains.kotlin.fir.resolve.providers.getRegularClassSymbolByClassId
+import org.jetbrains.kotlin.fir.resolve.providers.symbolProvider
 import org.jetbrains.kotlin.fir.resolve.toFirRegularClassSymbol
 import org.jetbrains.kotlin.fir.serialization.*
 import org.jetbrains.kotlin.fir.serialization.constant.ConstValueProvider
@@ -62,7 +64,7 @@ class FirJvmSerializerExtension(
     private val jvmDefaultMode: JvmDefaultMode,
     override val stringTable: FirElementAwareStringTable,
     override val constValueProvider: ConstValueProvider?,
-    override val additionalAnnotationsProvider: FirAdditionalMetadataAnnotationsProvider?,
+    override val additionalMetadataProvider: FirAdditionalMetadataProvider?,
 ) : FirSerializerExtension() {
     private val signatureSerializer = FirJvmSignatureSerializer(stringTable)
 
@@ -80,7 +82,7 @@ class FirJvmSerializerExtension(
         state.globalSerializationBindings, state.config.useTypeTableInSerializer, state.moduleName, state.classBuilderMode,
         state.config.isParamAssertionsDisabled, state.config.unifiedNullChecks, state.config.metadataVersion, state.jvmDefaultMode,
         FirJvmElementAwareStringTable(typeMapper, components), ConstValueProviderImpl(components),
-        components.annotationsFromPluginRegistrar.createMetadataAnnotationsProvider()
+        components.annotationsFromPluginRegistrar.createAdditionalMetadataProvider()
     )
 
     override fun shouldUseTypeTable(): Boolean = useTypeTable
@@ -110,6 +112,19 @@ class FirJvmSerializerExtension(
                 )
             )
         }
+    }
+
+    override fun serializeScript(
+        script: FirScript,
+        proto: ProtoBuf.Class.Builder,
+        versionRequirementTable: MutableVersionRequirementTable,
+        childSerializer: FirElementSerializer
+    ) {
+        assert((metadata as FirMetadataSource.Script).fir == script)
+        if (moduleName != JvmProtoBufUtil.DEFAULT_MODULE_NAME) {
+            proto.setExtension(JvmProtoBuf.classModuleName, stringTable.getStringIndex(moduleName))
+        }
+        writeLocalProperties(proto, JvmProtoBuf.classLocalVariable)
     }
 
     // Interfaces which have @JvmDefault members somewhere in the hierarchy need the compiler 1.2.40+
@@ -278,10 +293,9 @@ class FirJvmSerializerExtension(
             return false
         }
 
-        val grandParent =
-            containerSymbol.classId.outerClassId?.let {
-                session.firProvider.getFirClassifierByFqName(it) as? FirRegularClass
-            }
+        val grandParent = containerSymbol.classId.outerClassId?.let {
+            session.symbolProvider.getRegularClassSymbolByClassId(it)?.fir
+        }
         return grandParent != null &&
                 (grandParent.classKind == ClassKind.INTERFACE || grandParent.classKind == ClassKind.ANNOTATION_CLASS)
     }

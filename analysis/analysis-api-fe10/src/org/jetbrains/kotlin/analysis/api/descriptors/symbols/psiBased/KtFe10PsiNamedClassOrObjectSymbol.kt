@@ -56,7 +56,7 @@ internal class KtFe10PsiNamedClassOrObjectSymbol(
         get() = withValidityAssertion { psi.hasModifier(KtTokens.DATA_KEYWORD) }
 
     override val isInline: Boolean
-        get() = withValidityAssertion { psi.hasModifier(KtTokens.INLINE_KEYWORD) }
+        get() = withValidityAssertion { psi.hasModifier(KtTokens.INLINE_KEYWORD) || psi.hasModifier(KtTokens.VALUE_KEYWORD) }
 
     override val isFun: Boolean
         get() = withValidityAssertion { psi.hasModifier(KtTokens.FUN_KEYWORD) }
@@ -125,7 +125,7 @@ internal class KtFe10PsiNamedClassOrObjectSymbol(
 
     context(KtAnalysisSession)
     override fun createPointer(): KtSymbolPointer<KtNamedClassOrObjectSymbol> = withValidityAssertion {
-        KtPsiBasedSymbolPointer.createForSymbolFromSource(this) ?: KtFe10NeverRestoringSymbolPointer()
+        KtPsiBasedSymbolPointer.createForSymbolFromSource<KtNamedClassOrObjectSymbol>(this) ?: KtFe10NeverRestoringSymbolPointer()
     }
 
     override fun equals(other: Any?): Boolean = isEqualTo(other)

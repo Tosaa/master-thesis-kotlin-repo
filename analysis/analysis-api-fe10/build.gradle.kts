@@ -18,7 +18,9 @@ dependencies {
     implementation(project(":compiler:backend.jvm"))
     implementation(project(":compiler:backend.jvm.entrypoint"))
 
-    testApiJUnit5()
+    testApi(platform(libs.junit.bom))
+    testImplementation(libs.junit.jupiter.api)
+    testRuntimeOnly(libs.junit.jupiter.engine)
     testImplementation(project(":analysis:analysis-api-providers"))
     testImplementation(project(":analysis:analysis-api-standalone:analysis-api-standalone-base"))
     testImplementation(projectTests(":compiler:tests-common"))

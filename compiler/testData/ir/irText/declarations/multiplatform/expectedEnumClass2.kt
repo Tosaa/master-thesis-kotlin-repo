@@ -1,8 +1,6 @@
 // FIR_IDENTICAL
 // !LANGUAGE: +MultiPlatformProjects
 // IGNORE_BACKEND_K1: ANY
-// IGNORE_BACKEND_K2: JS_IR
-// IGNORE_BACKEND_K2: JS_IR_ES6
 
 // MODULE: lib
 // FILE: lib.kt

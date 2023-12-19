@@ -108,7 +108,7 @@ internal class StubBasedFirTypeDeserializer(
         val annotations = annotationDeserializer.loadAnnotations(typeReference).toMutableList()
         val parent = (typeReference.stub ?: loadStubByElement(typeReference))?.parentStub
         if (parent is KotlinParameterStubImpl) {
-            (parent as? KotlinParameterStubImpl)?.functionTypeParameterName?.let { paramName ->
+            parent.functionTypeParameterName?.let { paramName ->
                 annotations += buildAnnotation {
                     annotationTypeRef = buildResolvedTypeRef {
                         type = StandardNames.FqNames.parameterNameClassId.toLookupTag()
@@ -175,20 +175,17 @@ internal class StubBasedFirTypeDeserializer(
     }
 
     private fun type(typeReference: KtTypeReference, attributes: ConeAttributes): ConeKotlinType {
+        if (typeReference.typeElement?.unwrapNullability() is KtDynamicType) {
+            return ConeDynamicType.create(moduleData.session)
+        }
+
         val userType = typeReference.typeElement as? KtUserType
         val upperBoundType = (userType?.let { it.stub ?: loadStubByElement(it) } as? KotlinUserTypeStubImpl)?.upperBound
         if (upperBoundType != null) {
             val lowerBound = simpleType(typeReference, attributes)
             val upperBound = type(upperBoundType)
 
-            val isDynamic = lowerBound == moduleData.session.builtinTypes.nothingType.coneType &&
-                    upperBound == moduleData.session.builtinTypes.nullableAnyType.coneType
-
-            return if (isDynamic) {
-                ConeDynamicType.create(moduleData.session)
-            } else {
-                ConeFlexibleType(lowerBound!!, upperBound as ConeSimpleKotlinType)
-            }
+            return ConeFlexibleType(lowerBound!!, upperBound as ConeSimpleKotlinType)
         }
 
         return simpleType(typeReference, attributes) ?: ConeErrorType(ConeSimpleDiagnostic("?!id:0", DiagnosticKind.DeserializationError))
@@ -204,7 +201,7 @@ internal class StubBasedFirTypeDeserializer(
         val constructor = typeSymbol(typeReference) ?: return null
         val isNullable = typeReference.typeElement is KtNullableType
         if (constructor is ConeTypeParameterLookupTag) {
-            return ConeTypeParameterTypeImpl(constructor, isNullable = isNullable).let {
+            return ConeTypeParameterTypeImpl(constructor, isNullable = isNullable, attributes).let {
                 if (typeReference.typeElement?.unwrapNullability() is KtIntersectionType) {
                     ConeDefinitelyNotNullType.create(it, moduleData.session.typeContext, avoidComprehensiveCheck = true) ?: it
                 } else it
@@ -308,6 +305,6 @@ internal fun KtUserType.classId(): ClassId {
     return ClassId(
         FqName.fromSegments(packageFragments),
         FqName.fromSegments(classFragments),
-        /* local = */ false
+        isLocal = false
     )
 }

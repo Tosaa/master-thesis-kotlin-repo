@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2021 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Copyright 2010-2023 JetBrains s.r.o. and Kotlin Programming Language contributors.
  * Use of this source code is governed by the Apache 2.0 license that can be found in the license/LICENSE.txt file.
  */
 
@@ -209,11 +209,6 @@ sealed class KtFakeSourceElementKind(final override val shouldSkipErrorTypeRepor
     // where `Supertype` has a fake source
     object SuperCallImplicitType : KtFakeSourceElementKind()
 
-    // Consider `super<Supertype>.foo()`. The source PSI `Supertype` is referenced by both the qualified access expression
-    // `super<Supertype>` and the calleeExpression `super<Supertype>`. To avoid having two FIR elements sharing the same source, this fake
-    // source is assigned to the qualified access expression.
-    object SuperCallExplicitType : KtFakeSourceElementKind(shouldSkipErrorTypeReporting = true)
-
     // fun foo(vararg args: Int) {}
     // fun bar(1, 2, 3) --> [resolved] fun bar(VarargArgument(1, 2, 3))
     object VarargArgument : KtFakeSourceElementKind()
@@ -224,6 +219,10 @@ sealed class KtFakeSourceElementKind(final override val shouldSkipErrorTypeRepor
     // { it + 1} --> { it -> it + 1 }
     // where `it` parameter declaration has fake source
     object ItLambdaParameter : KtFakeSourceElementKind()
+
+    // { (a, b) -> foo() } -> { x -> val (a, b) = x; { foo() } }
+    // where the inner block { foo() } has fake source
+    object LambdaDestructuringBlock : KtFakeSourceElementKind()
 
     // for java annotations implicit constructor is generated
     // with a fake source which refers to containing class
@@ -285,7 +284,13 @@ sealed class KtFakeSourceElementKind(final override val shouldSkipErrorTypeRepor
     object PropertyTypeFromGetterReturnType : KtFakeSourceElementKind()
 
     // Scripts get implicit imports from their configurations
-    object ImplicitImport : KtFakeSourceElementKind()
+    object ImplicitImport : KtFakeSourceElementKind(shouldSkipErrorTypeReporting = true)
+
+    // For provided parameters inside a script
+    object ScriptParameter : KtFakeSourceElementKind()
+
+    // When a lambda is converted to a SAM type, the expression is wrapped in an extra node
+    object SamConversion : KtFakeSourceElementKind()
 }
 
 sealed class AbstractKtSourceElement {

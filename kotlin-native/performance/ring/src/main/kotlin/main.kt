@@ -218,6 +218,15 @@ class RingLauncher : Launcher() {
                     "ParameterNotNull.invokeEightArgsWithNullCheck" to BenchmarkEntryWithInit.create(::ParameterNotNullAssertionBenchmark, { invokeEightArgsWithNullCheck() }),
                     "ParameterNotNull.invokeEightArgsWithoutNullCheck" to BenchmarkEntryWithInit.create(::ParameterNotNullAssertionBenchmark, { invokeEightArgsWithoutNullCheck() }),
                     "String.stringConcatNullable" to BenchmarkEntryWithInit.create(::StringBenchmark, { stringConcatNullable() }),
+                    "SubList.concatenate" to BenchmarkEntryWithInit.create(::SubListBenchmark, { concatenate() }),
+                    "SubList.concatenateManual" to BenchmarkEntryWithInit.create(::SubListBenchmark, { concatenateManual() }),
+                    "SubList.filterAndCount" to BenchmarkEntryWithInit.create(::SubListBenchmark, { filterAndCount() }),
+                    "SubList.filterAndCountWithLambda" to BenchmarkEntryWithInit.create(::SubListBenchmark, { filterAndCountWithLambda() }),
+                    "SubList.countWithLambda" to BenchmarkEntryWithInit.create(::SubListBenchmark, { countWithLambda() }),
+                    "SubList.filterManual" to BenchmarkEntryWithInit.create(::SubListBenchmark, { filterManual() }),
+                    "SubList.countFilteredManual" to BenchmarkEntryWithInit.create(::SubListBenchmark, { countFilteredManual() }),
+                    "SubList.countFiltered" to BenchmarkEntryWithInit.create(::SubListBenchmark, { countFiltered() }),
+                    "SubList.reduce" to BenchmarkEntryWithInit.create(::SubListBenchmark, { reduce() }),
                     "Switch.testSparseIntSwitch" to BenchmarkEntryWithInit.create(::SwitchBenchmark, { testSparseIntSwitch() }),
                     "Switch.testDenseIntSwitch" to BenchmarkEntryWithInit.create(::SwitchBenchmark, { testDenseIntSwitch() }),
                     "Switch.testConstSwitch" to BenchmarkEntryWithInit.create(::SwitchBenchmark, { testConstSwitch() }),
@@ -236,9 +245,9 @@ class RingLauncher : Launcher() {
                     "GenericArrayView.inlined" to BenchmarkEntryWithInit.create(::GenericArrayViewBenchmark, { inlined() }),
                     "GenericArrayView.specialized" to BenchmarkEntryWithInit.create(::GenericArrayViewBenchmark, { specialized() }),
                     "GenericArrayView.manual" to BenchmarkEntryWithInit.create(::GenericArrayViewBenchmark, { manual() }),
-                    "WeakRefBenchmark.aliveReference" to BenchmarkEntryWithInit.create(::WeakRefBenchmark, { aliveReference() }),
-                    "WeakRefBenchmark.deadReference" to BenchmarkEntryWithInit.create(::WeakRefBenchmark, { deadReference() }),
-                    "WeakRefBenchmark.dyingReference" to BenchmarkEntryWithInit.create(::WeakRefBenchmark, { dyingReference() }),
+                    "WeakRefBenchmark.aliveReference" to BenchmarkEntryWithInitAndValidation.create(::WeakRefBenchmark, { aliveReference() }, { clean() }),
+                    "WeakRefBenchmark.deadReference" to BenchmarkEntryWithInitAndValidation.create(::WeakRefBenchmark, { deadReference() }, { clean() }),
+                    "WeakRefBenchmark.dyingReference" to BenchmarkEntryWithInitAndValidation.create(::WeakRefBenchmark, { dyingReference() }, { clean() }),
             )
 
     init {

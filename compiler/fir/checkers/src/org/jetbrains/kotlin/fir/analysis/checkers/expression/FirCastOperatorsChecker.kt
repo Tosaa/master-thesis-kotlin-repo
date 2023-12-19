@@ -9,9 +9,9 @@ import org.jetbrains.kotlin.config.LanguageFeature
 import org.jetbrains.kotlin.diagnostics.DiagnosticReporter
 import org.jetbrains.kotlin.diagnostics.reportOn
 import org.jetbrains.kotlin.fir.analysis.checkers.CastingType
+import org.jetbrains.kotlin.fir.analysis.checkers.checkCasting
 import org.jetbrains.kotlin.fir.analysis.checkers.context.CheckerContext
 import org.jetbrains.kotlin.fir.analysis.checkers.isCastErased
-import org.jetbrains.kotlin.fir.analysis.checkers.checkCasting
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors
 import org.jetbrains.kotlin.fir.expressions.FirOperation
 import org.jetbrains.kotlin.fir.expressions.FirTypeOperatorCall
@@ -19,12 +19,13 @@ import org.jetbrains.kotlin.fir.expressions.unwrapSmartcastExpression
 import org.jetbrains.kotlin.fir.resolve.fullyExpandedType
 import org.jetbrains.kotlin.fir.types.ConeDynamicType
 import org.jetbrains.kotlin.fir.types.coneType
+import org.jetbrains.kotlin.fir.types.resolvedType
 
 object FirCastOperatorsChecker : FirTypeOperatorCallChecker() {
     override fun check(expression: FirTypeOperatorCall, context: CheckerContext, reporter: DiagnosticReporter) {
         val session = context.session
         val firstArgument = expression.argumentList.arguments[0]
-        val actualType = (firstArgument.unwrapSmartcastExpression().typeRef.coneType).fullyExpandedType(session)
+        val actualType = firstArgument.unwrapSmartcastExpression().resolvedType.fullyExpandedType(session)
         val conversionTypeRef = expression.conversionTypeRef
         val targetType = conversionTypeRef.coneType.fullyExpandedType(session)
 
@@ -47,7 +48,7 @@ object FirCastOperatorsChecker : FirTypeOperatorCallChecker() {
                 reporter.reportOn(expression.source, FirErrors.UNCHECKED_CAST, actualType, targetType, context)
             }
         } else if (expression.operation == FirOperation.IS) {
-            if (!context.isContractBody && isCastErased(actualType, targetType, context)) {
+            if (isCastErased(actualType, targetType, context)) {
                 reporter.reportOn(conversionTypeRef.source, FirErrors.CANNOT_CHECK_FOR_ERASED, targetType, context)
             }
         }

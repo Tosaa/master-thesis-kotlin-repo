@@ -34,13 +34,13 @@ fun test4() {
 // should be an error on receiver, shouldn't be thrown away
 
 fun test5() {
-    <!ARGUMENT_TYPE_MISMATCH!>1<!>.(fun String.()=1)()
+    1.<!UNRESOLVED_REFERENCE_WRONG_RECEIVER!>(fun String.()=1)<!>()
 }
 
 fun <R: Any> R?.sure() : R = this!!
 
 fun <T> test6(l: List<T>?) {
-    l.sure<<!UPPER_BOUND_VIOLATED!>T<!>>()
+    l.<!INAPPLICABLE_CANDIDATE!>sure<!><<!UPPER_BOUND_VIOLATED!>T<!>>()
 }
 
 

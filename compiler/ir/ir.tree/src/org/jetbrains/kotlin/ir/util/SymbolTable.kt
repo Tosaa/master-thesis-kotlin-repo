@@ -59,6 +59,10 @@ open class SymbolTable(
         )
     }
 
+    fun referenceScript(signature: IdSignature): IrScriptSymbol {
+        return scriptSlice.referenced(signature) { IrScriptPublicSymbolImpl(signature) }
+    }
+
     // ------------------------------------ class ------------------------------------
 
     fun declareClass(
@@ -297,6 +301,11 @@ open class SymbolTable(
         }
     }
 
+    @DelicateSymbolTableApi
+    fun removeProperty(symbol: IrPropertySymbol) {
+        symbol.signature?.let { propertySlice.remove(it) }
+    }
+
     // ------------------------------------ typealias ------------------------------------
 
     fun declareTypeAlias(
@@ -372,6 +381,11 @@ open class SymbolTable(
             { IrSimpleFunctionPublicSymbolImpl(signature) },
             { IrSimpleFunctionSymbolImpl().also { it.privateSignature = signature } }
         )
+    }
+
+    @DelicateSymbolTableApi
+    fun removeSimpleFunction(function: IrSimpleFunctionSymbol) {
+        function.signature?.let { functionSlice.remove(it) }
     }
 
     @SymbolTableInternals

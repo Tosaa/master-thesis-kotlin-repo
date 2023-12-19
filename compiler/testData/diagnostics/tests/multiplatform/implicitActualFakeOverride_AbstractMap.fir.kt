@@ -3,7 +3,7 @@
 // FILE: common.kt
 
 // K2: false positve INCOMPATIBLE_MATCHING: KT-60155
-<!INCOMPATIBLE_MATCHING{JVM}!>public expect abstract class AbstractMutableMap<K, V> : MutableMap<K, V> {
+<!EXPECT_ACTUAL_INCOMPATIBILITY{JVM}, EXPECT_ACTUAL_INCOMPATIBILITY{JVM}, EXPECT_ACTUAL_INCOMPATIBILITY{JVM}, EXPECT_ACTUAL_INCOMPATIBILITY{JVM}, EXPECT_ACTUAL_INCOMPATIBILITY{JVM}, EXPECT_ACTUAL_INCOMPATIBILITY{JVM}, EXPECT_ACTUAL_INCOMPATIBILITY{JVM}, EXPECT_ACTUAL_INCOMPATIBILITY{JVM}, EXPECT_ACTUAL_INCOMPATIBILITY{JVM}, EXPECT_ACTUAL_INCOMPATIBILITY{JVM}, EXPECT_ACTUAL_INCOMPATIBILITY{JVM}!>public expect abstract class AbstractMutableMap<K, V> : MutableMap<K, V> {
     override val values: MutableCollection<V>
 }<!>
 
@@ -12,4 +12,4 @@
 
 import java.util.AbstractMap
 
-public actual abstract class AbstractMutableMap<K, V>() : MutableMap<K, V>, AbstractMap<K, V>()
+public actual abstract class <!NO_ACTUAL_CLASS_MEMBER_FOR_EXPECTED_CLASS!>AbstractMutableMap<!><K, V>() : MutableMap<K, V>, AbstractMap<K, V>()

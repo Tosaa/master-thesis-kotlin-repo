@@ -1,7 +1,7 @@
 // MODULE: m1-common
-<!INCOMPATIBLE_MATCHING{JVM}!>expect interface Base<!>
+<!EXPECT_ACTUAL_INCOMPATIBILITY{JVM}, EXPECT_ACTUAL_INCOMPATIBILITY{JVM}!>expect interface Base<!>
 
 // MODULE: m1-jvm()()(m1-common)
 actual interface Base {
-    override fun equals(other: Any?): Boolean
+    override fun <!ACTUAL_WITHOUT_EXPECT!>equals<!>(other: Any?): Boolean
 }

@@ -51,6 +51,7 @@ class IrPrettyKotlinDumpHandler(
             KotlinLikeDumpOptions(
                 printFilePath = false,
                 printFakeOverridesStrategy = FakeOverridesStrategy.NONE,
+                normalizeNames = true, // KT-61983: K1 and K2 kotlin-like dumps are closer to each other when tempvar names are normalized
             ),
         )
     }
@@ -71,16 +72,14 @@ internal fun dumpModuleKotlinLike(
     multiModuleInfoDumper: MultiModuleInfoDumper,
     options: KotlinLikeDumpOptions,
 ) {
-    info.processAllIrModuleFragments(module) { irModuleFragment, moduleName ->
-        val irFiles = irModuleFragment.files
-        val builder = multiModuleInfoDumper.builderForModule(moduleName)
-        val filteredIrFiles = irFiles.groupWithTestFiles(module).filterNot { (testFile, _) ->
-            testFile?.let { EXTERNAL_FILE in it.directives || it.isAdditional } ?: false
-        }.map { it.second }
-        val printFileName = filteredIrFiles.size > 1 || allModules.size > 1
-        val modifiedOptions = options.copy(printFileName = printFileName)
-        for (irFile in filteredIrFiles) {
-            builder.append(irFile.dumpKotlinLike(modifiedOptions))
-        }
+    val irFiles = info.irModuleFragment.files
+    val builder = multiModuleInfoDumper.builderForModule(module.name)
+    val filteredIrFiles = irFiles.groupWithTestFiles(module).filterNot { (testFile, _) ->
+        testFile?.let { EXTERNAL_FILE in it.directives || it.isAdditional } ?: false
+    }.map { it.second }
+    val printFileName = filteredIrFiles.size > 1 || allModules.size > 1
+    val modifiedOptions = options.copy(printFileName = printFileName)
+    for (irFile in filteredIrFiles) {
+        builder.append(irFile.dumpKotlinLike(modifiedOptions))
     }
 }

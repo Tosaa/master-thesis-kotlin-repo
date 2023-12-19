@@ -6,18 +6,19 @@
 package org.jetbrains.kotlin.fir.resolve.calls
 
 import org.jetbrains.kotlin.fir.*
-import org.jetbrains.kotlin.fir.declarations.FirDeclarationOrigin
-import org.jetbrains.kotlin.fir.declarations.FirSimpleFunction
-import org.jetbrains.kotlin.fir.declarations.getDeprecationsProviderFromAccessors
-import org.jetbrains.kotlin.fir.declarations.isHiddenEverywhereBesideSuperCalls
+import org.jetbrains.kotlin.fir.declarations.*
 import org.jetbrains.kotlin.fir.declarations.synthetic.FirSyntheticProperty
 import org.jetbrains.kotlin.fir.declarations.synthetic.buildSyntheticProperty
 import org.jetbrains.kotlin.fir.declarations.utils.isStatic
+import org.jetbrains.kotlin.fir.resolve.lookupSuperTypes
+import org.jetbrains.kotlin.fir.resolve.toSymbol
 import org.jetbrains.kotlin.fir.resolve.transformers.ReturnTypeCalculator
 import org.jetbrains.kotlin.fir.scopes.*
 import org.jetbrains.kotlin.fir.symbols.SyntheticSymbol
+import org.jetbrains.kotlin.fir.symbols.impl.FirClassLikeSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirNamedFunctionSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirSyntheticPropertySymbol
+import org.jetbrains.kotlin.fir.symbols.impl.FirTypeParameterSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirVariableSymbol
 import org.jetbrains.kotlin.fir.types.*
 import org.jetbrains.kotlin.name.CallableId
@@ -134,8 +135,9 @@ class FirSyntheticPropertiesScope private constructor(
                 if (matchingSetter != null) return
 
                 val setter = setterSymbol.fir
-                val parameter = setter.valueParameters.singleOrNull() ?: return
                 if (setter.typeParameters.isNotEmpty() || setter.isStatic) return
+                val parameter = setter.valueParameters.singleOrNull() ?: return
+                if (parameter.isVararg) return
                 val parameterType = (parameter.returnTypeRef as? FirResolvedTypeRef)?.type ?: return
                 if (!setterTypeIsConsistentWithGetterType(propertyName, getterSymbol, setterSymbol, parameterType)) return
                 matchingSetter = setterSymbol.fir
@@ -248,7 +250,63 @@ class FirSyntheticPropertiesScope private constructor(
 
             ProcessorAction.NEXT
         }
-
+        result = result || isJavaTypeOnThePath(this.dispatchReceiverType)
         return result && !isHiddenEverywhereBesideSuperCalls
+    }
+
+    /*
+     * We should check the whole hierarchy between dispatch receiver type of found getter and our dispatch receiver type, because
+     *   synthetic properly should be created if there is a java class on this way (KT-62394)
+     *
+     * // FILE: Base.kt
+     * abstract class Base(private val x: String) {
+     *     fun getFoo() = x
+     * }
+     *
+     * // FILE: Intermediate.java
+     * public class Intermediate extends Base {
+     *     public Intermediate(String x) {
+     *         super(x);
+     *     }
+     * }
+     *
+     * // FILE: Final.kt
+     * class Final(x: String) : Intermediate(x)
+     *
+     * fun test(f: Final) {
+     *     f.foo // <-------
+     * }
+     */
+    private fun isJavaTypeOnThePath(baseType: ConeSimpleKotlinType?): Boolean {
+        val lookupTagToStop = (baseType as? ConeLookupTagBasedType)?.lookupTag ?: return false
+        val dispatchReceiverClassSymbol = (dispatchReceiverType as? ConeLookupTagBasedType)?.lookupTag?.toSymbol(session) ?: return false
+
+        val typeContext = session.typeContext
+        fun checkType(type: ConeClassLikeType): Boolean {
+            val state = typeContext.newTypeCheckerState(errorTypesEqualToAnything = false, stubTypesEqualToAnything = false)
+            if (type.toRegularClassSymbol(session)?.isJavaOrEnhancement == true) {
+                if (AbstractTypeChecker.isSubtypeOfClass(state, type.lookupTag, lookupTagToStop)) {
+                    return true
+                }
+            }
+            return false
+        }
+
+        if (dispatchReceiverType is ConeClassLikeType && checkType(dispatchReceiverType)) {
+            return true
+        }
+
+        when (dispatchReceiverClassSymbol) {
+            is FirClassLikeSymbol -> {
+                val superTypes = lookupSuperTypes(dispatchReceiverClassSymbol, lookupInterfaces = true, deep = true, session)
+                for (superType in superTypes) {
+                    if (checkType(superType)) return true
+                }
+                return false
+            }
+            is FirTypeParameterSymbol -> {
+                return false
+            }
+        }
     }
 }

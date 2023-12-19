@@ -8,8 +8,6 @@ package org.jetbrains.kotlin.gradle.report
 import org.gradle.api.Project
 import org.jetbrains.kotlin.build.report.FileReportSettings
 import org.jetbrains.kotlin.build.report.HttpReportSettings
-import org.jetbrains.kotlin.build.report.metrics.BuildPerformanceMetric
-import org.jetbrains.kotlin.build.report.metrics.BuildTime
 import org.jetbrains.kotlin.build.report.metrics.GradleBuildPerformanceMetric
 import org.jetbrains.kotlin.build.report.metrics.GradleBuildTime
 import org.jetbrains.kotlin.gradle.plugin.PropertiesProvider
@@ -22,13 +20,13 @@ private val availableMetrics = GradleBuildTime.values().map { it.name } + Gradle
 
 internal fun reportingSettings(project: Project): ReportingSettings {
     val properties = PropertiesProvider(project)
-    val experimentalTryK2Enabled = properties.kotlinExperimentalTryK2.get()
+    val experimentalTryNextEnabled = properties.kotlinExperimentalTryNext.get()
     val buildReportOutputTypes = properties.buildReportOutputs
         .map {
             BuildReportType.values().firstOrNull { brt -> brt.name == it.trim().toUpperCaseAsciiOnly() }
                 ?: throw IllegalStateException("Unknown output type: $it")
         }
-        .plus(if (experimentalTryK2Enabled) listOf(BuildReportType.TRY_K2_CONSOLE) else emptyList())
+        .plus(if (experimentalTryNextEnabled) listOf(BuildReportType.TRY_NEXT_CONSOLE) else emptyList())
         .toMutableList() //temporary solution. support old property
 
     val buildReportMode =
@@ -44,7 +42,10 @@ internal fun reportingSettings(project: Project): ReportingSettings {
             project.rootProject.buildDir
         }).resolve("reports/kotlin-build")
         val includeMetricsInReport = properties.buildReportMetrics || buildReportMode == BuildReportMode.VERBOSE
-        FileReportSettings(buildReportDir = buildReportDir, includeMetricsInReport = includeMetricsInReport)
+        FileReportSettings(
+            buildReportDir = buildReportDir,
+            includeMetricsInReport = includeMetricsInReport
+        )
     } else {
         null
     }
@@ -89,7 +90,7 @@ internal fun reportingSettings(project: Project): ReportingSettings {
         buildReportOutputs = buildReportOutputTypes,
         singleOutputFile = singleOutputFile ?: oldSingleBuildMetric,
         includeCompilerArguments = properties.buildReportIncludeCompilerArguments,
-        experimentalTryK2ConsoleOutput = experimentalTryK2Enabled
+        experimentalTryNextConsoleOutput = experimentalTryNextEnabled
     )
 }
 

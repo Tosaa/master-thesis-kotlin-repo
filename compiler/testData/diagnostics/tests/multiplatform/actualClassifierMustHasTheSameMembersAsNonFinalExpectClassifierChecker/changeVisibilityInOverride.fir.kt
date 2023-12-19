@@ -2,14 +2,14 @@
 // FILE: common.kt
 
 open class Base {
-    <!INCOMPATIBLE_MATCHING{JVM}!>protected open fun foo() {}<!>
+    protected open fun foo() {}
 }
 
-<!INCOMPATIBLE_MATCHING{JVM}!>expect open class Foo : Base<!>
+<!EXPECT_ACTUAL_INCOMPATIBILITY{JVM}, EXPECT_ACTUAL_INCOMPATIBILITY{JVM}!>expect open class Foo : Base<!>
 
 // MODULE: m2-jvm()()(m1-common)
 // FILE: jvm.kt
 
 actual open class Foo : Base() {
-    public override fun foo() {}
+    public override fun <!ACTUAL_WITHOUT_EXPECT!>foo<!>() {}
 }

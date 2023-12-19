@@ -35,8 +35,8 @@ void processFieldInMark(void* state, ObjHeader* field) noexcept {
 
 template <typename Traits>
 void processObjectInMark(void* state, ObjHeader* object) noexcept {
-    traverseClassObjectFields(object, [state] (ObjHeader** fieldLocation) noexcept {
-        if (auto field = *fieldLocation) {
+    traverseClassObjectFields(object, [state] (auto fieldAccessor) noexcept {
+        if (ObjHeader* field = fieldAccessor.direct()) {
             processFieldInMark<Traits>(state, field);
         }
     });
@@ -44,8 +44,8 @@ void processObjectInMark(void* state, ObjHeader* object) noexcept {
 
 template <typename Traits>
 void processArrayInMark(void* state, ArrayHeader* array) noexcept {
-    traverseArrayOfObjectsElements(array, [state] (ObjHeader** elemLocation) noexcept {
-        if (auto elem = *elemLocation) {
+    traverseArrayOfObjectsElements(array, [state] (auto elemAccessor) noexcept {
+        if (ObjHeader* elem = elemAccessor.direct()) {
             processFieldInMark<Traits>(state, elem);
         }
     });
@@ -103,65 +103,6 @@ void Mark(GCHandle::GCMarkScope& markHandle, typename Traits::MarkQueue& markQue
             internal::processExtraObjectData<Traits>(markHandle, markQueue, *extraObjectData, top);
         }
     }
-}
-
-template <typename Traits>
-void SweepExtraObjects(GCHandle handle, typename Traits::ExtraObjectsFactory::Iterable& factoryIter) noexcept {
-    auto sweepHandle = handle.sweepExtraObjects();
-    factoryIter.ApplyDeletions();
-    for (auto it = factoryIter.begin(); it != factoryIter.end();) {
-        auto &extraObject = *it;
-        if (!extraObject.getFlag(mm::ExtraObjectData::FLAGS_IN_FINALIZER_QUEUE) && !Traits::IsMarkedByExtraObject(extraObject)) {
-            extraObject.ClearRegularWeakReferenceImpl();
-            if (extraObject.HasAssociatedObject()) {
-                extraObject.setFlag(mm::ExtraObjectData::FLAGS_IN_FINALIZER_QUEUE);
-                ++it;
-                sweepHandle.addKeptObject(sizeof(mm::ExtraObjectData));
-            } else {
-                extraObject.Uninstall();
-                it.EraseAndAdvance();
-                sweepHandle.addSweptObject();
-            }
-        } else {
-            ++it;
-            sweepHandle.addKeptObject(sizeof(mm::ExtraObjectData));
-        }
-    }
-}
-
-template <typename Traits>
-void SweepExtraObjects(GCHandle handle, typename Traits::ExtraObjectsFactory& factory) noexcept {
-    auto iter = factory.LockForIter();
-    return SweepExtraObjects<Traits>(handle, iter);
-}
-
-template <typename Traits>
-typename Traits::ObjectFactory::FinalizerQueue Sweep(GCHandle handle, typename Traits::ObjectFactory::Iterable& objectFactoryIter) noexcept {
-    typename Traits::ObjectFactory::FinalizerQueue finalizerQueue;
-    auto sweepHandle = handle.sweep();
-
-    for (auto it = objectFactoryIter.begin(); it != objectFactoryIter.end();) {
-        auto* objHeader = it->GetObjHeader();
-        if (Traits::TryResetMark(*it)) {
-            ++it;
-            sweepHandle.addKeptObject(Traits::ObjectFactory::GetAllocatedHeapSize(objHeader));
-            continue;
-        }
-        sweepHandle.addSweptObject();
-        if (HasFinalizers(objHeader)) {
-            objectFactoryIter.MoveAndAdvance(finalizerQueue, it);
-        } else {
-            objectFactoryIter.EraseAndAdvance(it);
-        }
-    }
-
-    return finalizerQueue;
-}
-
-template <typename Traits>
-typename Traits::ObjectFactory::FinalizerQueue Sweep(GCHandle handle, typename Traits::ObjectFactory& objectFactory) noexcept {
-    auto iter = objectFactory.LockForIter();
-    return Sweep<Traits>(handle, iter);
 }
 
 template <typename Traits>
@@ -233,6 +174,17 @@ void processWeaks(GCHandle gcHandle, mm::SpecialRefRegistry& registry) noexcept 
         object.store(nullptr, std::memory_order_relaxed);
         handle.addNulled();
     }
+}
+
+struct DefaultProcessWeaksTraits {
+    static bool IsMarked(ObjHeader* obj) noexcept { return gc::isMarked(obj); }
+};
+
+void stopTheWorld(GCHandle gcHandle) noexcept;
+void resumeTheWorld(GCHandle gcHandle) noexcept;
+
+[[nodiscard]] inline auto stopTheWorldInScope(GCHandle gcHandle) noexcept {
+    return ScopeGuard([=]() { stopTheWorld(gcHandle); }, [=]() { resumeTheWorld(gcHandle); });
 }
 
 } // namespace gc

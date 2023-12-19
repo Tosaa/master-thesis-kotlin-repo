@@ -42,7 +42,9 @@ fun Candidate.preprocessLambdaArgument(
             }?.type as ConeKotlinType?
 
             if (explicitTypeArgument == null || explicitTypeArgument.typeArguments.isNotEmpty()) {
-                return LambdaWithTypeVariableAsExpectedTypeAtom(argument, expectedType, this)
+                return LambdaWithTypeVariableAsExpectedTypeAtom(argument, expectedType, this).also {
+                    this.postponedAtoms += it
+                }
             }
         }
     }
@@ -143,7 +145,8 @@ private fun extractLambdaInfo(
         parameters,
         returnType,
         typeVariable.takeIf { newTypeVariableUsed },
-        candidate,
         coerceFirstParameterToExtensionReceiver = false
-    )
+    ).also {
+        candidate?.postponedAtoms?.add(it)
+    }
 }

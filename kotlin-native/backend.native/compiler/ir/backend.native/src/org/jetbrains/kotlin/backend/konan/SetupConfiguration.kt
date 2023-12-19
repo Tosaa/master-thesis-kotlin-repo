@@ -46,6 +46,15 @@ fun CompilerConfiguration.setupFromArguments(arguments: K2NativeCompilerArgument
 
     put(INCLUDED_BINARY_FILES, arguments.includeBinaries.toNonNullList())
     put(NATIVE_LIBRARY_FILES, arguments.nativeLibraries.toNonNullList())
+
+    if (arguments.repositories != null) {
+        // Show the warning also if `-repo` was really specified.
+        report(
+                WARNING,
+                "'-repo' ('-r') compiler option is deprecated and will be removed in one of the future releases. " +
+                        "Please use library paths instead of library names in all compiler options such as '-library' ('-l')."
+        )
+    }
     put(REPOSITORIES, arguments.repositories.toNonNullList())
 
     // TODO: Collect all the explicit file names into an object
@@ -55,7 +64,7 @@ fun CompilerConfiguration.setupFromArguments(arguments: K2NativeCompilerArgument
     val outputKind = CompilerOutputKind.valueOf(
             (arguments.produce ?: "program").uppercase())
     put(PRODUCE, outputKind)
-    put(METADATA_KLIB, arguments.metadataKlib)
+    putIfNotNull(HEADER_KLIB, arguments.headerKlibPath)
 
     arguments.libraryVersion?.let { put(LIBRARY_VERSION, it) }
 

@@ -162,7 +162,7 @@ class MainKtsIT {
     @Test
     fun testUseSlf4j() {
         val scriptPath = "$TEST_DATA_ROOT/use-slf4j.main.kts"
-        runWithKotlincAndMainKts(scriptPath, expectedErrPatterns = listOf(".*test-slf4j", ".*language version 2\\.0 is experimental.*"))
+        runWithKotlincAndMainKts(scriptPath, expectedErrPatterns = listOf(".*test-slf4j"))
     }
 }
 

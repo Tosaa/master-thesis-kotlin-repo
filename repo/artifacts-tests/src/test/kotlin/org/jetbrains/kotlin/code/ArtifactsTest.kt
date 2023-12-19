@@ -22,23 +22,13 @@ class ArtifactsTest {
     private val localRepoPath = Paths.get(mavenLocal, "org/jetbrains/kotlin")
     private val expectedRepoPath = Paths.get("repo/artifacts-tests/src/test/resources/org/jetbrains/kotlin")
 
-    /**
-     * Experimental projects that might be published locally but are not epxected to be published by default.
-     * They still might be added to TeamCity maven.zip final artifacts with an additional code.
-     */
-    private val experimentalProjects = setOf(
-        "compiler-hosted",
-        "compiler-daemon",
-        "compiler",
-    )
-
     private val excludedProjects = setOf(
         "annotation-processor-example",
         "android-test-fixes",
         "org.jetbrains.kotlin.gradle-subplugin-example.gradle.plugin",
         "gradle-warnings-detector",
         "kotlin-compiler-args-properties",
-        "kotlin-gradle-plugin-kpm-android",
+        "fus-statistics-gradle-plugin",
         "kotlin-gradle-plugin-tcs-android",
         "kotlin-gradle-subplugin-example",
         "kotlin-java-example",
@@ -46,6 +36,7 @@ class ArtifactsTest {
         "org.jetbrains.kotlin.test.fixes.android.gradle.plugin",
         "org.jetbrains.kotlin.test.gradle-warnings-detector.gradle.plugin",
         "org.jetbrains.kotlin.test.kotlin-compiler-args-properties.gradle.plugin",
+        "org.jetbrains.kotlin.fus-statistics-gradle-plugin.gradle.plugin",
     )
 
     @Test
@@ -61,16 +52,12 @@ class ArtifactsTest {
             })
         actualPoms.forEach { actual ->
             val expectedPomPath = actual.toExpectedPath()
-            val parentDirName = expectedPomPath.parent.fileName.toString()
-
-            if (parentDirName !in experimentalProjects) {
-                if (parentDirName !in excludedProjects) {
-                    val actualString = actual.toFile().readText().replace(kotlinVersion, "ArtifactsTest.version")
-                    assertEqualsToFile(expectedPomPath, actualString)
-                    visitedPoms.add(expectedPomPath)
-                } else {
-                    if (isTeamCityBuild) fail("Excluded project in actual artifacts: $actual")
-                }
+            if ("${expectedPomPath.parent.fileName}" !in excludedProjects) {
+                val actualString = actual.toFile().readText().replace(kotlinVersion, "ArtifactsTest.version")
+                assertEqualsToFile(expectedPomPath, actualString)
+                visitedPoms.add(expectedPomPath)
+            } else {
+                if (isTeamCityBuild) fail("Excluded project in actual artifacts: $actual")
             }
         }
 

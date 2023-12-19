@@ -9,9 +9,7 @@ import com.intellij.psi.PsiElement
 import org.jetbrains.kotlin.codegen.*
 import org.jetbrains.kotlin.codegen.AsmUtil.isPrimitive
 import org.jetbrains.kotlin.codegen.state.GenerationState
-import org.jetbrains.kotlin.descriptors.PackageFragmentDescriptor
 import org.jetbrains.kotlin.descriptors.ParameterDescriptor
-import org.jetbrains.kotlin.resolve.DescriptorUtils
 import org.jetbrains.kotlin.resolve.inline.InlineUtil
 import org.jetbrains.kotlin.resolve.jvm.jvmSignature.JvmMethodSignature
 import org.jetbrains.kotlin.types.KotlinType
@@ -108,7 +106,7 @@ abstract class InlineCodegen<out T : BaseExpressionCodegen>(
         val callSite = SourcePosition(codegen.lastLineNumber, sourceInfo.sourceFileName!!, sourceInfo.pathOrCleanFQN)
         val inliner = MethodInliner(
             node, parameters, info, FieldRemapper(null, null, parameters), sourceCompiler.isCallInsideSameModuleAsCallee,
-            "Method inlining " + sourceCompiler.callElementText,
+            { "Method inlining " + sourceCompiler.callElementText },
             SourceMapCopier(sourceMapper, nodeAndSmap.classSMAP, callSite),
             info.callSiteInfo,
             isInlineOnlyMethod = isInlineOnly,
@@ -299,7 +297,7 @@ abstract class InlineCodegen<out T : BaseExpressionCodegen>(
         // Instead of checking for loops precisely, we just check if there are any backward jumps -
         // that is, a jump from instruction #i to instruction #j where j < i.
         private fun MethodNode.requiresEmptyStackOnEntry(): Boolean = tryCatchBlocks.isNotEmpty() ||
-                instructions.toArray().any { isBeforeSuspendMarker(it) || isBeforeInlineSuspendMarker(it) || isBackwardsJump(it) }
+                instructions.any { isBeforeSuspendMarker(it) || isBeforeInlineSuspendMarker(it) || isBackwardsJump(it) }
 
         private fun MethodNode.isBackwardsJump(insn: AbstractInsnNode): Boolean = when (insn) {
             is JumpInsnNode -> isBackwardsJump(insn, insn.label)

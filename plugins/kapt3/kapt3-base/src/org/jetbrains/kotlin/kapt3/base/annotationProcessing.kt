@@ -12,7 +12,6 @@ import com.sun.tools.javac.processing.AnnotationProcessingError
 import com.sun.tools.javac.processing.JavacFiler
 import com.sun.tools.javac.processing.JavacProcessingEnvironment
 import com.sun.tools.javac.tree.JCTree
-import org.jetbrains.kotlin.base.kapt3.KaptFlag
 import org.jetbrains.kotlin.kapt3.base.incremental.*
 import org.jetbrains.kotlin.kapt3.base.javac.KaptJavaFileManager
 import org.jetbrains.kotlin.kapt3.base.util.KaptBaseError
@@ -29,6 +28,12 @@ import javax.tools.JavaFileObject
 import kotlin.collections.List
 import kotlin.system.measureTimeMillis
 import com.sun.tools.javac.util.List as JavacList
+
+fun KaptContext.doAnnotationProcessing(
+    javaSourceFiles: List<File>,
+    processors: List<IncrementalProcessor>,
+    binaryTypesToReprocess: List<String> = emptyList()
+) = doAnnotationProcessing(javaSourceFiles, processors, JavacList.nil(), binaryTypesToReprocess)
 
 fun KaptContext.doAnnotationProcessing(
     javaSourceFiles: List<File>,
@@ -58,11 +63,11 @@ fun KaptContext.doAnnotationProcessing(
             return
         }
 
+        val initProcessAnnotationsMethod = JavaCompiler::class.java.declaredMethods.single { it.name == "initProcessAnnotations" }
         if (isJava9OrLater()) {
-            val initProcessAnnotationsMethod = JavaCompiler::class.java.declaredMethods.single { it.name == "initProcessAnnotations" }
             initProcessAnnotationsMethod.invoke(compiler, wrappedProcessors, emptyList<JavaFileObject>(), emptyList<String>())
         } else {
-            compiler.initProcessAnnotations(wrappedProcessors)
+            initProcessAnnotationsMethod.invoke(compiler, wrappedProcessors)
         }
 
         if (logger.isVerbose) {
@@ -92,7 +97,9 @@ fun KaptContext.doAnnotationProcessing(
                 processAnnotationsMethod.invoke(compiler, analyzedFiles, additionalClassNames)
                 compiler
             } else {
-                compiler.processAnnotations(analyzedFiles, additionalClassNames)
+                val processAnnotationsMethod =
+                    compiler.javaClass.getMethod("processAnnotations", JavacList::class.java, JavacList::class.java)
+                processAnnotationsMethod.invoke(compiler, analyzedFiles, additionalClassNames) as JavaCompiler
             }
         } catch (e: AnnotationProcessingError) {
             throw KaptBaseError(KaptBaseError.Kind.EXCEPTION, e.cause ?: e)

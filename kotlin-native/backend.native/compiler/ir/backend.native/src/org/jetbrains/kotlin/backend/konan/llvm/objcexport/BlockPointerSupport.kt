@@ -6,7 +6,6 @@
 package org.jetbrains.kotlin.backend.konan.llvm.objcexport
 
 import llvm.LLVMLinkage
-import llvm.LLVMSetLinkage
 import llvm.LLVMStoreSizeOfType
 import llvm.LLVMValueRef
 import org.jetbrains.kotlin.backend.konan.llvm.*
@@ -42,7 +41,7 @@ internal fun ObjCExportCodeGeneratorBase.generateBlockToKotlinFunctionConverter(
         val thisRef = param(0)
         val associatedObjectHolder = if (useSeparateHolder) {
             val bodyPtr = bitcast(pointerType(bodyType), thisRef)
-            loadSlot(structGep(bodyPtr, 1), isVar = false)
+            loadSlot(codegen.kObjHeaderPtr, structGep(bodyPtr, 1), isVar = false)
         } else {
             thisRef
         }
@@ -126,8 +125,9 @@ private fun FunctionGenerationContext.loadBlockInvoke(
 ): LlvmCallable {
     val invokePtr = structGep(bitcast(pointerType(codegen.runtime.blockLiteralType), blockPtr), 3)
     val signature = bridge.blockType.toBlockInvokeLlvmType(llvm)
-
-    return LlvmCallable(bitcast(pointerType(signature.llvmFunctionType), load(invokePtr)), signature)
+    val functionPointerType = pointerType(signature.llvmFunctionType)
+    val functionPointer = load(functionPointerType, bitcast(pointerType(functionPointerType), invokePtr))
+    return LlvmCallable(functionPointer, signature)
 }
 
 private fun FunctionGenerationContext.allocInstanceWithAssociatedObject(

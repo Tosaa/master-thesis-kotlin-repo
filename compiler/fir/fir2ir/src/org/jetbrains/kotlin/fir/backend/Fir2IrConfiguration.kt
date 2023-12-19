@@ -23,11 +23,16 @@ import org.jetbrains.kotlin.incremental.components.ExpectActualTracker
 import org.jetbrains.kotlin.incremental.components.InlineConstTracker
 
 /**
+ * @param linkViaSignatures enables calculation of signatures for IR symbols and filling the SymbolTable with them.
+ *  This parameter should be set to true if caller will rely on the content of the symbol table in future (like for KLib generation)
+ *
  * @param allowNonCachedDeclarations
  *  Normally, FIR-to-IR caches all declarations it meets in a compiled module.
  *  It means asking for an IR element of a non-cached declaration is a sign of inconsistent state.
  *  Code generation in the IDE is trickier, though, as declarations from any module can be potentially referenced.
  *  For such a scenario, there is a flag that relaxes consistency checks.
+ *
+ *  @param useIrFakeOverrideBuilder enables creation of fake-overrides using IR f/o generator instead of FIR2IR one. KT-61514
  */
 data class Fir2IrConfiguration(
     val languageVersionSettings: LanguageVersionSettings,
@@ -37,4 +42,5 @@ data class Fir2IrConfiguration(
     val inlineConstTracker: InlineConstTracker?,
     val expectActualTracker: ExpectActualTracker?,
     val allowNonCachedDeclarations: Boolean,
+    val useIrFakeOverrideBuilder: Boolean,
 )

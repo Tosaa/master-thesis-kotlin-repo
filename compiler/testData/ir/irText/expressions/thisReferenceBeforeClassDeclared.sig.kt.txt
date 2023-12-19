@@ -37,21 +37,4 @@ open class WithCompanion {
 //   Public signature: /test|4153745090133876513[0]
 //   Public signature debug description: test@WithCompanion(){}
 fun WithCompanion.test(): Unit
-  // CHECK:
-  //   Mangled name: #test@WithCompanion(){}.<no name provided>
-  local class <no name provided> : WithCompanion {
-    // CHECK:
-    //   Mangled name: #test@WithCompanion(){}.<no name provided>#<init>(){}
-    constructor() /* primary */
-
-  }
-
-  // CHECK:
-  //   Mangled name: #test@WithCompanion(){}.<no name provided>
-  local class <no name provided> : WithCompanion {
-    // CHECK:
-    //   Mangled name: #test@WithCompanion(){}.<no name provided>#<init>(){}
-    constructor() /* primary */
-
-  }
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2022 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Copyright 2010-2023 JetBrains s.r.o. and Kotlin Programming Language contributors.
  * Use of this source code is governed by the Apache 2.0 license that can be found in the license/LICENSE.txt file.
  */
 
@@ -33,6 +33,7 @@ import org.jetbrains.kotlin.descriptors.Modality
 import org.jetbrains.kotlin.descriptors.Visibility
 import org.jetbrains.kotlin.fir.containingClassLookupTag
 import org.jetbrains.kotlin.fir.contracts.FirEffectDeclaration
+import org.jetbrains.kotlin.fir.declarations.FirDeclarationOrigin
 import org.jetbrains.kotlin.fir.declarations.utils.*
 import org.jetbrains.kotlin.fir.symbols.impl.FirNamedFunctionSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.isExtension
@@ -67,11 +68,7 @@ internal class KtFirFunctionSymbol(
         get() = withValidityAssertion { firSymbol.fir.hasStableParameterNames }
 
     override val annotationsList by cached {
-        KtFirAnnotationListForDeclaration.create(
-            firSymbol,
-            analysisSession.useSiteSession,
-            token,
-        )
+        KtFirAnnotationListForDeclaration.create(firSymbol, builder)
     }
 
     override val isSuspend: Boolean get() = withValidityAssertion { firSymbol.isSuspend }
@@ -92,13 +89,14 @@ internal class KtFirFunctionSymbol(
     override val symbolKind: KtSymbolKind
         get() = withValidityAssertion {
             when {
+                firSymbol.origin == FirDeclarationOrigin.DynamicScope -> KtSymbolKind.CLASS_MEMBER
                 firSymbol.isLocal -> KtSymbolKind.LOCAL
                 firSymbol.containingClassLookupTag()?.classId == null -> KtSymbolKind.TOP_LEVEL
                 else -> KtSymbolKind.CLASS_MEMBER
             }
         }
 
-    override val modality: Modality get() = withValidityAssertion { firSymbol.modalityOrFinal }
+    override val modality: Modality get() = withValidityAssertion { firSymbol.modality }
     override val visibility: Visibility get() = withValidityAssertion { firSymbol.visibility }
 
     context(KtAnalysisSession)

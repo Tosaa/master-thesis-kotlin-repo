@@ -18,7 +18,6 @@ package org.jetbrains.kotlin.cli
 
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.openapi.util.text.StringUtil
-import org.jetbrains.kotlin.cli.common.CompilerSystemProperties
 import org.jetbrains.kotlin.cli.common.ExitCode
 import org.jetbrains.kotlin.cli.jvm.K2JVMCompiler
 import org.jetbrains.kotlin.test.CompilerTestUtil
@@ -146,7 +145,7 @@ class LauncherScriptTest : TestCaseWithTmpdir() {
             "$testDataDirectory/emptyMain.kt",
             "-nowarn",
             "-libraries",
-            PathUtil.kotlinPathsForCompiler.jsStdLibJarPath.absolutePath,
+            PathUtil.kotlinPathsForCompiler.jsStdLibKlibPath.absolutePath,
             "-Xir-produce-klib-dir",
             "-Xir-only",
             "-ir-output-dir",
@@ -205,7 +204,6 @@ class LauncherScriptTest : TestCaseWithTmpdir() {
             "-a",
             "b",
             expectedStdout = "-a, b\n",
-            expectedStderr = "warning: language version 2.0 is experimental, there are no backwards compatibility guarantees for new language and library features\n"
         )
     }
 
@@ -269,10 +267,7 @@ class LauncherScriptTest : TestCaseWithTmpdir() {
         runProcess(
             "kotlin", "-no-stdlib", "-e", "println(42)",
             expectedExitCode = 1,
-            expectedStderr = """script.kts:1:1: error: unresolved reference: println
-println(42)
-^
-script.kts:1:1: error: no script runtime was found in the classpath: class 'kotlin.script.templates.standard.ScriptTemplateWithArgs' not found. Please add kotlin-script-runtime.jar to the module dependencies.
+            expectedStderr = """script.kts:1:1: error: unresolved reference 'println'.
 println(42)
 ^
 """
@@ -322,7 +317,7 @@ println(42)
         )
         runProcess(
             "kotlin", "-Xallow-any-scripts-in-source-roots", "-howtorun", ".kts", "$testDataDirectory/noInline.myscript",
-            expectedExitCode = 1, expectedStderr = """compiler/testData/launcher/noInline.myscript:1:7: error: unresolved reference: CompilerOptions
+            expectedExitCode = 1, expectedStderr = """compiler/testData/launcher/noInline.myscript:1:7: error: unresolved reference 'CompilerOptions'.
 @file:CompilerOptions("-Xno-inline")
       ^
 """
@@ -539,7 +534,6 @@ println(42)
             "-cp", ".", "-d", ".", "-language-version", "2.0", file2kt.absolutePath,
             workDirectory = tmpdir,
             expectedStdout = "",
-            expectedStderr = "warning: language version 2.0 is experimental, there are no backwards compatibility guarantees for new language and library features\n"
         )
     }
 }

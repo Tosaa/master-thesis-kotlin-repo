@@ -5,11 +5,13 @@ fun testBreakFor() {
 )
   var k: Int = 0
   { // BLOCK
-    val <iterator>: IntIterator = xs.iterator()
-    while (<iterator>.hasNext()) { // BLOCK
-      val x: Int = <iterator>.next()
-      when {
-        greater(arg0 = k, arg1 = 2) -> break
+    val tmp_0: IntIterator = xs.iterator()
+    while (tmp_0.hasNext()) { // BLOCK
+      val x: Int = tmp_0.next()
+      { // BLOCK
+        when {
+          greater(arg0 = k, arg1 = 2) -> break
+        }
       }
     }
   }
@@ -17,17 +19,21 @@ fun testBreakFor() {
 
 fun testBreakWhile() {
   var k: Int = 0
-  while (less(arg0 = k, arg1 = 10)) when {
-    greater(arg0 = k, arg1 = 2) -> break
+  while (less(arg0 = k, arg1 = 10)) { // BLOCK
+    when {
+      greater(arg0 = k, arg1 = 2) -> break
+    }
   }
 }
 
 fun testBreakDoWhile() {
   var k: Int = 0
   { // BLOCK
-    dowhen {
+    do// COMPOSITE {
+    when {
       greater(arg0 = k, arg1 = 2) -> break
-    }    while (less(arg0 = k, arg1 = 10))
+    }
+    // }    while (less(arg0 = k, arg1 = 10))
   }
 }
 
@@ -38,11 +44,13 @@ fun testContinueFor() {
 )
   var k: Int = 0
   { // BLOCK
-    val <iterator>: IntIterator = xs.iterator()
-    while (<iterator>.hasNext()) { // BLOCK
-      val x: Int = <iterator>.next()
-      when {
-        greater(arg0 = k, arg1 = 2) -> continue
+    val tmp_1: IntIterator = xs.iterator()
+    while (tmp_1.hasNext()) { // BLOCK
+      val x: Int = tmp_1.next()
+      { // BLOCK
+        when {
+          greater(arg0 = k, arg1 = 2) -> continue
+        }
       }
     }
   }
@@ -50,8 +58,10 @@ fun testContinueFor() {
 
 fun testContinueWhile() {
   var k: Int = 0
-  while (less(arg0 = k, arg1 = 10)) when {
-    greater(arg0 = k, arg1 = 2) -> continue
+  while (less(arg0 = k, arg1 = 10)) { // BLOCK
+    when {
+      greater(arg0 = k, arg1 = 2) -> continue
+    }
   }
 }
 
@@ -74,3 +84,4 @@ fun testContinueDoWhile() {
     EQEQ(arg0 = s, arg1 = "1;2;").not() -> throw AssertionError(p0 = s)
   }
 }
+

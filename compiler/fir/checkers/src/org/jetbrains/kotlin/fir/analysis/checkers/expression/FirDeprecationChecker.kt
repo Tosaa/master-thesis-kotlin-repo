@@ -6,7 +6,6 @@
 package org.jetbrains.kotlin.fir.analysis.checkers.expression
 
 import org.jetbrains.kotlin.KtFakeSourceElementKind
-import org.jetbrains.kotlin.KtRealSourceElementKind
 import org.jetbrains.kotlin.KtSourceElement
 import org.jetbrains.kotlin.config.KotlinCompilerVersion
 import org.jetbrains.kotlin.diagnostics.DiagnosticReporter
@@ -27,8 +26,9 @@ import org.jetbrains.kotlin.fir.expressions.calleeReference
 import org.jetbrains.kotlin.fir.languageVersionSettings
 import org.jetbrains.kotlin.fir.references.resolved
 import org.jetbrains.kotlin.fir.resolve.firClassLike
-import org.jetbrains.kotlin.fir.resolve.typeAliasForConstructor
+import org.jetbrains.kotlin.fir.scopes.impl.typeAliasForConstructor
 import org.jetbrains.kotlin.fir.symbols.FirBasedSymbol
+import org.jetbrains.kotlin.fir.symbols.SymbolInternals
 import org.jetbrains.kotlin.fir.symbols.impl.FirClassLikeSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirConstructorSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirTypeAliasSymbol
@@ -38,13 +38,13 @@ import org.jetbrains.kotlin.resolve.deprecation.DeprecationLevelValue
 
 object FirDeprecationChecker : FirBasicExpressionChecker() {
 
-    private val allowedSourceKinds = setOf(
-        KtRealSourceElementKind,
-        KtFakeSourceElementKind.DesugaredIncrementOrDecrement
+    private val filteredSourceKinds: Set<KtFakeSourceElementKind> = setOf(
+        KtFakeSourceElementKind.PropertyFromParameter,
+        KtFakeSourceElementKind.DataClassGeneratedMembers
     )
 
     override fun check(expression: FirStatement, context: CheckerContext, reporter: DiagnosticReporter) {
-        if (!allowedSourceKinds.contains(expression.source?.kind)) return
+        if (expression.source?.kind in filteredSourceKinds) return
         if (expression is FirAnnotation) return // checked by FirDeprecatedTypeChecker
         if (expression.isLhsOfAssignment(context)) return
 
@@ -52,17 +52,35 @@ object FirDeprecationChecker : FirBasicExpressionChecker() {
         val resolvedReference = calleeReference.resolved ?: return
         val referencedSymbol = resolvedReference.resolvedSymbol
 
+        if (expression.isDelegatedPropertySelfAccess(context, referencedSymbol)) return
+
+        val source = resolvedReference.source ?: expression.source
+
         if (expression is FirDelegatedConstructorCall) {
             // Report deprecations on the constructor itself, not on the declaring class as that will be handled by FirDeprecatedTypeChecker
             val constructorOnlyDeprecation = referencedSymbol.getDeprecation(context.session, expression) ?: return
             val isTypealiasExpansion = expression.constructedTypeRef.firClassLike(context.session)?.symbol is FirTypeAliasSymbol
+
             reportApiStatus(
-                resolvedReference.source, referencedSymbol, isTypealiasExpansion,
+                source, referencedSymbol, isTypealiasExpansion,
                 constructorOnlyDeprecation, reporter, context
             )
         } else {
-            reportApiStatusIfNeeded(resolvedReference.source, referencedSymbol, context, reporter, callSite = expression)
+            reportApiStatusIfNeeded(source, referencedSymbol, context, reporter, callSite = expression)
         }
+    }
+
+    /** Checks if this is an access to a delegated property inside the delegated property itself.
+     *  Deprecations shouldn't be reported here. */
+    @OptIn(SymbolInternals::class)
+    private fun FirStatement.isDelegatedPropertySelfAccess(context: CheckerContext, referencedSymbol: FirBasedSymbol<*>): Boolean {
+        if (source?.kind != KtFakeSourceElementKind.DelegatedPropertyAccessor) return false
+        val containers = context.containingDeclarations
+        val size = containers.size
+        val fir = referencedSymbol.fir
+
+        return containers.getOrNull(size - 1) == fir // For `provideDelegate`, the call will be in the initializer
+                || containers.getOrNull(size - 2) == fir // For `getValue`, the call will be in the accessor
     }
 
     internal fun reportApiStatusIfNeeded(

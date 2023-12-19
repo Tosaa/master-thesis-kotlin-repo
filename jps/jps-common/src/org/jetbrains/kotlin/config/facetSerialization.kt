@@ -181,10 +181,12 @@ private fun readV2AndLaterConfig(
         }
         productionOutputPath = element.getChild("productionOutputPath")?.let {
             (it.content.firstOrNull() as? Text)?.textTrim?.let(FileUtilRt::toSystemDependentName)
-        } ?: (compilerArguments as? K2JSCompilerArguments)?.outputFile
+        } ?: (compilerArguments as? K2JSCompilerArguments)?.outputDir
+                ?: (compilerArguments as? K2JSCompilerArguments)?.outputFile
         testOutputPath = element.getChild("testOutputPath")?.let {
             (it.content.firstOrNull() as? Text)?.textTrim?.let(FileUtilRt::toSystemDependentName)
-        } ?: (compilerArguments as? K2JSCompilerArguments)?.outputFile
+        } ?: (compilerArguments as? K2JSCompilerArguments)?.outputDir
+                ?: (compilerArguments as? K2JSCompilerArguments)?.outputFile
     }
 }
 
@@ -239,7 +241,7 @@ fun CommonCompilerArguments.convertPathsToSystemIndependent() {
         }
 
         is K2JSCompilerArguments -> {
-            outputFile = outputFile?.let(FileUtilRt::toSystemIndependentName)
+            outputDir = (outputDir ?: outputFile)?.let(FileUtilRt::toSystemIndependentName)
             libraries = libraries?.let(FileUtilRt::toSystemIndependentName)
         }
 
@@ -354,14 +356,16 @@ private fun KotlinFacetSettings.writeConfig(element: Element) {
     if (pureKotlinSourceFolders.isNotEmpty()) {
         element.setAttribute("pureKotlinSourceFolders", pureKotlinSourceFolders.joinToString(";"))
     }
-    productionOutputPath?.let {
-        if (it != (compilerArguments as? K2JSCompilerArguments)?.outputFile) {
-            element.addContent(Element("productionOutputPath").apply { addContent(FileUtilRt.toSystemIndependentName(it)) })
+    (compilerArguments as? K2JSCompilerArguments)?.let { compilerArguments ->
+        productionOutputPath?.let {
+            if (it != compilerArguments.outputDir && it != compilerArguments.outputFile) {
+                element.addContent(Element("productionOutputPath").apply { addContent(FileUtilRt.toSystemIndependentName(it)) })
+            }
         }
-    }
-    testOutputPath?.let {
-        if (it != (compilerArguments as? K2JSCompilerArguments)?.outputFile) {
-            element.addContent(Element("testOutputPath").apply { addContent(FileUtilRt.toSystemIndependentName(it)) })
+        testOutputPath?.let {
+            if (it != compilerArguments.outputDir && it != compilerArguments.outputFile) {
+                element.addContent(Element("testOutputPath").apply { addContent(FileUtilRt.toSystemIndependentName(it)) })
+            }
         }
     }
     compilerSettings?.copyOf()?.let {
@@ -429,7 +433,7 @@ fun KotlinFacetSettings.serializeFacetSettings(element: Element) = when (version
 }
 
 
-private fun TargetPlatform.serializeComponentPlatforms(): String {
+fun TargetPlatform.serializeComponentPlatforms(): String {
     val componentPlatforms = componentPlatforms
     val componentPlatformNames = componentPlatforms.mapTo(ArrayList()) { it.serializeToString() }
 
@@ -440,7 +444,7 @@ private fun TargetPlatform.serializeComponentPlatforms(): String {
     return componentPlatformNames.sorted().joinToString("/")
 }
 
-private fun String?.deserializeTargetPlatformByComponentPlatforms(): TargetPlatform? {
+fun String?.deserializeTargetPlatformByComponentPlatforms(): TargetPlatform? {
     val componentPlatformNames = this?.split('/')?.toSet()?.takeIf { it.isNotEmpty() } ?: return null
 
     val knownComponentPlatforms = HashMap<String, SimplePlatform>() // "serialization presentation" to "simple platform name"

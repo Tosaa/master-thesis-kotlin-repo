@@ -10,6 +10,7 @@ import org.jetbrains.kotlin.ir.ObsoleteDescriptorBasedAPI
 import org.jetbrains.kotlin.ir.declarations.*
 import org.jetbrains.kotlin.ir.expressions.IrConstructorCall
 import org.jetbrains.kotlin.ir.symbols.IrClassSymbol
+import org.jetbrains.kotlin.ir.symbols.UnsafeDuringIrConstructionAPI
 import org.jetbrains.kotlin.ir.types.IrSimpleType
 import org.jetbrains.kotlin.ir.types.IrType
 import org.jetbrains.kotlin.name.Name
@@ -30,6 +31,7 @@ open class IrClassImpl(
     override var isValue: Boolean = false,
     override var isExpect: Boolean = false,
     override var isFun: Boolean = false,
+    override var hasEnumEntries: Boolean = false,
     override val source: SourceElement = SourceElement.NO_SOURCE,
     override val factory: IrFactory = IrFactoryImpl
 ) : IrClass() {
@@ -46,6 +48,7 @@ open class IrClassImpl(
 
     override var thisReceiver: IrValueParameter? = null
 
+    @UnsafeDuringIrConstructionAPI
     override val declarations: MutableList<IrDeclaration> = ArrayList()
 
     override var typeParameters: List<IrTypeParameter> = emptyList()

@@ -5,7 +5,7 @@ To run tests manually on MacOS,
 - run `runtests.sh` as described below. 
 
 K1: `kotlin-native/backend.native/tests/compilerChecks/runtests.sh -language-version 1.9`
-K2: `kotlin-native/backend.native/tests/compilerChecks/runtests.sh -language-version 2.0`
+K2: `kotlin-native/backend.native/tests/compilerChecks/runtests.sh`
 
 Reference output:
 ```text
@@ -108,8 +108,8 @@ kotlin-native/backend.native/tests/compilerChecks/t5.kt:4:83: error: passing Str
 kotlin-native/backend.native/tests/compilerChecks/t50.kt
 kotlin-native/backend.native/tests/compilerChecks/t50.kt:11:16: error: kotlin.native.concurrent.Worker.execute must take an unbound, non-capturing function or lambda, but captures at:
     kotlin-native/backend.native/tests/compilerChecks/t50.kt:11:54
-kotlin-native/backend.native/tests/compilerChecks/t51.kt
-  MISSING EXPECTED ERROR FOR kotlin-native/backend.native/tests/compilerChecks/t51.kt
+kotlin-native/backend.native/tests/compilerChecks/t51.kt:9:28: error: kotlin.native.concurrent.Worker.execute must take an unbound, non-capturing function or lambda, but captures at:
+    kotlin-native/backend.native/tests/compilerChecks/t51.kt:9:66
 kotlin-native/backend.native/tests/compilerChecks/t52.kt
 kotlin-native/backend.native/tests/compilerChecks/t52.kt:5:5: error: kotlin.native.ref.createCleaner must take an unbound, non-capturing function or lambda, but captures at:
      kotlin-native/backend.native/tests/compilerChecks/t52.kt:5:33: x
@@ -136,9 +136,9 @@ kotlin-native/backend.native/tests/compilerChecks/t61.kt:8:5: error: only compan
 kotlin-native/backend.native/tests/compilerChecks/t62.kt
 kotlin-native/backend.native/tests/compilerChecks/t62.kt:7:1: error: only companion objects of subclasses of Objective-C classes can inherit from Objective-C metaclasses
 kotlin-native/backend.native/tests/compilerChecks/t63.kt
-  MISSING EXPECTED ERROR FOR kotlin-native/backend.native/tests/compilerChecks/t63.kt
+kotlin-native/backend.native/tests/compilerChecks/t63.kt:24:17: error: calling suspend functions from `autoreleasepool {}` is prohibited, see https://youtrack.jetbrains.com/issue/KT-50786
 kotlin-native/backend.native/tests/compilerChecks/t64.kt
-  MISSING EXPECTED ERROR FOR kotlin-native/backend.native/tests/compilerChecks/t64.kt
+kotlin-native/backend.native/tests/compilerChecks/t64.kt:26:17: error: calling suspend functions from `autoreleasepool {}` is prohibited, see https://youtrack.jetbrains.com/issue/KT-50786
 kotlin-native/backend.native/tests/compilerChecks/t7.kt
 kotlin-native/backend.native/tests/compilerChecks/t7.kt:4:41: error: when calling variadic C functions spread operator is supported only for *arrayOf(...)
 kotlin-native/backend.native/tests/compilerChecks/t8.kt

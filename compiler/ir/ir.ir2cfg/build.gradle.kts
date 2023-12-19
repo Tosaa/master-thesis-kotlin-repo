@@ -10,8 +10,9 @@ dependencies {
     api(project(":compiler:ir.tree"))
 }
 
+optInToUnsafeDuringIrConstructionAPI()
+
 sourceSets {
     "main" { projectDefault() }
     "test" {}
 }
-

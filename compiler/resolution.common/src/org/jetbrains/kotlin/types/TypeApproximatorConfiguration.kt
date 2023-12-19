@@ -65,6 +65,7 @@ open class TypeApproximatorConfiguration {
         override val integerLiteralConstantType: Boolean get() = true
         override val intersectionTypesInContravariantPositions: Boolean get() = true
 
+        // Probably, it's worth thinking of returning true only for delegated property accessors, see KT-61090
         override fun shouldKeepTypeVariableBasedType(marker: TypeVariableTypeConstructorMarker, isK2: Boolean): Boolean = isK2
     }
 
@@ -75,6 +76,7 @@ open class TypeApproximatorConfiguration {
         override val integerLiteralConstantType: Boolean get() = true
         override val intersectionTypesInContravariantPositions: Boolean get() = true
 
+        // Probably, it's worth thinking of returning true only for delegated property accessors, see KT-61090
         override fun shouldKeepTypeVariableBasedType(marker: TypeVariableTypeConstructorMarker, isK2: Boolean): Boolean = isK2
 
         object SaveAnonymousTypes : PublicDeclaration(localTypes = false, anonymous = false)
@@ -130,5 +132,12 @@ open class TypeApproximatorConfiguration {
     object UpperBoundAwareIntersectionTypeApproximator : AllFlexibleSameValue() {
         override val allFlexible: Boolean get() = true
         override val intersection: IntersectionStrategy = IntersectionStrategy.TO_UPPER_BOUND_IF_SUPERTYPE
+    }
+
+    object FrontendToBackendTypesApproximation : AllFlexibleSameValue() {
+        override val allFlexible: Boolean get() = true
+        override val errorType: Boolean get() = true
+        override val integerLiteralConstantType: Boolean get() = true
+        override val intersectionTypesInContravariantPositions: Boolean get() = true
     }
 }

@@ -14,7 +14,7 @@ import org.gradle.api.attributes.AttributeContainer
 import org.gradle.api.tasks.TaskProvider
 import org.jetbrains.kotlin.gradle.dsl.KotlinJsCompilerOptions
 import org.jetbrains.kotlin.gradle.dsl.KotlinJsOptions
-import org.jetbrains.kotlin.gradle.plugin.*
+import org.jetbrains.kotlin.gradle.plugin.HasCompilerOptions
 import org.jetbrains.kotlin.gradle.plugin.mpp.compilationImpl.KotlinCompilationImpl
 import org.jetbrains.kotlin.gradle.targets.js.dsl.KotlinJsSubTargetContainerDsl
 import org.jetbrains.kotlin.gradle.targets.js.ir.JsBinary
@@ -25,7 +25,8 @@ import javax.inject.Inject
 
 open class KotlinJsCompilation @Inject internal constructor(
     compilation: KotlinCompilationImpl
-) : AbstractKotlinCompilationToRunnableFiles<KotlinJsOptions>(compilation) {
+) : AbstractKotlinCompilationToRunnableFiles<KotlinJsOptions>(compilation),
+    HasBinaries<KotlinJsBinaryContainer> {
 
     @Suppress("UNCHECKED_CAST")
     final override val compilerOptions: HasCompilerOptions<KotlinJsCompilerOptions>
@@ -39,7 +40,7 @@ open class KotlinJsCompilation @Inject internal constructor(
         configure.execute(compilerOptions.options)
     }
 
-    val binaries: KotlinJsBinaryContainer =
+    override val binaries: KotlinJsBinaryContainer =
         compilation.target.project.objects.newInstance(
             KotlinJsBinaryContainer::class.java,
             compilation.target,

@@ -12,6 +12,7 @@ import org.jetbrains.kotlin.diagnostics.KtPsiDiagnostic
 import org.jetbrains.kotlin.diagnostics.Severity
 import org.jetbrains.kotlin.diagnostics.impl.BaseDiagnosticsCollector
 import org.jetbrains.kotlin.diagnostics.rendering.RootDiagnosticRendererFactory
+import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors
 import java.io.Closeable
 import java.io.File
 import java.io.InputStreamReader
@@ -24,6 +25,13 @@ object FirDiagnosticsCompilerResultsReporter {
     ): Boolean {
         return reportByFile(diagnosticsCollector) { diagnostic, location ->
             reportDiagnosticToMessageCollector(diagnostic, location, messageCollector, renderDiagnosticName)
+        }.also {
+            AnalyzerWithCompilerReport.reportSpecialErrors(
+                diagnosticsCollector.diagnostics.any { it.factory == FirErrors.INCOMPATIBLE_CLASS },
+                diagnosticsCollector.diagnostics.any { it.factory == FirErrors.PRE_RELEASE_CLASS },
+                diagnosticsCollector.diagnostics.any { it.factory == FirErrors.IR_WITH_UNSTABLE_ABI_COMPILED_CLASS },
+                messageCollector,
+            )
         }
     }
 
@@ -77,20 +85,7 @@ object FirDiagnosticsCompilerResultsReporter {
                 }
             }
         }
-        // TODO: for uncommenting, see comment in reportSpecialErrors
-//        reportSpecialErrors(diagnostics)
         return hasErrors
-    }
-
-    @Suppress("UNUSED_PARAMETER", "unused")
-    private fun reportSpecialErrors(diagnostics: Collection<KtDiagnostic>) {
-        /*
-         * TODO: handle next diagnostics when they will be supported in FIR:
-         *  - INCOMPATIBLE_CLASS
-         *  - PRE_RELEASE_CLASS
-         *  - IR_WITH_UNSTABLE_ABI_COMPILED_CLASS
-         *  - FIR_COMPILED_CLASS
-         */
     }
 
     private fun reportDiagnosticToMessageCollector(

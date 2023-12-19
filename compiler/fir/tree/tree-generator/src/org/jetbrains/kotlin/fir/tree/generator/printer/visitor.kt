@@ -5,151 +5,123 @@
 
 package org.jetbrains.kotlin.fir.tree.generator.printer
 
-import org.jetbrains.kotlin.fir.tree.generator.FirTreeBuilder
 import org.jetbrains.kotlin.fir.tree.generator.context.AbstractFirTreeBuilder
+import org.jetbrains.kotlin.fir.tree.generator.firDefaultVisitorType
+import org.jetbrains.kotlin.fir.tree.generator.firDefaultVisitorVoidType
+import org.jetbrains.kotlin.fir.tree.generator.firVisitorType
+import org.jetbrains.kotlin.fir.tree.generator.firVisitorVoidType
 import org.jetbrains.kotlin.fir.tree.generator.model.Element
+import org.jetbrains.kotlin.fir.tree.generator.model.Field
+import org.jetbrains.kotlin.generators.tree.*
+import org.jetbrains.kotlin.generators.tree.printer.GeneratedFile
+import org.jetbrains.kotlin.generators.tree.printer.printGeneratedType
 import org.jetbrains.kotlin.utils.SmartPrinter
-import org.jetbrains.kotlin.utils.withIndent
 import java.io.File
 
-private val elementsWithMultipleSupertypesForDefaultVisitor = mapOf(
-    FirTreeBuilder.resolvedErrorReference to FirTreeBuilder.resolvedNamedReference
-)
+private class VisitorPrinter(
+    printer: SmartPrinter,
+    override val visitorType: ClassRef<*>,
+    private val visitSuperTypeByDefault: Boolean,
+) : AbstractVisitorPrinter<Element, Field>(printer) {
 
-private fun Element.isAcceptableForDefaultVisiting(): Boolean {
-    if (this == AbstractFirTreeBuilder.baseFirElement) return false
-    val hasSingleSupertype = parents.size == 1 && parents.single().name != "Element"
-    return hasSingleSupertype || this in elementsWithMultipleSupertypesForDefaultVisitor
-}
+    override val visitorTypeParameters: List<TypeVariable>
+        get() = listOf(resultTypeVariable, dataTypeVariable)
 
-private fun Element.getNameOfSupertypeForDefaultVisiting(): String {
-    val parentForDefaultVisiting = parents.singleOrNull() ?: elementsWithMultipleSupertypesForDefaultVisitor.getValue(this)
-    return parentForDefaultVisiting.name
-}
+    override val visitorSuperType: ClassRef<PositionTypeParameterRef>? =
+        firVisitorType.takeIf { visitSuperTypeByDefault }?.withArgs(resultTypeVariable, dataTypeVariable)
 
-fun printVisitor(elements: List<Element>, generationPath: File, visitSuperTypeByDefault: Boolean): GeneratedFile {
-    val className = if (visitSuperTypeByDefault) "FirDefaultVisitor" else "FirVisitor"
-    val dir = File(generationPath, VISITOR_PACKAGE.replace(".", "/"))
-    val file = File(dir, "$className.kt")
-    val stringBuilder = StringBuilder()
-    SmartPrinter(stringBuilder).apply {
-        printCopyright()
-        println("package $VISITOR_PACKAGE")
-        println()
-        elements.forEach { println("import ${it.fullQualifiedName}") }
-        println()
-        printGeneratedMessage()
+    override val visitorDataType: TypeRef
+        get() = dataTypeVariable
 
-        print("abstract class $className<out R, in D> ")
-        if (visitSuperTypeByDefault) {
-            print(": FirVisitor<R, D>() ")
-        }
-        println("{")
+    override fun visitMethodReturnType(element: Element) = resultTypeVariable
 
-        pushIndent()
-        if (!visitSuperTypeByDefault) {
-            println("abstract fun visitElement(element: FirElement, data: D): R\n")
-        }
-        for (element in elements) {
-            if (element == AbstractFirTreeBuilder.baseFirElement) continue
-            if (visitSuperTypeByDefault && !element.isAcceptableForDefaultVisiting()) continue
-            with(element) {
-                val varName = safeDecapitalizedName
-                if (visitSuperTypeByDefault) {
-                    print("override")
-                } else {
-                    print("open")
-                }
-                print(" fun ${typeParameters}visit$name($varName: $typeWithArguments, data: D): R${multipleUpperBoundsList()} = visit")
-                if (visitSuperTypeByDefault) {
-                    print(element.getNameOfSupertypeForDefaultVisiting())
-                } else {
-                    print("Element")
-                }
-                println("($varName, data)")
-                println()
-            }
-        }
-        popIndent()
-        println("}")
+    override val allowTypeParametersInVisitorMethods: Boolean
+        get() = true
+
+    override fun skipElement(element: Element): Boolean = visitSuperTypeByDefault && element.isRootElement
+
+    override fun parentInVisitor(element: Element): Element? = when {
+        element.isRootElement -> null
+        visitSuperTypeByDefault -> element.parentInVisitor
+        else -> AbstractFirTreeBuilder.baseFirElement
     }
-    return GeneratedFile(file, stringBuilder.toString())
 }
 
+fun printVisitor(elements: List<Element>, generationPath: File, visitSuperTypeByDefault: Boolean) =
+    printVisitorCommon(
+        elements,
+        generationPath,
+        if (visitSuperTypeByDefault) firDefaultVisitorType else firVisitorType,
+    ) { printer, visitorType ->
+        VisitorPrinter(printer, visitorType, visitSuperTypeByDefault)
+    }
 
-fun printVisitorVoid(elements: List<Element>, generationPath: File): GeneratedFile {
-    val dir = File(generationPath, VISITOR_PACKAGE.replace(".", "/"))
-    val file = File(dir, "FirVisitorVoid.kt")
-    val stringBuilder = StringBuilder()
-    SmartPrinter(stringBuilder).apply {
-        printCopyright()
-        println("package $VISITOR_PACKAGE")
-        println()
-        elements.forEach { println("import ${it.fullQualifiedName}") }
-        println()
-        printGeneratedMessage()
+private class VisitorVoidPrinter(
+    printer: SmartPrinter,
+    override val visitorType: ClassRef<*>,
+) : AbstractVisitorVoidPrinter<Element, Field>(printer) {
 
-        println("abstract class FirVisitorVoid : FirVisitor<Unit, Nothing?>() {")
+    override val visitorSuperClass: ClassRef<PositionTypeParameterRef>
+        get() = firVisitorType
 
-        withIndent {
-            println("abstract fun visitElement(element: FirElement)")
+    override val allowTypeParametersInVisitorMethods: Boolean
+        get() = true
+
+    override val useAbstractMethodForRootElement: Boolean
+        get() = true
+
+    override val overriddenVisitMethodsAreFinal: Boolean
+        get() = true
+
+    override fun parentInVisitor(element: Element): Element = AbstractFirTreeBuilder.baseFirElement
+}
+
+fun printVisitorVoid(elements: List<Element>, generationPath: File) =
+    printVisitorCommon(elements, generationPath, firVisitorVoidType, ::VisitorVoidPrinter)
+
+private class DefaultVisitorVoidPrinter(
+    printer: SmartPrinter,
+    override val visitorType: ClassRef<*>,
+) : AbstractVisitorPrinter<Element, Field>(printer) {
+
+    override val visitorTypeParameters: List<TypeVariable>
+        get() = emptyList()
+
+    override val visitorDataType: TypeRef
+        get() = StandardTypes.nothing.copy(nullable = true)
+
+    override fun visitMethodReturnType(element: Element) = StandardTypes.unit
+
+    override val visitorSuperType: ClassRef<PositionTypeParameterRef>
+        get() = firVisitorVoidType
+
+    override val allowTypeParametersInVisitorMethods: Boolean
+        get() = true
+
+    context(ImportCollector)
+    override fun printMethodsForElement(element: Element) {
+        val parentInVisitor = element.parentInVisitor ?: return
+        printer.run {
+            printVisitMethodDeclaration(
+                element,
+                hasDataParameter = false,
+                override = true,
+            )
+            println(" = ", parentInVisitor.visitFunctionName, "(", element.visitorParameterName, ")")
             println()
-            for (element in elements) {
-                if (element == AbstractFirTreeBuilder.baseFirElement) continue
-                with(element) {
-                    val varName = safeDecapitalizedName
-                    println("open fun ${typeParameters}visit$name($varName: $typeWithArguments)${multipleUpperBoundsList()}{")
-                    withIndent {
-                        println("visitElement($varName)")
-                    }
-                    println("}")
-                    println()
-                }
-            }
-
-            for (element in elements) {
-                with(element) {
-                    val varName = safeDecapitalizedName
-                    println("final override fun ${typeParameters}visit$name($varName: $typeWithArguments, data: Nothing?)${multipleUpperBoundsList()}{")
-                    withIndent {
-                        println("visit$name($varName)")
-                    }
-                    println("}")
-                    println()
-                }
-            }
         }
-        println("}")
     }
-    return GeneratedFile(file, stringBuilder.toString())
 }
 
-fun printDefaultVisitorVoid(elements: List<Element>, generationPath: File): GeneratedFile {
-    val className = "FirDefaultVisitorVoid"
-    val dir = File(generationPath, VISITOR_PACKAGE.replace(".", "/"))
-    val file = File(dir, "$className.kt")
-    val stringBuilder = StringBuilder()
-    SmartPrinter(stringBuilder).apply {
-        printCopyright()
-        println("package $VISITOR_PACKAGE")
-        println()
-        elements.forEach { println("import ${it.fullQualifiedName}") }
-        println()
-        printGeneratedMessage()
+fun printDefaultVisitorVoid(elements: List<Element>, generationPath: File) =
+    printVisitorCommon(elements, generationPath, firDefaultVisitorVoidType, ::DefaultVisitorVoidPrinter)
 
-        println("abstract class $className : FirVisitorVoid() {")
-
-        pushIndent()
-        for (element in elements) {
-            if (!element.isAcceptableForDefaultVisiting()) continue
-            with(element) {
-                val varName = safeDecapitalizedName
-                println("override fun ${typeParameters}visit$name($varName: $typeWithArguments)${multipleUpperBoundsList()} = visit${element.getNameOfSupertypeForDefaultVisiting()}($varName)")
-                println()
-            }
-        }
-        popIndent()
-        println("}")
+private fun printVisitorCommon(
+    elements: List<Element>,
+    generationPath: File,
+    visitorType: ClassRef<*>,
+    makePrinter: (SmartPrinter, ClassRef<*>) -> AbstractVisitorPrinter<Element, Field>,
+): GeneratedFile =
+    printGeneratedType(generationPath, TREE_GENERATOR_README, visitorType.packageName, visitorType.simpleName) {
+        makePrinter(this, visitorType).printVisitor(elements)
     }
-    return GeneratedFile(file, stringBuilder.toString())
-}

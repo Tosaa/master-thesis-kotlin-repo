@@ -29,13 +29,6 @@ class Test {
   //   Public signature: /Test.<init>|4848133296495274545[0]
   //   Public signature debug description: <init>!Context(){}
   constructor($context_receiver_0: Context) /* primary */
-  // CHECK JVM_IR:
-  //   Mangled name computed from Ir:         Test.contextReceiverField0
-  //   Mangled name computed from Descriptor: Test{}contextReceiverField0#jf
-  // CHECK JS_IR NATIVE:
-  //   Mangled name computed from Ir:         Test.contextReceiverField0
-  //   Mangled name computed from Descriptor: Test{}contextReceiverField0
-  private /* final field */ val contextReceiverField0: Context
 
   // CHECK:
   //   Mangled name: Test#bar(){}

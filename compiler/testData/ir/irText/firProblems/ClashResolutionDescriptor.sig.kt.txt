@@ -1,10 +1,10 @@
 // CHECK:
 //   Mangled name: {}registrationMap
-//   Public signature: [ File 'ClashResolutionDescriptor.kt' <- /registrationMap|8184441143918876435[0] ]
+//   Public signature: [ File '/ClashResolutionDescriptor.kt' <- /registrationMap|8184441143918876435[0] ]
 private val registrationMap: HashMap<Type, Any>
   // CHECK JVM_IR:
   //   Mangled name: #<get-registrationMap>(){}java.util.HashMap<java.lang.reflect.Type,kotlin.Any>
-  //   Public signature: [ File 'ClashResolutionDescriptor.kt' <- /registrationMap.<get-registrationMap>|3119298927482099509[0] ]
+  //   Public signature: [ File '/ClashResolutionDescriptor.kt' <- /registrationMap.<get-registrationMap>|3119298927482099509[0] ]
   private get
 
 // CHECK:
@@ -68,21 +68,18 @@ abstract class PlatformExtensionsClashResolver<E : PlatformSpecificExtension<E>>
 //   Mangled name: ComponentContainer
 //   Public signature: /ComponentContainer|null[0]
 interface ComponentContainer {
-
 }
 
 // CHECK:
 //   Mangled name: ComponentDescriptor
 //   Public signature: /ComponentDescriptor|null[0]
 interface ComponentDescriptor {
-
 }
 
 // CHECK:
 //   Mangled name: PlatformSpecificExtension
 //   Public signature: /PlatformSpecificExtension|null[0]
 interface PlatformSpecificExtension<S : PlatformSpecificExtension<S>> {
-
 }
 
 // CHECK:

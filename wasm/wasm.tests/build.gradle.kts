@@ -11,7 +11,7 @@ repositories {
     ivy {
         url = URI("https://archive.mozilla.org/pub/firefox/nightly/")
         patternLayout {
-            artifact("2023/07/[revision]/[artifact]-[classifier].[ext]")
+            artifact("2023/09/[revision]/[artifact]-[classifier].[ext]")
         }
         metadataSources { artifact() }
         content { includeModule("org.mozilla", "jsshell") }
@@ -44,7 +44,7 @@ val currentOsType = run {
 }
 
 
-val jsShellVersion = "2023-07-24-09-16-21-mozilla-central"
+val jsShellVersion = "2023-09-20-09-21-12-mozilla-central"
 val jsShellSuffix = when (currentOsType) {
     OsType(OsName.LINUX, OsArch.X86_32) -> "linux-i686"
     OsType(OsName.LINUX, OsArch.X86_64) -> "linux-x86_64"
@@ -61,10 +61,12 @@ val jsShell by configurations.creating {
 }
 
 dependencies {
-    testApi(commonDependency("junit:junit"))
     testApi(projectTests(":compiler:tests-common"))
     testApi(projectTests(":compiler:tests-common-new"))
     testApi(intellijCore())
+    testApi(platform(libs.junit.bom))
+    testImplementation(libs.junit.jupiter.api)
+    testRuntimeOnly(libs.junit.jupiter.engine)
 
     jsShell("org.mozilla:jsshell:$jsShellVersion:$jsShellSuffix@zip")
 
@@ -88,8 +90,8 @@ sourceSets {
 }
 
 fun Test.setupWasmStdlib(target: String) {
-    dependsOn(":kotlin-stdlib-wasm-$target:compileKotlinWasm")
-    systemProperty("kotlin.wasm-$target.stdlib.path", "libraries/stdlib/wasm/$target/build/classes/kotlin/wasm/main")
+    dependsOn(":kotlin-stdlib:compileKotlinWasm${target.capitalize()}")
+    systemProperty("kotlin.wasm-$target.stdlib.path", "libraries/stdlib/build/classes/kotlin/wasm${target.capitalize()}/main")
     dependsOn(":kotlin-test:kotlin-test-wasm-$target:compileKotlinWasm")
     systemProperty("kotlin.wasm-$target.kotlin.test.path", "libraries/kotlin.test/wasm/$target/build/classes/kotlin/wasm/main")
 }

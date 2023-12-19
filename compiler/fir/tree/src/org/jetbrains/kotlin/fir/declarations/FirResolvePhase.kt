@@ -15,10 +15,9 @@ enum class FirResolvePhase(val noProcessor: Boolean = false) {
     TYPES,
     STATUS,
     EXPECT_ACTUAL_MATCHING,
-    ARGUMENTS_OF_ANNOTATIONS,
     CONTRACTS,
     IMPLICIT_TYPES_BODY_RESOLVE,
-    ANNOTATIONS_ARGUMENTS_MAPPING,
+    ANNOTATION_ARGUMENTS,
     BODY_RESOLVE;
 
     val next: FirResolvePhase get() = values()[ordinal + 1]

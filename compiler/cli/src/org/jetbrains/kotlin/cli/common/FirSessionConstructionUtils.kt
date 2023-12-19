@@ -22,6 +22,7 @@ import org.jetbrains.kotlin.fir.session.environment.AbstractProjectFileSearchSco
 import org.jetbrains.kotlin.incremental.components.LookupTracker
 import org.jetbrains.kotlin.js.config.JSConfigurationKeys
 import org.jetbrains.kotlin.js.config.WasmTarget
+import org.jetbrains.kotlin.js.config.wasmTarget
 import org.jetbrains.kotlin.js.resolve.JsPlatformAnalyzerServices
 import org.jetbrains.kotlin.library.KotlinLibrary
 import org.jetbrains.kotlin.library.metadata.resolver.KotlinResolvedLibrary
@@ -71,6 +72,10 @@ fun <F> prepareJvmSessions(
     createProviderAndScopeForIncrementalCompilation: (List<F>) -> IncrementalCompilationContext?,
 ): List<SessionWithSources<F>> {
     val javaSourcesScope = projectEnvironment.getSearchScopeForProjectJavaSources()
+    val predefinedJavaComponents = FirSharableJavaComponents(firCachesFactoryForCliMode)
+
+    var firJvmIncrementalCompilationSymbolProviders: FirJvmIncrementalCompilationSymbolProviders? = null
+    var firJvmIncrementalCompilationSymbolProvidersIsInitialized = false
 
     return prepareSessions(
         files, configuration, rootModuleName, JvmPlatforms.unspecifiedJvmPlatform,
@@ -85,21 +90,37 @@ fun <F> prepareJvmSessions(
                 librariesScope,
                 projectEnvironment.getPackagePartProvider(librariesScope),
                 configuration.languageVersionSettings,
+                predefinedJavaComponents = predefinedJavaComponents,
                 registerExtraComponents = {},
             )
-        }
+        },
     ) { moduleFiles, moduleData, sessionProvider, sessionConfigurator ->
         FirJvmSessionFactory.createModuleBasedSession(
             moduleData,
             sessionProvider,
             javaSourcesScope,
             projectEnvironment,
-            createProviderAndScopeForIncrementalCompilation(moduleFiles),
+            createIncrementalCompilationSymbolProviders = { session ->
+                // Temporary solution for KT-61942 - we need to share the provider built on top of previously compiled files,
+                // because we do not distinguish classes generated from common and platform sources, so may end up with the
+                // same type loaded from both. And if providers are not shared, the types will not match on the actualizing.
+                // The proper solution would be to build IC providers only on class files generated for the currently compiled module.
+                // But to solve it we need to have a mapping from module to its class files.
+                // TODO: reimplement with splitted providers after fixing KT-62686
+                if (firJvmIncrementalCompilationSymbolProvidersIsInitialized) firJvmIncrementalCompilationSymbolProviders
+                else {
+                    firJvmIncrementalCompilationSymbolProvidersIsInitialized = true
+                    createProviderAndScopeForIncrementalCompilation(moduleFiles)?.createSymbolProviders(session, moduleData, projectEnvironment)?.also {
+                        firJvmIncrementalCompilationSymbolProviders = it
+                    }
+                }
+            },
             extensionRegistrars,
             configuration.languageVersionSettings,
             configuration.get(CommonConfigurationKeys.LOOKUP_TRACKER),
             configuration.get(CommonConfigurationKeys.ENUM_WHEN_TRACKER),
             configuration.get(CommonConfigurationKeys.IMPORT_TRACKER),
+            predefinedJavaComponents = predefinedJavaComponents,
             needRegisterJavaElementFinder = true,
             registerExtraComponents = {},
             sessionConfigurator,
@@ -241,6 +262,7 @@ fun <F> prepareWasmSessions(
             sessionProvider,
             extensionRegistrars,
             configuration.languageVersionSettings,
+            configuration.wasmTarget,
             lookupTracker,
             icData = icData,
             registerExtraComponents = {},
@@ -394,7 +416,8 @@ private inline fun <F> createSessionsForLegacyMppProject(
         listOf(),
         libraryList.friendsDependencies,
         targetPlatform,
-        analyzerServices
+        analyzerServices,
+        isCommon = true
     )
 
     val platformModuleData = FirModuleDataImpl(
@@ -403,7 +426,8 @@ private inline fun <F> createSessionsForLegacyMppProject(
         listOf(commonModuleData),
         libraryList.friendsDependencies,
         targetPlatform,
-        analyzerServices
+        analyzerServices,
+        isCommon = false
     )
 
     val commonFiles = mutableListOf<F>()
@@ -440,7 +464,7 @@ private inline fun <F> createSessionsForHmppProject(
 ): List<SessionWithSources<F>> {
     val moduleDataForHmppModule = LinkedHashMap<HmppCliModule, FirModuleData>()
 
-    for (module in hmppModuleStructure.modules) {
+    for ((index, module) in hmppModuleStructure.modules.withIndex()) {
         val dependencies = hmppModuleStructure.dependenciesMap[module]
             ?.map { moduleDataForHmppModule.getValue(it) }
             .orEmpty()
@@ -450,7 +474,8 @@ private inline fun <F> createSessionsForHmppProject(
             dependsOnDependencies = dependencies,
             libraryList.friendsDependencies,
             targetPlatform,
-            analyzerServices
+            analyzerServices,
+            isCommon = index < hmppModuleStructure.modules.size - 1
         )
         moduleDataForHmppModule[module] = moduleData
     }

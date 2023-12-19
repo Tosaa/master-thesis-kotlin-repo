@@ -14,6 +14,7 @@ import org.jetbrains.kotlin.cli.common.messages.CompilerMessageSeverity
 import org.jetbrains.kotlin.cli.common.messages.MessageCollector
 import org.jetbrains.kotlin.cli.jvm.compiler.VfsBasedProjectEnvironment
 import org.jetbrains.kotlin.cli.jvm.compiler.forAllFiles
+import org.jetbrains.kotlin.cli.jvm.compiler.getSourceRootsCheckingForDuplicates
 import org.jetbrains.kotlin.config.CommonConfigurationKeys
 import org.jetbrains.kotlin.config.CompilerConfiguration
 import org.jetbrains.kotlin.idea.KotlinFileType
@@ -26,7 +27,9 @@ data class GroupedKtSources(
     val platformSources: Collection<KtSourceFile>,
     val commonSources: Collection<KtSourceFile>,
     val sourcesByModuleName: Map<String, Set<KtSourceFile>>,
-)
+) {
+    fun isEmpty(): Boolean = platformSources.isEmpty() && commonSources.isEmpty()
+}
 
 fun collectSources(
     compilerConfiguration: CompilerConfiguration,
@@ -57,7 +60,7 @@ fun collectSources(
             compilerConfiguration.getBoolean(CommonConfigurationKeys.USE_LIGHT_TREE)
     var skipScriptsInLtModeWarning = false
 
-    compilerConfiguration.kotlinSourceRoots.forAllFiles(
+    getSourceRootsCheckingForDuplicates(compilerConfiguration, messageCollector).forAllFiles(
         compilerConfiguration,
         project
     ) { virtualFile, isCommon, moduleName ->

@@ -20,12 +20,13 @@ dependencies {
     testApi(projectTests(":compiler:tests-common-new"))
 
     testImplementation(projectTests(":compiler:tests-common"))
-    testImplementation(commonDependency("junit:junit"))
+    testImplementation(libs.junit.jupiter.api)
 
     testCompileOnly(project(":kotlin-reflect-api"))
     testRuntimeOnly(project(":kotlin-reflect"))
     testRuntimeOnly(project(":core:descriptors.runtime"))
     testRuntimeOnly(project(":compiler:fir:fir-serialization"))
+    testRuntimeOnly(libs.junit.jupiter.engine)
 
     testApi(intellijCore())
 }

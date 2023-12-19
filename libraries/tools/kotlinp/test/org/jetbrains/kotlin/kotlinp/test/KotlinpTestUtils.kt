@@ -69,7 +69,7 @@ private fun compileAndPrintAllFiles(
         when (outputFile.extension) {
             "kotlin_module" -> {
                 val moduleFile = kotlinp.readModuleFile(outputFile)!!
-                val transformedWithNodes = KotlinModuleMetadata.read(transformModuleFileWithNodes(moduleFile))
+                val transformedWithNodes = KotlinModuleMetadata.read(moduleFile.write())
 
                 for ((sb, moduleFileToRender) in listOf(
                     main to moduleFile, afterNodes to transformedWithNodes
@@ -80,8 +80,8 @@ private fun compileAndPrintAllFiles(
             }
             "class" -> {
                 val metadata = kotlinp.readClassFile(outputFile)
-                val classFile = kotlinp.readMetadata(metadata)
-                val classFile2 = KotlinClassMetadata.read(transformClassFileWithNodes(metadata, classFile))
+                val classFile = KotlinClassMetadata.readStrict(metadata)
+                val classFile2 = KotlinClassMetadata.readStrict(classFile.write())
 
                 for ((sb, classFileToRender) in listOf(
                     main to classFile, afterNodes to classFile2
@@ -95,7 +95,10 @@ private fun compileAndPrintAllFiles(
     }
 
     if (compareWithTxt) {
-        KotlinTestUtils.assertEqualsToFile(File(file.path.replace(".kt", ".txt")), main.toString())
+        val defaultTxtFile = File(file.path.replace(".kts?".toRegex(), ".txt"))
+        val firTxtFile = File(file.path.replace(".kts?".toRegex(), ".fir.txt"))
+        val txtFile = if (useK2 && firTxtFile.exists()) firTxtFile else defaultTxtFile
+        KotlinTestUtils.assertEqualsToFile(txtFile, main.toString())
     }
 
     if (readWriteAndCompare && InTextDirectivesUtils.findStringWithPrefixes(file.readText(), "// NO_READ_WRITE_COMPARE") == null) {
@@ -125,22 +128,3 @@ private fun StringBuilder.appendFileName(file: File) {
     appendLine("// ${file.invariantSeparatorsPath}")
     appendLine("// ------------------------------------------")
 }
-
-// Reads the class file and writes it back with KmClass/KmFunction/... elements.
-private fun transformClassFileWithNodes(metadata: Metadata, classFile: KotlinClassMetadata): Metadata =
-    when (classFile) {
-        is KotlinClassMetadata.Class ->
-            KotlinClassMetadata.writeClass(classFile.kmClass)
-        is KotlinClassMetadata.FileFacade ->
-            KotlinClassMetadata.writeFileFacade(classFile.kmPackage)
-        is KotlinClassMetadata.SyntheticClass ->
-            classFile.kmLambda?.let { KotlinClassMetadata.writeLambda(it) } ?: KotlinClassMetadata.writeSyntheticClass()
-        is KotlinClassMetadata.MultiFileClassPart ->
-            KotlinClassMetadata.writeMultiFileClassPart(classFile.kmPackage, classFile.facadeClassName)
-        is KotlinClassMetadata.MultiFileClassFacade -> KotlinClassMetadata.writeMultiFileClassFacade(classFile.partClassNames)
-        is KotlinClassMetadata.Unknown -> metadata
-    }
-
-@OptIn(UnstableMetadataApi::class)
-private fun transformModuleFileWithNodes(moduleFile: KotlinModuleMetadata): ByteArray =
-    KotlinModuleMetadata.write(moduleFile.kmModule)

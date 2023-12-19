@@ -47,9 +47,33 @@ public class FirIdeDependentAnalysisSourceModuleScopeContextForPositionTestGener
     }
 
     @Test
+    @TestMetadata("annotationWithoutDeclaration.kt")
+    public void testAnnotationWithoutDeclaration() throws Exception {
+        runTest("analysis/analysis-api/testData/components/scopeProvider/scopeContextForPosition/annotationWithoutDeclaration.kt");
+    }
+
+    @Test
     @TestMetadata("contextReceiver.kt")
     public void testContextReceiver() throws Exception {
         runTest("analysis/analysis-api/testData/components/scopeProvider/scopeContextForPosition/contextReceiver.kt");
+    }
+
+    @Test
+    @TestMetadata("contextReceiverWithoutDeclaration.kt")
+    public void testContextReceiverWithoutDeclaration() throws Exception {
+        runTest("analysis/analysis-api/testData/components/scopeProvider/scopeContextForPosition/contextReceiverWithoutDeclaration.kt");
+    }
+
+    @Test
+    @TestMetadata("emptyContextForPositionInImportDirective.kt")
+    public void testEmptyContextForPositionInImportDirective() throws Exception {
+        runTest("analysis/analysis-api/testData/components/scopeProvider/scopeContextForPosition/emptyContextForPositionInImportDirective.kt");
+    }
+
+    @Test
+    @TestMetadata("emptyContextForPositionInPackageDirective.kt")
+    public void testEmptyContextForPositionInPackageDirective() throws Exception {
+        runTest("analysis/analysis-api/testData/components/scopeProvider/scopeContextForPosition/emptyContextForPositionInPackageDirective.kt");
     }
 
     @Test
@@ -65,9 +89,39 @@ public class FirIdeDependentAnalysisSourceModuleScopeContextForPositionTestGener
     }
 
     @Test
+    @TestMetadata("forLoopVariable.kt")
+    public void testForLoopVariable() throws Exception {
+        runTest("analysis/analysis-api/testData/components/scopeProvider/scopeContextForPosition/forLoopVariable.kt");
+    }
+
+    @Test
+    @TestMetadata("kDocOnClass.kt")
+    public void testKDocOnClass() throws Exception {
+        runTest("analysis/analysis-api/testData/components/scopeProvider/scopeContextForPosition/kDocOnClass.kt");
+    }
+
+    @Test
+    @TestMetadata("kDocOnFunction.kt")
+    public void testKDocOnFunction() throws Exception {
+        runTest("analysis/analysis-api/testData/components/scopeProvider/scopeContextForPosition/kDocOnFunction.kt");
+    }
+
+    @Test
+    @TestMetadata("kDocWithoutDeclaration.kt")
+    public void testKDocWithoutDeclaration() throws Exception {
+        runTest("analysis/analysis-api/testData/components/scopeProvider/scopeContextForPosition/kDocWithoutDeclaration.kt");
+    }
+
+    @Test
     @TestMetadata("localTypeScope.kt")
     public void testLocalTypeScope() throws Exception {
         runTest("analysis/analysis-api/testData/components/scopeProvider/scopeContextForPosition/localTypeScope.kt");
+    }
+
+    @Test
+    @TestMetadata("notEnabledKotlinPackage.kt")
+    public void testNotEnabledKotlinPackage() throws Exception {
+        runTest("analysis/analysis-api/testData/components/scopeProvider/scopeContextForPosition/notEnabledKotlinPackage.kt");
     }
 
     @Test

@@ -66,7 +66,7 @@ open class CommonizerIT : KGPBaseTest() {
     @GradleTest
     fun testCleanNativeDistributionCommonization(gradleVersion: GradleVersion, @TempDir konanData: Path) {
         nativeProject("commonizeNativeDistributionWithIosLinuxWindows", gradleVersion) {
-            val buildOptions = defaultBuildOptions.copy(
+            val buildOptions = defaultBuildOptions.withBundledKotlinNative().copy(
                 konanDataDir = konanData
             )
 
@@ -168,25 +168,28 @@ open class CommonizerIT : KGPBaseTest() {
 
     @DisplayName("Commonize Curl Interop copy CommonizeCInterop for Ide")
     @GradleTest
-    fun testCommonizeCurlInteropcopyCommonizeCInteropForIde(gradleVersion: GradleVersion) {
+    fun testCommonizeCurlInteropcopyCommonizeCInteropForIde(
+        gradleVersion: GradleVersion,
+    ) {
         nativeProject("commonizeCurlInterop", gradleVersion) {
 
             configureCommonizerTargets()
 
-            val expectedOutputDirectoryForIde = projectPath.resolve(".gradle/kotlin/commonizer")
+            val commonizerIdeOutput: Path = projectPersistentCache.resolve("metadata").resolve("commonizer")
+
             val expectedOutputDirectoryForBuild = projectPath.resolve("build/classes/kotlin/commonizer")
 
             build(":copyCommonizeCInteropForIde") {
                 assertTasksExecuted(":cinteropCurlTargetB")
                 assertTasksExecuted(":commonizeCInterop")
 
-                assertDirectoryExists(expectedOutputDirectoryForIde, "Missing output directory for IDE")
+                assertDirectoryExists(commonizerIdeOutput, "Missing output directory for IDE")
                 assertDirectoryExists(expectedOutputDirectoryForBuild, "Missing output directory for build")
-                assertEqualDirectories(expectedOutputDirectoryForBuild.toFile(), expectedOutputDirectoryForIde.toFile(), false)
+                assertEqualDirectories(expectedOutputDirectoryForBuild.toFile(), commonizerIdeOutput.toFile(), false)
             }
 
             build(":clean") {
-                assertDirectoryExists(expectedOutputDirectoryForIde, "Expected ide output directory to survive cleaning")
+                assertDirectoryExists(commonizerIdeOutput, "Expected ide output directory to survive cleaning")
                 assertFileNotExists(expectedOutputDirectoryForBuild, "Expected output directory for build to be cleaned")
             }
         }
@@ -529,6 +532,29 @@ open class CommonizerIT : KGPBaseTest() {
                 assertTasksExecuted(":consumer:compileCommonMainKotlinMetadata")
                 assertOutputDoesNotContain("Duplicated libraries:")
                 assertOutputDoesNotContain("w: duplicate library name")
+            }
+        }
+    }
+
+    @DisplayName("KT-58223 test commonized libraries for IDE can be stored in different data dir")
+    @GradleTest
+    fun testCommonizedLibrariesForIDECanBeStoredInDifferentDir(
+        gradleVersion: GradleVersion,
+    ) {
+        nativeProject("commonizeCurlInterop", gradleVersion) {
+            configureCommonizerTargets()
+
+            val commonizerIdeOutput: Path = projectPersistentCache.resolve("metadata").resolve("commonizer")
+
+            build(":copyCommonizeCInteropForIde") {
+                assertTasksExecuted(":cinteropCurlTargetB")
+                assertTasksExecuted(":commonizeCInterop")
+
+                assertDirectoryExists(commonizerIdeOutput, "Missing output directory for IDE")
+            }
+
+            build(":clean") {
+                assertDirectoryExists(commonizerIdeOutput, "Expected ide output directory to survive cleaning")
             }
         }
     }

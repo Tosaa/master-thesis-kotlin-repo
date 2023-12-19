@@ -22,10 +22,12 @@ data class Identifier(
     }
 }
 
-sealed class DataFlowVariable(private val variableIndexForDebug: Int) {
+sealed class DataFlowVariable(private val variableIndexForDebug: Int) : Comparable<DataFlowVariable> {
     final override fun toString(): String {
         return "d$variableIndexForDebug"
     }
+
+    override fun compareTo(other: DataFlowVariable): Int = variableIndexForDebug.compareTo(other.variableIndexForDebug)
 }
 
 enum class PropertyStability(val impliedSmartcastStability: SmartcastStability?) {
@@ -35,6 +37,9 @@ enum class PropertyStability(val impliedSmartcastStability: SmartcastStability?)
 
     // Smartcast may or may not be safe, depending on whether there are concurrent writes to this local variable.
     LOCAL_VAR(null),
+
+    // Smartcast is always unsafe regardless of usage.
+    EXPECT_PROPERTY(SmartcastStability.EXPECT_PROPERTY),
 
     // Open or custom getter.
     // Smartcast is always unsafe regardless of usage.

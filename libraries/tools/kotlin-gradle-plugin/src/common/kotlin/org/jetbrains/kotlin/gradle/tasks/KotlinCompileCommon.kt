@@ -87,7 +87,7 @@ abstract class KotlinCompileCommon @Inject constructor(
                 args.reportPerf = true
             }
 
-            args.expectActualLinker = expectActualLinker.get()
+            args.metadataKlib = produceMetadataKlib.get()
 
             args.destination = destinationDirectory.get().asFile.normalize().absolutePath
 
@@ -128,7 +128,7 @@ abstract class KotlinCompileCommon @Inject constructor(
     internal val refinesMetadataPaths: ConfigurableFileCollection = objectFactory.fileCollection()
 
     @get:Internal
-    internal val expectActualLinker = objectFactory.property(Boolean::class.java)
+    internal val produceMetadataKlib = objectFactory.property(Boolean::class.java)
 
     override fun callCompilerAsync(
         args: K2MetadataCompilerArguments,
@@ -142,9 +142,10 @@ abstract class KotlinCompileCommon @Inject constructor(
         val environment = GradleCompilerEnvironment(
             defaultCompilerClasspath, gradleMessageCollector, outputItemCollector,
             reportingSettings = reportingSettings(),
-            outputFiles = allOutputFiles()
+            outputFiles = allOutputFiles(),
+            compilerArgumentsLogLevel = kotlinCompilerArgumentsLogLevel.get()
         )
         compilerRunner.runMetadataCompilerAsync(args, environment)
-        compilerRunner.errorsFile?.also { gradleMessageCollector.flush(it) }
+        compilerRunner.errorsFiles?.let { gradleMessageCollector.flush(it) }
     }
 }

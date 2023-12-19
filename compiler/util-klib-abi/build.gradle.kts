@@ -9,7 +9,10 @@ dependencies {
     implementation(project(":core:compiler.common"))
     implementation(project(":compiler:ir.serialization.common"))
     compileOnly(commonDependency("org.jetbrains.intellij.deps.fastutil:intellij-deps-fastutil"))
-    testApiJUnit5()
+    testApi(platform(libs.junit.bom))
+    testImplementation(libs.junit.jupiter.api)
+    testRuntimeOnly(libs.junit.jupiter.engine)
+    testImplementation(libs.junit.jupiter.params)
     testImplementation(intellijCore())
     testImplementation(commonDependency("org.jetbrains.kotlin:kotlin-reflect")) { isTransitive = false }
     testImplementation(projectTests(":compiler:tests-common-new"))
@@ -25,7 +28,7 @@ sourceSets {
     }
 }
 
-val testDataDir = projectDir.resolve("testData")
+val testDataDir = project(":compiler").projectDir.resolve("testData/klib/dump-abi/content")
 
 projectTest(jUnitMode = JUnitMode.JUnit5) {
     inputs.dir(testDataDir)

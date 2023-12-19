@@ -1,11 +1,12 @@
 /*
- * Copyright 2010-2021 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Copyright 2010-2023 JetBrains s.r.o. and Kotlin Programming Language contributors.
  * Use of this source code is governed by the Apache 2.0 license that can be found in the license/LICENSE.txt file.
  */
 
 package org.jetbrains.kotlin.analysis.api.descriptors.components
 
 import com.intellij.psi.PsiElement
+import com.intellij.psi.PsiType
 import com.intellij.psi.PsiTypeElement
 import com.intellij.psi.impl.cache.TypeInfo
 import com.intellij.psi.impl.compiled.ClsTypeElementImpl
@@ -24,8 +25,11 @@ import org.jetbrains.kotlin.load.kotlin.TypeMappingMode
 import org.jetbrains.kotlin.load.kotlin.getOptimalModeForReturnType
 import org.jetbrains.kotlin.load.kotlin.getOptimalModeForValueParameter
 import org.jetbrains.kotlin.name.SpecialNames
+import org.jetbrains.kotlin.platform.has
+import org.jetbrains.kotlin.platform.jvm.JvmPlatform
 import org.jetbrains.kotlin.types.*
 import org.jetbrains.kotlin.types.model.SimpleTypeMarker
+import java.lang.UnsupportedOperationException
 import java.text.StringCharacterIterator
 
 internal class KtFe10PsiTypeProvider(
@@ -50,6 +54,8 @@ internal class KtFe10PsiTypeProvider(
                 return null
             }
         }
+
+        if (!analysisSession.useSiteModule.platform.has<JvmPlatform>()) return null
 
         return asPsiTypeElement(simplifyType(kotlinType), useSitePosition, mode.toTypeMappingMode(type, isAnnotationMethod))
     }
@@ -101,5 +107,12 @@ internal class KtFe10PsiTypeProvider(
         val typeText = TypeInfo.createTypeText(typeInfo) ?: return null
 
         return ClsTypeElementImpl(useSitePosition, typeText, '\u0000')
+    }
+
+    override fun asKtType(
+        psiType: PsiType,
+        useSitePosition: PsiElement,
+    ): KtType? {
+        throw UnsupportedOperationException("Conversion to KtType is not supported in K1 implementation")
     }
 }

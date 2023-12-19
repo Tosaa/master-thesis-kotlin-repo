@@ -21,15 +21,15 @@ public class HexFormat internal constructor(
      *
      * Affects both `ByteArray` and numeric value formatting.
      */
-    val upperCase: Boolean,
+    public val upperCase: Boolean,
     /**
      * Specifies hexadecimal format used for formatting and parsing `ByteArray`.
      */
-    val bytes: BytesHexFormat,
+    public val bytes: BytesHexFormat,
     /**
      * Specifies hexadecimal format used for formatting and parsing a numeric value.
      */
-    val number: NumberHexFormat
+    public val number: NumberHexFormat
 ) {
 
     override fun toString(): String = buildString {
@@ -64,20 +64,36 @@ public class HexFormat internal constructor(
      */
     public class BytesHexFormat internal constructor(
         /** The maximum number of bytes per line. */
-        val bytesPerLine: Int,
+        public val bytesPerLine: Int,
 
         /** The maximum number of bytes per group. */
-        val bytesPerGroup: Int,
+        public val bytesPerGroup: Int,
         /** The string used to separate adjacent groups in a line. */
-        val groupSeparator: String,
+        public val groupSeparator: String,
 
         /** The string used to separate adjacent bytes in a group. */
-        val byteSeparator: String,
+        public val byteSeparator: String,
         /** The string that immediately precedes two-digit hexadecimal representation of each byte. */
-        val bytePrefix: String,
+        public val bytePrefix: String,
         /** The string that immediately succeeds two-digit hexadecimal representation of each byte. */
-        val byteSuffix: String
+        public val byteSuffix: String
     ) {
+
+        internal val noLineAndGroupSeparator: Boolean =
+            bytesPerLine == Int.MAX_VALUE && bytesPerGroup == Int.MAX_VALUE
+
+        internal val shortByteSeparatorNoPrefixAndSuffix: Boolean =
+            bytePrefix.isEmpty() && byteSuffix.isEmpty() && byteSeparator.length <= 1
+
+        /**
+         * Whether to ignore case when parsing format strings.
+         * If false, case-sensitive parsing is conducted, which is faster.
+         */
+        internal val ignoreCase: Boolean =
+            groupSeparator.isCaseSensitive() ||
+                    byteSeparator.isCaseSensitive() ||
+                    bytePrefix.isCaseSensitive() ||
+                    byteSuffix.isCaseSensitive()
 
         override fun toString(): String = buildString {
             append("BytesHexFormat(").appendLine()
@@ -98,7 +114,7 @@ public class HexFormat internal constructor(
         /**
          * A context for building a [BytesHexFormat]. Provides API for configuring format options.
          */
-        class Builder internal constructor() {
+        public class Builder internal constructor() {
             /**
              * Defines [BytesHexFormat.bytesPerLine] of the format being built, [Int.MAX_VALUE] by default.
              *
@@ -106,7 +122,7 @@ public class HexFormat internal constructor(
              *
              * @throws IllegalArgumentException if a non-positive value is assigned to this property.
              */
-            var bytesPerLine: Int = Default.bytesPerLine
+            public var bytesPerLine: Int = Default.bytesPerLine
                 set(value) {
                     if (value <= 0)
                         throw IllegalArgumentException("Non-positive values are prohibited for bytesPerLine, but was $value")
@@ -120,7 +136,7 @@ public class HexFormat internal constructor(
              *
              * @throws IllegalArgumentException if a non-positive value is assigned to this property.
              */
-            var bytesPerGroup: Int = Default.bytesPerGroup
+            public var bytesPerGroup: Int = Default.bytesPerGroup
                 set(value) {
                     if (value <= 0)
                         throw IllegalArgumentException("Non-positive values are prohibited for bytesPerGroup, but was $value")
@@ -128,7 +144,7 @@ public class HexFormat internal constructor(
                 }
 
             /** Defines [BytesHexFormat.groupSeparator] of the format being built, two space characters (`"  "`) by default. */
-            var groupSeparator: String = Default.groupSeparator
+            public var groupSeparator: String = Default.groupSeparator
 
             /**
              * Defines [BytesHexFormat.byteSeparator] of the format being built, empty string by default.
@@ -137,7 +153,7 @@ public class HexFormat internal constructor(
              *
              * @throws IllegalArgumentException if a string containing LF or CR character is assigned to this property.
              */
-            var byteSeparator: String = Default.byteSeparator
+            public var byteSeparator: String = Default.byteSeparator
                 set(value) {
                     if (value.contains('\n') || value.contains('\r'))
                         throw IllegalArgumentException("LF and CR characters are prohibited in byteSeparator, but was $value")
@@ -151,7 +167,7 @@ public class HexFormat internal constructor(
              *
              * @throws IllegalArgumentException if a string containing LF or CR character is assigned to this property.
              */
-            var bytePrefix: String = Default.bytePrefix
+            public var bytePrefix: String = Default.bytePrefix
                 set(value) {
                     if (value.contains('\n') || value.contains('\r'))
                         throw IllegalArgumentException("LF and CR characters are prohibited in bytePrefix, but was $value")
@@ -165,7 +181,7 @@ public class HexFormat internal constructor(
              *
              * @throws IllegalArgumentException if a string containing LF or CR character is assigned to this property.
              */
-            var byteSuffix: String = Default.byteSuffix
+            public var byteSuffix: String = Default.byteSuffix
                 set(value) {
                     if (value.contains('\n') || value.contains('\r'))
                         throw IllegalArgumentException("LF and CR characters are prohibited in byteSuffix, but was $value")
@@ -220,12 +236,20 @@ public class HexFormat internal constructor(
      */
     public class NumberHexFormat internal constructor(
         /** The string that immediately precedes hexadecimal representation of a numeric value. */
-        val prefix: String,
+        public val prefix: String,
         /** The string that immediately succeeds hexadecimal representation of a numeric value. */
-        val suffix: String,
+        public val suffix: String,
         /** Specifies whether to remove leading zeros in the hexadecimal representation of a numeric value. */
-        val removeLeadingZeros: Boolean
+        public val removeLeadingZeros: Boolean
     ) {
+
+        internal val isDigitsOnly: Boolean = prefix.isEmpty() && suffix.isEmpty()
+
+        /**
+         * Whether to ignore case when parsing format strings.
+         * If false, case-sensitive parsing is conducted, which is faster.
+         */
+        internal val ignoreCase: Boolean = prefix.isCaseSensitive() || suffix.isCaseSensitive()
 
         override fun toString(): String = buildString {
             append("NumberHexFormat(").appendLine()
@@ -243,7 +267,7 @@ public class HexFormat internal constructor(
         /**
          * A context for building a [NumberHexFormat]. Provides API for configuring format options.
          */
-        class Builder internal constructor() {
+        public class Builder internal constructor() {
             /**
              * Defines [NumberHexFormat.prefix] of the format being built, empty string by default.
              *
@@ -251,7 +275,7 @@ public class HexFormat internal constructor(
              *
              * @throws IllegalArgumentException if a string containing LF or CR character is assigned to this property.
              */
-            var prefix: String = Default.prefix
+            public var prefix: String = Default.prefix
                 set(value) {
                     if (value.contains('\n') || value.contains('\r'))
                         throw IllegalArgumentException("LF and CR characters are prohibited in prefix, but was $value")
@@ -265,15 +289,15 @@ public class HexFormat internal constructor(
              *
              * @throws IllegalArgumentException if a string containing LF or CR character is assigned to this property.
              */
-            var suffix: String = Default.suffix
+            public var suffix: String = Default.suffix
                 set(value) {
                     if (value.contains('\n') || value.contains('\r'))
                         throw IllegalArgumentException("LF and CR characters are prohibited in suffix, but was $value")
                     field = value
                 }
 
-            /** Defines [NumberHexFormat.removeLeadingZeros] of the format being built, empty string by default. */
-            var removeLeadingZeros: Boolean = Default.removeLeadingZeros
+            /** Defines [NumberHexFormat.removeLeadingZeros] of the format being built, `false` by default. */
+            public var removeLeadingZeros: Boolean = Default.removeLeadingZeros
 
             internal fun build(): NumberHexFormat {
                 return NumberHexFormat(prefix, suffix, removeLeadingZeros)
@@ -295,14 +319,14 @@ public class HexFormat internal constructor(
      */
     public class Builder @PublishedApi internal constructor() {
         /** Defines [HexFormat.upperCase] of the format being built, `false` by default. */
-        var upperCase: Boolean = Default.upperCase
+        public var upperCase: Boolean = Default.upperCase
 
         /**
          * Defines [HexFormat.bytes] of the format being built.
          *
          * See [BytesHexFormat.Builder] for default values of the options.
          */
-        val bytes: BytesHexFormat.Builder
+        public val bytes: BytesHexFormat.Builder
             get() {
                 if (_bytes == null) {
                     _bytes = BytesHexFormat.Builder()
@@ -317,7 +341,7 @@ public class HexFormat internal constructor(
          *
          * See [NumberHexFormat.Builder] for default values of the options.
          */
-        val number: NumberHexFormat.Builder
+        public val number: NumberHexFormat.Builder
             get() {
                 if (_number == null) {
                     _number = NumberHexFormat.Builder()
@@ -333,7 +357,7 @@ public class HexFormat internal constructor(
          * See [BytesHexFormat.Builder] for default values of the options.
          */
         @InlineOnly
-        inline fun bytes(builderAction: BytesHexFormat.Builder.() -> Unit) {
+        public inline fun bytes(builderAction: BytesHexFormat.Builder.() -> Unit) {
             bytes.builderAction()
         }
 
@@ -343,7 +367,7 @@ public class HexFormat internal constructor(
          * See [NumberHexFormat.Builder] for default values of the options.
          */
         @InlineOnly
-        inline fun number(builderAction: NumberHexFormat.Builder.() -> Unit) {
+        public inline fun number(builderAction: NumberHexFormat.Builder.() -> Unit) {
             number.builderAction()
         }
 
@@ -358,7 +382,7 @@ public class HexFormat internal constructor(
     }
 
 
-    companion object {
+    public companion object {
         /**
          * The default hexadecimal format options.
          *
@@ -401,11 +425,17 @@ public class HexFormat internal constructor(
  * and returns the resulting format.
  *
  * The builder passed as a receiver to the [builderAction] is valid only inside that function.
- * Using it outside of the function produces an unspecified behavior.
+ * Using it outside the function produces an unspecified behavior.
  */
 @ExperimentalStdlibApi
 @SinceKotlin("1.9")
 @InlineOnly
 public inline fun HexFormat(builderAction: HexFormat.Builder.() -> Unit): HexFormat {
     return HexFormat.Builder().apply(builderAction).build()
+}
+
+// --- private functions ---
+
+private fun String.isCaseSensitive(): Boolean {
+    return this.any { it >= '\u0080' || it.isLetter() }
 }

@@ -18,7 +18,10 @@ dependencies {
 
     testImplementation(projectTests(":generators:test-generator"))
 
-    testApiJUnit5()
+    testApi(platform(libs.junit.bom))
+    testImplementation(libs.junit.jupiter.api)
+    testRuntimeOnly(libs.junit.jupiter.engine)
+    testApi(libs.junit.platform.launcher)
     testApi(projectTests(":compiler:test-infrastructure"))
     testApi(projectTests(":compiler:test-infrastructure-utils"))
     testApi(projectTests(":compiler:tests-compiler-utils"))
@@ -33,12 +36,14 @@ dependencies {
     testApi(commonDependency("org.jetbrains.intellij.deps.jna:jna"))
     testApi(jpsModel()) { isTransitive = false }
     testApi(jpsModelImpl()) { isTransitive = false }
-    testApi(intellijJavaRt())
+    testApi(intellijJavaRt()) // for FileComparisonFailure
+    testApi(libs.junit4) // for ComparisonFailure
 
     testApi(toolsJar())
 }
 
 optInToExperimentalCompilerApi()
+optInToUnsafeDuringIrConstructionAPI()
 
 sourceSets {
     "main" { none() }

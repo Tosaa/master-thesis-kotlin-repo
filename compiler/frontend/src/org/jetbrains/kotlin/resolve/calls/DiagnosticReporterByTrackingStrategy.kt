@@ -27,6 +27,7 @@ import org.jetbrains.kotlin.resolve.calls.context.BasicCallResolutionContext
 import org.jetbrains.kotlin.resolve.calls.inference.BuilderInferenceExpectedTypeConstraintPosition
 import org.jetbrains.kotlin.resolve.calls.inference.model.*
 import org.jetbrains.kotlin.resolve.calls.model.*
+import org.jetbrains.kotlin.resolve.calls.model.MultiLambdaBuilderInferenceRestriction
 import org.jetbrains.kotlin.resolve.calls.smartcasts.DataFlowValueFactory
 import org.jetbrains.kotlin.resolve.calls.smartcasts.SingleSmartCast
 import org.jetbrains.kotlin.resolve.calls.smartcasts.SmartCastManager
@@ -55,6 +56,7 @@ import org.jetbrains.kotlin.types.model.freshTypeConstructor
 import org.jetbrains.kotlin.types.typeUtil.contains
 import org.jetbrains.kotlin.types.typeUtil.isNullableNothing
 import org.jetbrains.kotlin.types.typeUtil.makeNullable
+import org.jetbrains.kotlin.utils.addToStdlib.shouldNotBeCalled
 import kotlin.contracts.ExperimentalContracts
 import kotlin.contracts.contract
 
@@ -599,8 +601,8 @@ class DiagnosticReporterByTrackingStrategy(
             is CallableReferenceConstraintPosition<*>,
             is IncorporationConstraintPosition,
             is InjectedAnotherStubTypeConstraintPosition<*>,
-            is LHSArgumentConstraintPosition<*, *>,
-            SimpleConstraintSystemConstraintPosition -> {
+            is LHSArgumentConstraintPosition<*, *>, SimpleConstraintSystemConstraintPosition, ProvideDelegateFixationPosition
+            -> {
                 if (AbstractTypeChecker.RUN_SLOW_ASSERTIONS) {
                     throw AssertionError("Constraint error in unexpected position: $position")
                 } else if (reportAdditionalErrors) {
@@ -812,7 +814,9 @@ class DiagnosticReporterByTrackingStrategy(
             // LowerPriorityToPreserveCompatibility is not expected to report something
             is LowerPriorityToPreserveCompatibility -> {}
             // NoSuccessfulFork does not exist in K1
-            is NoSuccessfulFork -> {}
+            is NoSuccessfulFork -> shouldNotBeCalled()
+            // MultiLambdaBuilderInferenceRestriction does not exist in K1
+            is org.jetbrains.kotlin.resolve.calls.inference.model.MultiLambdaBuilderInferenceRestriction<*> -> shouldNotBeCalled()
             // NotEnoughInformationForTypeParameterImpl is already considered above
             is NotEnoughInformationForTypeParameter<*> -> {
                 throw AssertionError("constraintError should not be called with ${error::class.java}")
@@ -825,6 +829,7 @@ class DiagnosticReporterByTrackingStrategy(
             KtPsiUtil.deparenthesize(it) ?: it
         }
         if (expression != null) {
+            @Suppress("USELESS_IS_CHECK") // K2 warning suppression, TODO: KT-62472
             if (expression.isNull() && expression is KtConstantExpression) {
                 val factory = when (diagnostic) {
                     is ArgumentNullabilityErrorDiagnostic -> NULL_FOR_NONNULL_TYPE

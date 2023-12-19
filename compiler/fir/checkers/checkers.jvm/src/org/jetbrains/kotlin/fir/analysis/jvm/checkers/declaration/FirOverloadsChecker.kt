@@ -20,7 +20,7 @@ import org.jetbrains.kotlin.fir.declarations.utils.isActual
 import org.jetbrains.kotlin.fir.declarations.utils.isLocal
 import org.jetbrains.kotlin.fir.declarations.utils.visibility
 import org.jetbrains.kotlin.fir.resolve.dfa.cfg.isLocalClassOrAnonymousObject
-import org.jetbrains.kotlin.name.JvmNames.JVM_OVERLOADS_CLASS_ID
+import org.jetbrains.kotlin.name.JvmStandardClassIds.JVM_OVERLOADS_CLASS_ID
 
 object FirOverloadsChecker : FirFunctionChecker() {
     override fun check(declaration: FirFunction, context: CheckerContext, reporter: DiagnosticReporter) {
@@ -28,7 +28,7 @@ object FirOverloadsChecker : FirFunctionChecker() {
         val annotation = declaration.getAnnotationByClassId(JVM_OVERLOADS_CLASS_ID, session) ?: return
 
         val ownerOfParametersWithDefaultValues = declaration.symbol.takeIf { !it.isActual }
-            ?: declaration.symbol.getSingleExpectForActualOrNull()
+            ?: declaration.symbol.getSingleMatchedExpectForActualOrNull()
             ?: return
 
         val containingDeclaration = declaration.getContainingClassSymbol(session)

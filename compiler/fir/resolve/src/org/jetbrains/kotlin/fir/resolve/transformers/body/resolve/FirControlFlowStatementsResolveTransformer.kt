@@ -10,11 +10,13 @@ import org.jetbrains.kotlin.fir.expressions.*
 import org.jetbrains.kotlin.fir.expressions.impl.FirElseIfTrueCondition
 import org.jetbrains.kotlin.fir.expressions.impl.FirEmptyExpressionBlock
 import org.jetbrains.kotlin.fir.references.FirResolvedNamedReference
-import org.jetbrains.kotlin.fir.resolve.*
+import org.jetbrains.kotlin.fir.resolve.ResolutionMode
 import org.jetbrains.kotlin.fir.resolve.calls.isUnitOrFlexibleUnit
+import org.jetbrains.kotlin.fir.resolve.fullyExpandedType
+import org.jetbrains.kotlin.fir.resolve.transformWhenSubjectExpressionUsingSmartcastInfo
 import org.jetbrains.kotlin.fir.resolve.transformers.FirSyntheticCallGenerator
 import org.jetbrains.kotlin.fir.resolve.transformers.FirWhenExhaustivenessTransformer
-import org.jetbrains.kotlin.fir.resolvedTypeFromPrototype
+import org.jetbrains.kotlin.fir.resolve.withExpectedType
 import org.jetbrains.kotlin.fir.types.*
 import org.jetbrains.kotlin.fir.visitors.transformSingle
 
@@ -54,7 +56,7 @@ class FirControlFlowStatementsResolveTransformer(transformer: FirAbstractBodyRes
     // ------------------------------- When expressions -------------------------------
 
     override fun transformWhenExpression(whenExpression: FirWhenExpression, data: ResolutionMode): FirStatement {
-        if (whenExpression.calleeReference is FirResolvedNamedReference && whenExpression.resultType !is FirImplicitTypeRef) {
+        if (whenExpression.calleeReference is FirResolvedNamedReference && whenExpression.isResolved) {
             return whenExpression
         }
         whenExpression.annotations.forEach { it.accept(this, data) }
@@ -62,14 +64,14 @@ class FirControlFlowStatementsResolveTransformer(transformer: FirAbstractBodyRes
         return context.withWhenExpression(whenExpression, session) with@{
             @Suppress("NAME_SHADOWING")
             var whenExpression = whenExpression.transformSubject(transformer, ResolutionMode.ContextIndependent)
-            val subjectType = whenExpression.subject?.typeRef?.coneType?.fullyExpandedType(session)
+            val subjectType = whenExpression.subject?.resolvedType?.fullyExpandedType(session)
             var completionNeeded = false
             context.withWhenSubjectType(subjectType, components) {
                 when {
                     whenExpression.branches.isEmpty() -> {}
                     whenExpression.isOneBranch() && data.forceFullCompletion && data !is ResolutionMode.WithExpectedType -> {
                         whenExpression = whenExpression.transformBranches(transformer, ResolutionMode.ContextIndependent)
-                        whenExpression.resultType = whenExpression.branches.first().result.resultType
+                        whenExpression.resultType = whenExpression.branches.first().result.resolvedType
                         // when with one branch cannot be completed if it's not already complete in the first place
                     }
                     else -> {
@@ -114,7 +116,7 @@ class FirControlFlowStatementsResolveTransformer(transformer: FirAbstractBodyRes
 
     private fun FirWhenExpression.replaceReturnTypeIfNotExhaustive(): FirWhenExpression {
         if (!isProperlyExhaustive) {
-            resultType = resultType.resolvedTypeFromPrototype(session.builtinTypes.unitType.type)
+            resultType = session.builtinTypes.unitType.type
         }
         return this
     }
@@ -140,11 +142,6 @@ class FirControlFlowStatementsResolveTransformer(transformer: FirAbstractBodyRes
         whenSubjectExpression: FirWhenSubjectExpression,
         data: ResolutionMode
     ): FirStatement {
-        val parentWhen = whenSubjectExpression.whenRef.value
-        val subjectType = parentWhen.subject?.resultType ?: parentWhen.subjectVariable?.returnTypeRef
-        if (subjectType != null) {
-            whenSubjectExpression.resultType = subjectType
-        }
         dataFlowAnalyzer.exitWhenSubjectExpression(whenSubjectExpression)
         return components.transformWhenSubjectExpressionUsingSmartcastInfo(whenSubjectExpression)
     }
@@ -152,7 +149,7 @@ class FirControlFlowStatementsResolveTransformer(transformer: FirAbstractBodyRes
     // ------------------------------- Try/catch expressions -------------------------------
 
     override fun transformTryExpression(tryExpression: FirTryExpression, data: ResolutionMode): FirStatement {
-        if (tryExpression.calleeReference is FirResolvedNamedReference && tryExpression.resultType !is FirImplicitTypeRef) {
+        if (tryExpression.calleeReference is FirResolvedNamedReference && tryExpression.isResolved) {
             return tryExpression
         }
 
@@ -215,7 +212,6 @@ class FirControlFlowStatementsResolveTransformer(transformer: FirAbstractBodyRes
         data: ResolutionMode,
     ): FirStatement {
         return throwExpression.apply {
-            replaceTypeRef(throwExpression.typeRef.transform(transformer, data))
             transformAnnotations(transformer, data)
             transformException(transformer, withExpectedType(session.builtinTypes.throwableType))
             dataFlowAnalyzer.exitThrowExceptionNode(this)
@@ -261,31 +257,58 @@ class FirControlFlowStatementsResolveTransformer(transformer: FirAbstractBodyRes
         )
 
         var isLhsNotNull = false
-        if (result.rhs.typeRef.coneTypeSafe<ConeKotlinType>()?.isNothing == true) {
-            val lhsType = result.lhs.typeRef.coneTypeSafe<ConeKotlinType>()
-            if (lhsType != null) {
-                // Converting to non-raw type is necessary to preserver the K1 semantics (see KT-54526)
-                val newReturnType =
-                    lhsType.makeConeTypeDefinitelyNotNullOrNotNull(session.typeContext)
-                        .convertToNonRawVersion()
-                result.replaceTypeRef(result.typeRef.resolvedTypeFromPrototype(newReturnType))
-                isLhsNotNull = true
-            }
+
+        // TODO Check if the type of the RHS being null can lead to a bug, see KT-61837
+        @OptIn(UnresolvedExpressionTypeAccess::class)
+        if (result.rhs.coneTypeOrNull?.isNothing == true) {
+            val lhsType = result.lhs.resolvedType
+            // Converting to non-raw type is necessary to preserver the K1 semantics (see KT-54526)
+            val newReturnType =
+                lhsType.makeConeTypeDefinitelyNotNullOrNotNull(session.typeContext)
+                    .convertToNonRawVersion()
+            result.replaceConeTypeOrNull(newReturnType)
+            isLhsNotNull = true
         }
 
         session.typeContext.run {
-            if (result.typeRef.coneTypeSafe<ConeKotlinType>()?.isNullableType() == true
-                && result.rhs.typeRef.coneTypeSafe<ConeKotlinType>()?.isNullableType() == false
-            ) {
-                // Sometimes return type for special call for elvis operator might be nullable,
-                // but result is not nullable if the right type is not nullable
-                result.replaceTypeRef(
-                    result.typeRef.withReplacedConeType(result.typeRef.coneType.makeConeTypeDefinitelyNotNullOrNotNull(session.typeContext))
-                )
+            if (result.resolvedType.isNullableType()) {
+                val rhsResolvedType = result.rhs.resolvedType
+                // This part of the code is a kind of workaround, and it probably will be resolved by KT-55692
+                if (!rhsResolvedType.isNullableType()) {
+                    // It's definitely not a flexible with nullable bound
+                    // Sometimes return type for special call for elvis operator might be nullable,
+                    // but result is not nullable if the right type is not nullable
+                    result.replaceConeTypeOrNull(result.resolvedType.makeConeTypeDefinitelyNotNullOrNotNull(session.typeContext))
+                } else if (rhsResolvedType is ConeFlexibleType && !rhsResolvedType.lowerBound.isNullableType()) {
+                    result.replaceConeTypeOrNull(result.resultType.makeConeFlexibleTypeWithNotNullableLowerBound(session.typeContext))
+                }
             }
         }
 
         dataFlowAnalyzer.exitElvis(elvisExpression, isLhsNotNull, data.forceFullCompletion)
         return result
+    }
+
+    private fun ConeKotlinType.makeConeFlexibleTypeWithNotNullableLowerBound(typeContext: ConeTypeContext): ConeKotlinType {
+        with(typeContext) {
+            return when (this@makeConeFlexibleTypeWithNotNullableLowerBound) {
+                is ConeDefinitelyNotNullType ->
+                    error("It can't happen because of the previous `isNullableType` check")
+                is ConeFlexibleType -> {
+                    if (!lowerBound.isNullableType()) {
+                        this@makeConeFlexibleTypeWithNotNullableLowerBound
+                    } else {
+                        ConeFlexibleType(lowerBound.makeConeTypeDefinitelyNotNullOrNotNull(typeContext) as ConeSimpleKotlinType, upperBound)
+                    }
+                }
+                is ConeIntersectionType -> ConeIntersectionType(
+                    intersectedTypes.map { it.makeConeFlexibleTypeWithNotNullableLowerBound(typeContext) }
+                )
+                is ConeSimpleKotlinType -> ConeFlexibleType(
+                    makeConeTypeDefinitelyNotNullOrNotNull(typeContext) as ConeSimpleKotlinType,
+                    this@makeConeFlexibleTypeWithNotNullableLowerBound
+                )
+            }
+        }
     }
 }

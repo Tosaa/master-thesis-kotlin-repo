@@ -5,26 +5,29 @@
 
 package org.jetbrains.kotlin.fir.resolve.transformers.body.resolve
 
-import org.jetbrains.kotlin.*
-import org.jetbrains.kotlin.fir.*
+import org.jetbrains.kotlin.KtFakeSourceElementKind
+import org.jetbrains.kotlin.KtSourceElement
+import org.jetbrains.kotlin.fakeElement
+import org.jetbrains.kotlin.fir.FirSession
 import org.jetbrains.kotlin.fir.declarations.FirValueParameter
 import org.jetbrains.kotlin.fir.diagnostics.ConeSimpleDiagnostic
 import org.jetbrains.kotlin.fir.diagnostics.DiagnosticKind
 import org.jetbrains.kotlin.fir.expressions.FirBlock
 import org.jetbrains.kotlin.fir.expressions.FirExpression
 import org.jetbrains.kotlin.fir.expressions.FirNamedArgumentExpression
+import org.jetbrains.kotlin.fir.expressions.UnresolvedExpressionTypeAccess
 import org.jetbrains.kotlin.fir.expressions.builder.buildVarargArgumentsExpression
 import org.jetbrains.kotlin.fir.resolve.providers.symbolProvider
 import org.jetbrains.kotlin.fir.types.*
-import org.jetbrains.kotlin.fir.types.builder.buildErrorTypeRef
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.StandardClassIds
 import org.jetbrains.kotlin.types.ConstantValueKind
 
-internal inline var FirExpression.resultType: FirTypeRef
-    get() = typeRef
+
+internal inline var FirExpression.resultType: ConeKotlinType
+    get() = resolvedType
     set(type) {
-        replaceTypeRef(type)
+        replaceConeTypeOrNull(type)
     }
 
 internal fun remapArgumentsWithVararg(
@@ -43,7 +46,7 @@ internal fun remapArgumentsWithVararg(
     val varargArgument = buildVarargArgumentsExpression {
         // TODO: ideally we should use here a source from the use-site and not from the declaration-site, KT-59682
         this.varargElementType = varargParameterTypeRef.withReplacedConeType(varargElementType, KtFakeSourceElementKind.VarargArgument)
-        this.typeRef = varargParameterTypeRef.withReplacedConeType(varargArrayType, KtFakeSourceElementKind.VarargArgument)
+        this.coneTypeOrNull = varargArrayType
         var startOffset = Int.MAX_VALUE
         var endOffset = 0
         var firstVarargElementSource: KtSourceElement? = null
@@ -86,25 +89,17 @@ fun FirBlock.writeResultType(session: FirSession) {
         is FirExpression -> statement
         else -> null
     }
-    resultType = if (resultExpression == null) {
-        resultType.resolvedTypeFromPrototype(session.builtinTypes.unitType.type)
-    } else {
-        val theType = resultExpression.resultType
-        if (theType is FirResolvedTypeRef) {
-            theType.copyWithNewSourceKind(KtFakeSourceElementKind.ImplicitTypeRef)
-        } else {
-            buildErrorTypeRef {
-                diagnostic = ConeSimpleDiagnostic("No type for block", DiagnosticKind.InferenceError)
-            }
-        }
-    }
+
+    // If a lambda contains another lambda as result expression, it won't be resolved at this point
+    @OptIn(UnresolvedExpressionTypeAccess::class)
+    resultType = resultExpression?.coneTypeOrNull ?: session.builtinTypes.unitType.type
 }
 
 fun ConstantValueKind<*>.expectedConeType(session: FirSession): ConeKotlinType {
     fun constructLiteralType(classId: ClassId, isNullable: Boolean = false): ConeKotlinType {
         val symbol = session.symbolProvider.getClassLikeSymbolByClassId(classId)
             ?: return ConeErrorType(ConeSimpleDiagnostic("Missing stdlib class: $classId", DiagnosticKind.MissingStdlibClass))
-        return symbol.toLookupTag().constructClassType(emptyArray(), isNullable)
+        return symbol.toLookupTag().constructClassType(ConeTypeProjection.EMPTY_ARRAY, isNullable)
     }
     return when (this) {
         ConstantValueKind.Null -> session.builtinTypes.nullableNothingType.type

@@ -2,7 +2,6 @@
 //   Mangled name: Foo
 //   Public signature: /Foo|null[0]
 fun interface Foo {
-
   // CHECK JVM_IR:
   //   Mangled name: Foo#invoke(){}kotlin.String
   //   Public signature: /Foo.invoke|8861605044563078664[0]
@@ -34,9 +33,4 @@ fun foo(f: Foo): String
 //   Public signature: /test|6620506149988718649[0]
 //   Public signature debug description: test(){}
 fun test(): String
-  // CHECK JVM_IR:
-  //   Mangled name: #test(){}kotlin.String#<anonymous>#static(){}kotlin.String
-  // CHECK JS_IR NATIVE:
-  //   Mangled name: #test(){}#<anonymous>#static(){}
-  local fun <anonymous>(): String
 

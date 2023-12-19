@@ -7,8 +7,8 @@ package org.jetbrains.kotlin.backend.common.serialization
 
 import org.jetbrains.kotlin.backend.common.linkage.issues.*
 import org.jetbrains.kotlin.backend.common.linkage.partial.PartialLinkageSupportForLinker
-import org.jetbrains.kotlin.backend.common.overrides.FakeOverrideBuilder
 import org.jetbrains.kotlin.backend.common.overrides.FileLocalAwareLinker
+import org.jetbrains.kotlin.backend.common.overrides.IrLinkerFakeOverrideProvider
 import org.jetbrains.kotlin.backend.common.serialization.encodings.BinarySymbolData
 import org.jetbrains.kotlin.descriptors.CallableMemberDescriptor
 import org.jetbrains.kotlin.descriptors.DeclarationDescriptor
@@ -47,7 +47,7 @@ abstract class KotlinIrLinker(
 
     protected val deserializersForModules = linkedMapOf<String, IrModuleDeserializer>()
 
-    abstract val fakeOverrideBuilder: FakeOverrideBuilder
+    abstract val fakeOverrideBuilder: IrLinkerFakeOverrideProvider
 
     abstract val translationPluginContext: TranslationPluginContext?
 
@@ -181,14 +181,14 @@ abstract class KotlinIrLinker(
     override fun tryReferencingSimpleFunctionByLocalSignature(parent: IrDeclaration, idSignature: IdSignature): IrSimpleFunctionSymbol? {
         if (idSignature.isPubliclyVisible) return null
         val file = getFileOf(parent)
-        val moduleDescriptor = file.packageFragmentDescriptor.containingDeclaration
+        val moduleDescriptor = file.moduleDescriptor
         return resolveModuleDeserializer(moduleDescriptor, null).referenceSimpleFunctionByLocalSignature(file, idSignature)
     }
 
     override fun tryReferencingPropertyByLocalSignature(parent: IrDeclaration, idSignature: IdSignature): IrPropertySymbol? {
         if (idSignature.isPubliclyVisible) return null
         val file = getFileOf(parent)
-        val moduleDescriptor = file.packageFragmentDescriptor.containingDeclaration
+        val moduleDescriptor = file.moduleDescriptor
         return resolveModuleDeserializer(moduleDescriptor, null).referencePropertyByLocalSignature(file, idSignature)
     }
 
@@ -398,7 +398,7 @@ enum class DeserializationStrategy(
     val theWholeWorld: Boolean,
     val inlineBodies: Boolean
 ) {
-    ON_DEMAND(true, true, false, false, true),
+    ON_DEMAND(true, false, false, false, false),
     ONLY_REFERENCED(false, true, false, false, true),
     ALL(false, true, true, true, true),
     EXPLICITLY_EXPORTED(false, true, true, false, true),

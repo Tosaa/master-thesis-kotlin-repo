@@ -8,7 +8,6 @@ package org.jetbrains.kotlin.fir.resolve.calls
 import org.jetbrains.kotlin.KtFakeSourceElementKind
 import org.jetbrains.kotlin.fakeElement
 import org.jetbrains.kotlin.fir.FirSession
-import org.jetbrains.kotlin.fir.copyWithNewSourceKind
 import org.jetbrains.kotlin.fir.declarations.FirResolvePhase
 import org.jetbrains.kotlin.fir.diagnostics.ConeIntermediateDiagnostic
 import org.jetbrains.kotlin.fir.expressions.FirCheckNotNullCall
@@ -23,7 +22,7 @@ import org.jetbrains.kotlin.fir.renderWithType
 import org.jetbrains.kotlin.fir.resolve.ScopeSession
 import org.jetbrains.kotlin.fir.resolve.scope
 import org.jetbrains.kotlin.fir.resolve.smartcastScope
-import org.jetbrains.kotlin.fir.scopes.FakeOverrideTypeCalculator
+import org.jetbrains.kotlin.fir.scopes.CallableCopyTypeCalculator
 import org.jetbrains.kotlin.fir.scopes.FirTypeScope
 import org.jetbrains.kotlin.fir.symbols.FirBasedSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirCallableSymbol
@@ -42,16 +41,14 @@ abstract class ReceiverValue {
     open fun scope(useSiteSession: FirSession, scopeSession: ScopeSession): FirTypeScope? = type.scope(
         useSiteSession = useSiteSession,
         scopeSession = scopeSession,
-        fakeOverrideTypeCalculator = FakeOverrideTypeCalculator.DoNothing,
+        callableCopyTypeCalculator = CallableCopyTypeCalculator.DoNothing,
         requiredMembersPhase = FirResolvePhase.STATUS,
     )
 }
 
 class ExpressionReceiverValue(override val receiverExpression: FirExpression) : ReceiverValue() {
     override val type: ConeKotlinType
-        // NB: safe cast is necessary here
-        get() = receiverExpression.typeRef.coneTypeSafe()
-            ?: ConeErrorType(ConeIntermediateDiagnostic("No type calculated for: ${receiverExpression.renderWithType()}")) // TODO: assert here
+        get() = receiverExpression.resolvedType
 
     override fun scope(useSiteSession: FirSession, scopeSession: ScopeSession): FirTypeScope? {
         var receiverExpr: FirExpression? = receiverExpression
@@ -72,7 +69,7 @@ class ExpressionReceiverValue(override val receiverExpression: FirExpression) : 
         return type.scope(
             useSiteSession,
             scopeSession,
-            FakeOverrideTypeCalculator.DoNothing,
+            CallableCopyTypeCalculator.DoNothing,
             requiredMembersPhase = FirResolvePhase.STATUS,
         )
     }
@@ -98,7 +95,7 @@ sealed class ImplicitReceiverValue<S : FirBasedSymbol<*>>(
         type.scope(
             useSiteSession,
             scopeSession,
-            FakeOverrideTypeCalculator.DoNothing,
+            CallableCopyTypeCalculator.DoNothing,
             requiredMembersPhase = FirResolvePhase.STATUS
         )
         private set
@@ -116,12 +113,12 @@ sealed class ImplicitReceiverValue<S : FirBasedSymbol<*>>(
             buildSmartCastExpression {
                 originalExpression = originalReceiverExpression
                 smartcastType = buildResolvedTypeRef {
-                    source = originalReceiverExpression.typeRef.source?.fakeElement(KtFakeSourceElementKind.SmartCastedTypeRef)
+                    source = originalReceiverExpression.source?.fakeElement(KtFakeSourceElementKind.SmartCastedTypeRef)
                     type = this@ImplicitReceiverValue.type
                 }
-                typesFromSmartCast = listOf(type)
+                typesFromSmartCast = listOf(this@ImplicitReceiverValue.type)
                 smartcastStability = SmartcastStability.STABLE_VALUE
-                typeRef = smartcastType.copyWithNewSourceKind(KtFakeSourceElementKind.ImplicitTypeRef)
+                coneTypeOrNull = this@ImplicitReceiverValue.type
             }
         } else {
             originalReceiverExpression
@@ -156,7 +153,7 @@ sealed class ImplicitReceiverValue<S : FirBasedSymbol<*>>(
         implicitScope = type.scope(
             useSiteSession = useSiteSession,
             scopeSession = scopeSession,
-            fakeOverrideTypeCalculator = FakeOverrideTypeCalculator.DoNothing,
+            callableCopyTypeCalculator = CallableCopyTypeCalculator.DoNothing,
             requiredMembersPhase = FirResolvePhase.STATUS,
         )
     }
@@ -174,7 +171,7 @@ sealed class ImplicitReceiverValue<S : FirBasedSymbol<*>>(
         implicitScope = type.scope(
             useSiteSession = useSiteSession,
             scopeSession = scopeSession,
-            fakeOverrideTypeCalculator = FakeOverrideTypeCalculator.DoNothing,
+            callableCopyTypeCalculator = CallableCopyTypeCalculator.DoNothing,
             requiredMembersPhase = FirResolvePhase.STATUS,
         )
     }
@@ -195,16 +192,15 @@ private fun receiverExpression(
         boundSymbol = symbol
         this.contextReceiverNumber = contextReceiverNumber
     }
-    val typeRef = type.toFirResolvedTypeRef()
     return when (inaccessibleReceiver) {
         false -> buildThisReceiverExpression {
             this.calleeReference = calleeReference
-            this.typeRef = typeRef
+            this.coneTypeOrNull = type
             isImplicit = true
         }
         true -> buildInaccessibleReceiverExpression {
             this.calleeReference = calleeReference
-            this.typeRef = typeRef
+            this.coneTypeOrNull = type
         }
     }
 }

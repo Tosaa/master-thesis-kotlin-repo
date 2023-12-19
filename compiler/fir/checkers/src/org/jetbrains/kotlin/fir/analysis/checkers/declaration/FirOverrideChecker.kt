@@ -16,6 +16,7 @@ import org.jetbrains.kotlin.fir.analysis.checkers.context.CheckerContext
 import org.jetbrains.kotlin.fir.analysis.checkers.expression.FirOptInUsageBaseChecker
 import org.jetbrains.kotlin.fir.analysis.checkers.expression.FirOptInUsageBaseChecker.Experimentality
 import org.jetbrains.kotlin.fir.analysis.checkers.getContainingClassSymbol
+import org.jetbrains.kotlin.fir.analysis.checkers.hasModifier
 import org.jetbrains.kotlin.fir.analysis.checkers.unsubstitutedScope
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors
 import org.jetbrains.kotlin.fir.analysis.overridesBackwardCompatibilityHelper
@@ -37,26 +38,11 @@ import org.jetbrains.kotlin.fir.symbols.lazyResolveToPhase
 import org.jetbrains.kotlin.fir.symbols.impl.*
 import org.jetbrains.kotlin.fir.types.*
 import org.jetbrains.kotlin.fir.visibilityChecker
+import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.types.AbstractTypeChecker
 import org.jetbrains.kotlin.types.TypeCheckerState
 
-object FirOverrideChecker : FirClassChecker() {
-    override fun check(declaration: FirClass, context: CheckerContext, reporter: DiagnosticReporter) {
-        val typeCheckerState = context.session.typeContext.newTypeCheckerState(
-            errorTypesEqualToAnything = false,
-            stubTypesEqualToAnything = false
-        )
-
-        val firTypeScope = declaration.unsubstitutedScope(context)
-
-        for (it in declaration.declarations) {
-            if (it is FirSimpleFunction || it is FirProperty) {
-                val callable = it as FirCallableDeclaration
-                checkMember(callable.symbol, declaration, reporter, typeCheckerState, firTypeScope, context)
-            }
-        }
-    }
-
+abstract class FirAbstractOverrideChecker : FirClassChecker() {
     private fun ConeKotlinType.substituteAllTypeParameters(
         overrideDeclaration: FirCallableSymbol<*>,
         baseDeclaration: FirCallableSymbol<*>,
@@ -82,13 +68,63 @@ object FirOverrideChecker : FirClassChecker() {
         return substitutorByMap(map, context.session).substituteOrSelf(this)
     }
 
+    // See [OverrideResolver#isReturnTypeOkForOverride]
+    protected fun FirCallableSymbol<*>.checkReturnType(
+        overriddenSymbols: List<FirCallableSymbol<*>>,
+        typeCheckerState: TypeCheckerState,
+        context: CheckerContext,
+    ): FirCallableSymbol<*>? {
+        val overridingReturnType = resolvedReturnTypeRef.coneType
+
+        // Don't report *_ON_OVERRIDE diagnostics according to an error return type. That should be reported separately.
+        if (overridingReturnType is ConeErrorType) {
+            return null
+        }
+
+        val bounds = overriddenSymbols.map { context.returnTypeCalculator.tryCalculateReturnType(it).coneType }
+
+        for (it in bounds.indices) {
+            val overriddenDeclaration = overriddenSymbols[it]
+
+            val overriddenReturnType = bounds[it].substituteAllTypeParameters(this, overriddenDeclaration, context)
+
+            val isReturnTypeOkForOverride =
+                if (overriddenDeclaration is FirPropertySymbol && overriddenDeclaration.isVar)
+                    AbstractTypeChecker.equalTypes(typeCheckerState, overridingReturnType, overriddenReturnType)
+                else
+                    AbstractTypeChecker.isSubtypeOf(typeCheckerState, overridingReturnType, overriddenReturnType)
+
+            if (!isReturnTypeOkForOverride) {
+                return overriddenDeclaration
+            }
+        }
+
+        return null
+    }
+}
+
+object FirOverrideChecker : FirAbstractOverrideChecker() {
+    override fun check(declaration: FirClass, context: CheckerContext, reporter: DiagnosticReporter) {
+        val typeCheckerState = context.session.typeContext.newTypeCheckerState(
+            errorTypesEqualToAnything = false,
+            stubTypesEqualToAnything = false
+        )
+
+        val firTypeScope = declaration.unsubstitutedScope(context)
+
+        for (it in declaration.declarations) {
+            if (it is FirSimpleFunction || it is FirProperty) {
+                val callable = it as FirCallableDeclaration
+                checkMember(callable.symbol, declaration, reporter, typeCheckerState, firTypeScope, context)
+            }
+        }
+    }
+
     private fun checkModality(
         overriddenSymbols: List<FirCallableSymbol<*>>,
     ): FirCallableSymbol<*>? {
         for (overridden in overriddenSymbols) {
-            val modality = overridden.modality
-            val isEffectivelyFinal = modality == null || modality == Modality.FINAL
-            if (isEffectivelyFinal) {
+            if (overridden.modality == Modality.FINAL) {
                 return overridden
             }
         }
@@ -185,40 +221,6 @@ object FirOverrideChecker : FirClassChecker() {
         }
     }
 
-    // See [OverrideResolver#isReturnTypeOkForOverride]
-    private fun FirCallableSymbol<*>.checkReturnType(
-        overriddenSymbols: List<FirCallableSymbol<*>>,
-        typeCheckerState: TypeCheckerState,
-        context: CheckerContext,
-    ): FirCallableSymbol<*>? {
-        val overridingReturnType = resolvedReturnTypeRef.coneType
-
-        // Don't report *_ON_OVERRIDE diagnostics according to an error return type. That should be reported separately.
-        if (overridingReturnType is ConeErrorType) {
-            return null
-        }
-
-        val bounds = overriddenSymbols.map { context.returnTypeCalculator.tryCalculateReturnType(it).coneType }
-
-        for (it in bounds.indices) {
-            val overriddenDeclaration = overriddenSymbols[it]
-
-            val overriddenReturnType = bounds[it].substituteAllTypeParameters(this, overriddenDeclaration, context)
-
-            val isReturnTypeOkForOverride =
-                if (overriddenDeclaration is FirPropertySymbol && overriddenDeclaration.isVar)
-                    AbstractTypeChecker.equalTypes(typeCheckerState, overridingReturnType, overriddenReturnType)
-                else
-                    AbstractTypeChecker.isSubtypeOf(typeCheckerState, overridingReturnType, overriddenReturnType)
-
-            if (!isReturnTypeOkForOverride) {
-                return overriddenDeclaration
-            }
-        }
-
-        return null
-    }
-
     @OptIn(SymbolInternals::class)
     private fun FirFunctionSymbol<*>.checkDefaultValues(
         reporter: DiagnosticReporter,
@@ -252,8 +254,9 @@ object FirOverrideChecker : FirClassChecker() {
         context: CheckerContext
     ) {
         val overriddenMemberSymbols = firTypeScope.retrieveDirectOverriddenOf(member)
+        val hasOverrideKeyword = member.hasModifier(KtTokens.OVERRIDE_KEYWORD)
 
-        if (!member.isOverride) {
+        if (!member.isOverride || !hasOverrideKeyword) {
             if (overriddenMemberSymbols.isEmpty() ||
                 context.session.overridesBackwardCompatibilityHelper.overrideCanBeOmitted(overriddenMemberSymbols, context)
             ) {

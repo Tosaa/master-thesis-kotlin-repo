@@ -7,18 +7,17 @@ package org.jetbrains.kotlin.analysis.low.level.api.fir.transformers
 
 import org.jetbrains.kotlin.analysis.low.level.api.fir.api.FirDesignationWithFile
 import org.jetbrains.kotlin.analysis.low.level.api.fir.api.getFirResolveSession
+import org.jetbrains.kotlin.analysis.low.level.api.fir.api.getModule
 import org.jetbrains.kotlin.analysis.low.level.api.fir.api.targets.LLFirResolveTarget
 import org.jetbrains.kotlin.analysis.low.level.api.fir.api.throwUnexpectedFirElementError
 import org.jetbrains.kotlin.analysis.low.level.api.fir.compile.codeFragmentScopeProvider
 import org.jetbrains.kotlin.analysis.low.level.api.fir.file.builder.LLFirLockProvider
+import org.jetbrains.kotlin.analysis.low.level.api.fir.file.structure.LLFirDeclarationModificationService
 import org.jetbrains.kotlin.analysis.low.level.api.fir.lazy.resolve.FirLazyBodiesCalculator
 import org.jetbrains.kotlin.analysis.low.level.api.fir.project.structure.llFirModuleData
 import org.jetbrains.kotlin.analysis.low.level.api.fir.state.LLFirResolvableResolveSession
-import org.jetbrains.kotlin.analysis.low.level.api.fir.util.checkDelegatedConstructorIsResolved
 import org.jetbrains.kotlin.analysis.low.level.api.fir.util.*
-import org.jetbrains.kotlin.fir.utils.exceptions.withFirEntry
-import org.jetbrains.kotlin.utils.exceptions.errorWithAttachment
-import org.jetbrains.kotlin.utils.exceptions.checkWithAttachment
+import org.jetbrains.kotlin.analysis.low.level.api.fir.util.checkDelegatedConstructorIsResolved
 import org.jetbrains.kotlin.fir.FirElementWithResolveState
 import org.jetbrains.kotlin.fir.FirFileAnnotationsContainer
 import org.jetbrains.kotlin.fir.FirSession
@@ -37,18 +36,23 @@ import org.jetbrains.kotlin.fir.references.builder.buildExplicitSuperReference
 import org.jetbrains.kotlin.fir.references.builder.buildExplicitThisReference
 import org.jetbrains.kotlin.fir.resolve.FirCodeFragmentContext
 import org.jetbrains.kotlin.fir.resolve.ScopeSession
-import org.jetbrains.kotlin.fir.resolve.dfa.FirControlFlowGraphReferenceImpl
+import org.jetbrains.kotlin.fir.resolve.SessionHolderImpl
 import org.jetbrains.kotlin.fir.resolve.codeFragmentContext
+import org.jetbrains.kotlin.fir.resolve.dfa.FirControlFlowGraphReferenceImpl
+import org.jetbrains.kotlin.fir.resolve.dfa.RealVariable
+import org.jetbrains.kotlin.fir.resolve.dfa.cfg.isUsedInControlFlowGraphBuilderForClass
+import org.jetbrains.kotlin.fir.resolve.dfa.cfg.isUsedInControlFlowGraphBuilderForFile
 import org.jetbrains.kotlin.fir.resolve.transformers.body.resolve.FirBodyResolveTransformer
 import org.jetbrains.kotlin.fir.resolve.transformers.body.resolve.FirResolveContextCollector
 import org.jetbrains.kotlin.fir.resolve.transformers.contracts.FirContractsDslNames
 import org.jetbrains.kotlin.fir.symbols.lazyResolveToPhase
-import org.jetbrains.kotlin.fir.types.FirResolvedTypeRef
-import org.jetbrains.kotlin.fir.resolve.dfa.cfg.isUsedInControlFlowGraphBuilderForClass
-import org.jetbrains.kotlin.fir.symbols.FirBasedSymbol
 import org.jetbrains.kotlin.fir.types.ConeKotlinType
+import org.jetbrains.kotlin.fir.types.isResolved
+import org.jetbrains.kotlin.fir.utils.exceptions.withFirEntry
 import org.jetbrains.kotlin.psi.KtCodeFragment
 import org.jetbrains.kotlin.psi.KtFile
+import org.jetbrains.kotlin.utils.exceptions.checkWithAttachment
+import org.jetbrains.kotlin.utils.exceptions.errorWithAttachment
 import org.jetbrains.kotlin.utils.exceptions.requireWithAttachment
 import org.jetbrains.kotlin.utils.exceptions.withPsiEntry
 import org.jetbrains.kotlin.utils.findIsInstanceAnd
@@ -100,7 +104,13 @@ private class LLFirBodyTargetResolver(
         firResolveContextCollector = firResolveContextCollector,
     ) {
         override val preserveCFGForClasses: Boolean get() = false
+        override val buildCfgForFiles: Boolean get() = false
     }
+
+    /**
+     * No one should depend on body resolution of another declaration
+     */
+    override val skipDependencyTargetResolutionStep: Boolean get() = true
 
     override fun doResolveWithoutLock(target: FirElementWithResolveState): Boolean {
         when (target) {
@@ -108,6 +118,19 @@ private class LLFirBodyTargetResolver(
                 if (target.resolvePhase >= resolverPhase) return true
 
                 // resolve class CFG graph here, to do this we need to have property & init blocks resoled
+                resolveMembersForControlFlowGraph(target)
+                performCustomResolveUnderLock(target) {
+                    calculateControlFlowGraph(target)
+                }
+
+                return true
+            }
+            is FirFile -> {
+                if (target.resolvePhase >= resolverPhase) return true
+
+                target.annotationsContainer?.lazyResolveToPhase(resolverPhase)
+
+                // resolve file CFG graph here, to do this we need to have property blocks resoled
                 resolveMembersForControlFlowGraph(target)
                 performCustomResolveUnderLock(target) {
                     calculateControlFlowGraph(target)
@@ -157,6 +180,35 @@ private class LLFirBodyTargetResolver(
         }
     }
 
+    private fun calculateControlFlowGraph(target: FirFile) {
+        checkWithAttachment(
+            target.controlFlowGraphReference == null,
+            { "'controlFlowGraphReference' should be 'null' if the file phase < $resolverPhase)" },
+        ) {
+            withFirEntry("firFile", target)
+        }
+
+        val dataFlowAnalyzer = transformer.declarationsTransformer.dataFlowAnalyzer
+        dataFlowAnalyzer.enterFile(target, buildGraph = true)
+        val controlFlowGraph = dataFlowAnalyzer.exitFile()
+            ?: errorWithAttachment("CFG should not be 'null' as 'buildGraph' is specified") {
+                withFirEntry("firFile", target)
+            }
+
+        target.replaceControlFlowGraphReference(FirControlFlowGraphReferenceImpl(controlFlowGraph))
+    }
+
+    private fun resolveMembersForControlFlowGraph(target: FirFile) {
+        withFile(target) {
+            for (member in target.declarations) {
+                if (member is FirControlFlowGraphOwner && member.isUsedInControlFlowGraphBuilderForFile) {
+                    member.lazyResolveToPhase(resolverPhase.previous)
+                    performResolve(member)
+                }
+            }
+        }
+    }
+
     private fun resolveCodeFragmentContext(firCodeFragment: FirCodeFragment) {
         val ktCodeFragment = firCodeFragment.psi as? KtCodeFragment
             ?: errorWithAttachment("Code fragment source not found") {
@@ -175,9 +227,11 @@ private class LLFirBodyTargetResolver(
         val contextKtFile = contextPsiElement?.containingFile as? KtFile
 
         firCodeFragment.codeFragmentContext = if (contextKtFile != null) {
+            val contextModule = resolveSession.getModule(contextKtFile)
+            val contextSession = resolveSession.sessionProvider.getResolvableSession(contextModule)
             val contextFirFile = resolveSession.getOrBuildFirFile(contextKtFile)
-            val sessionHolder = transformer.components
 
+            val sessionHolder = SessionHolderImpl(contextSession, contextSession.getScopeSession())
             val elementContext = ContextCollector.process(contextFirFile, sessionHolder, contextPsiElement)
                 ?: errorWithAttachment("Cannot find enclosing context for ${contextPsiElement::class}") {
                     withPsiEntry("contextPsiElement", contextPsiElement)
@@ -192,7 +246,7 @@ private class LLFirBodyTargetResolver(
 
     override fun doLazyResolveUnderLock(target: FirElementWithResolveState) {
         when (target) {
-            is FirRegularClass, is FirCodeFragment -> error("Should have been resolved in ${::doResolveWithoutLock.name}")
+            is FirFile, is FirRegularClass, is FirCodeFragment -> error("Should have been resolved in ${::doResolveWithoutLock.name}")
             is FirConstructor -> resolve(target, BodyStateKeepers.CONSTRUCTOR)
             is FirFunction -> resolve(target, BodyStateKeepers.FUNCTION)
             is FirProperty -> resolve(target, BodyStateKeepers.PROPERTY)
@@ -203,7 +257,6 @@ private class LLFirBodyTargetResolver(
             is FirDanglingModifierList,
             is FirFileAnnotationsContainer,
             is FirTypeAlias,
-            is FirFile,
             -> {
                 // No bodies here
             }
@@ -216,6 +269,8 @@ private class LLFirBodyTargetResolver(
             is FirScript -> target.takeUnless(FirScript::isCertainlyResolved)?.let(::resolveScript)
             else -> super.rawResolve(target)
         }
+
+        LLFirDeclarationModificationService.bodyResolved(target, resolverPhase)
     }
 }
 
@@ -274,6 +329,10 @@ internal object BodyStateKeepers {
 
     val FUNCTION: StateKeeper<FirFunction, FirDesignationWithFile> = stateKeeper { function, designation ->
         if (function.isCertainlyResolved) {
+            if (!isCallableWithSpecialBody(function)) {
+                entityList(function.valueParameters, VALUE_PARAMETER, designation)
+            }
+
             return@stateKeeper
         }
 
@@ -317,7 +376,7 @@ internal object BodyStateKeepers {
     }
 
     val PROPERTY: StateKeeper<FirProperty, FirDesignationWithFile> = stateKeeper { property, designation ->
-        if (property.bodyResolveState >= FirPropertyBodyResolveState.EVERYTHING_RESOLVED) {
+        if (property.bodyResolveState >= FirPropertyBodyResolveState.ALL_BODIES_RESOLVED) {
             return@stateKeeper
         }
 
@@ -382,14 +441,14 @@ private val FirScript.isCertainlyResolved: Boolean
         val dependentProperty = findResultProperty() ?: return false
 
         // This meant that we already resolve the entire script on implicit body phase
-        return dependentProperty.bodyResolveState == FirPropertyBodyResolveState.EVERYTHING_RESOLVED
+        return dependentProperty.bodyResolveState == FirPropertyBodyResolveState.ALL_BODIES_RESOLVED
     }
 
 private val FirFunction.isCertainlyResolved: Boolean
     get() {
         if (this is FirPropertyAccessor) {
             val requiredState = when {
-                isSetter -> FirPropertyBodyResolveState.EVERYTHING_RESOLVED
+                isSetter -> FirPropertyBodyResolveState.ALL_BODIES_RESOLVED
                 else -> FirPropertyBodyResolveState.INITIALIZER_AND_GETTER_RESOLVED
             }
 
@@ -399,7 +458,7 @@ private val FirFunction.isCertainlyResolved: Boolean
         }
 
         val body = this.body ?: return false // Not completely sure
-        return body !is FirLazyBlock && body.typeRef is FirResolvedTypeRef
+        return body !is FirLazyBlock && body.isResolved
     }
 
 private val FirVariable.initializerIfUnresolved: FirExpression?
@@ -410,7 +469,7 @@ private val FirVariable.initializerIfUnresolved: FirExpression?
 
 private val FirVariable.delegateIfUnresolved: FirExpression?
     get() = when (this) {
-        is FirProperty -> if (bodyResolveState < FirPropertyBodyResolveState.EVERYTHING_RESOLVED) delegate else null
+        is FirProperty -> if (bodyResolveState < FirPropertyBodyResolveState.ALL_BODIES_RESOLVED) delegate else null
         else -> delegate
     }
 
@@ -421,7 +480,7 @@ private val FirProperty.getterIfUnresolved: FirPropertyAccessor?
     get() = if (bodyResolveState < FirPropertyBodyResolveState.INITIALIZER_AND_GETTER_RESOLVED) getter else null
 
 private val FirProperty.setterIfUnresolved: FirPropertyAccessor?
-    get() = if (bodyResolveState < FirPropertyBodyResolveState.EVERYTHING_RESOLVED) setter else null
+    get() = if (bodyResolveState < FirPropertyBodyResolveState.ALL_BODIES_RESOLVED) setter else null
 
 private fun delegatedConstructorCallGuard(fir: FirDelegatedConstructorCall): FirDelegatedConstructorCall {
     if (fir is FirLazyDelegatedConstructorCall) {
@@ -471,5 +530,5 @@ private fun requireSameSize(old: List<FirStatement>, new: List<FirStatement>) {
 
 private class LLFirCodeFragmentContext(
     override val towerDataContext: FirTowerDataContext,
-    override val variables: Map<FirBasedSymbol<*>, Set<ConeKotlinType>>
+    override val smartCasts: Map<RealVariable, Set<ConeKotlinType>>
 ) : FirCodeFragmentContext

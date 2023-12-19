@@ -10,16 +10,17 @@ import org.gradle.api.logging.Logging
 import org.gradle.tooling.events.task.TaskFinishEvent
 import org.jetbrains.kotlin.build.report.metrics.ValueType
 import org.jetbrains.kotlin.build.report.statistics.HttpReportService
-import org.jetbrains.kotlin.build.report.statistics.file.FileReportService
 import org.jetbrains.kotlin.build.report.statistics.formatSize
 import org.jetbrains.kotlin.build.report.statistics.BuildFinishStatisticsData
 import org.jetbrains.kotlin.build.report.statistics.BuildStartParameters
 import org.jetbrains.kotlin.build.report.statistics.StatTag
 import org.jetbrains.kotlin.gradle.dsl.KotlinVersion
+import org.jetbrains.kotlin.gradle.plugin.statistics.GradleFileReportService
 import org.jetbrains.kotlin.gradle.report.data.BuildExecutionData
 import org.jetbrains.kotlin.gradle.report.data.BuildOperationRecord
 import org.jetbrains.kotlin.gradle.report.data.GradleCompileStatisticsData
 import org.jetbrains.kotlin.utils.addToStdlib.measureTimeMillisWithResult
+import org.jetbrains.kotlin.gradle.utils.nextKotlinLanguageVersion
 import java.io.File
 import java.net.InetAddress
 import java.text.SimpleDateFormat
@@ -50,7 +51,7 @@ class BuildReportsService {
     fun close(
         buildOperationRecords: Collection<BuildOperationRecord>,
         failureMessages: List<String>,
-        parameters: BuildReportParameters
+        parameters: BuildReportParameters,
     ) {
         val buildData = BuildExecutionData(
             startParameters = parameters.startParameters,
@@ -64,14 +65,15 @@ class BuildReportsService {
             executorService.submit { reportBuildFinish(parameters) }
         }
         reportingSettings.fileReportSettings?.also {
-            FileReportService.reportBuildStatInFile(
+            GradleFileReportService(
                 it.buildReportDir,
                 parameters.projectName,
                 it.includeMetricsInReport,
+                loggerAdapter
+            ).process(
                 transformOperationRecordsToCompileStatisticsData(buildOperationRecords, parameters, onlyKotlinTask = false),
                 parameters.startParameters,
                 failureMessages.filter { it.isNotEmpty() },
-                loggerAdapter
             )
         }
 
@@ -79,8 +81,8 @@ class BuildReportsService {
             MetricsWriter(singleOutputFile.absoluteFile).process(buildData, log)
         }
 
-        if (reportingSettings.experimentalTryK2ConsoleOutput) {
-            reportTryK2ToConsole(buildData)
+        if (reportingSettings.experimentalTryNextConsoleOutput) {
+            reportTryNextToConsole(buildData)
         }
 
         //It's expected that bad internet connection can cause a significant delay for big project
@@ -91,7 +93,7 @@ class BuildReportsService {
         buildOperationRecords: Collection<BuildOperationRecord>,
         parameters: BuildReportParameters,
         onlyKotlinTask: Boolean,
-        metricsToShow: Set<String>? = null
+        metricsToShow: Set<String>? = null,
     ) = buildOperationRecords.mapNotNull {
         prepareData(
             taskResult = null,
@@ -111,7 +113,7 @@ class BuildReportsService {
 
     fun onFinish(
         event: TaskFinishEvent, buildOperation: BuildOperationRecord,
-        parameters: BuildReportParameters
+        parameters: BuildReportParameters,
     ) {
         addHttpReport(event, buildOperation, parameters)
     }
@@ -161,7 +163,7 @@ class BuildReportsService {
     private fun addHttpReport(
         event: TaskFinishEvent,
         buildOperationRecord: BuildOperationRecord,
-        parameters: BuildReportParameters
+        parameters: BuildReportParameters,
     ) {
         parameters.httpService?.also { httpService ->
             val data =
@@ -188,7 +190,7 @@ class BuildReportsService {
         event: TaskFinishEvent,
         buildOperationRecord: BuildOperationRecord,
         parameters: BuildReportParameters,
-        buildScanExtension: BuildScanExtensionHolder
+        buildScanExtension: BuildScanExtensionHolder,
     ) {
         val buildScanSettings = parameters.reportingSettings.buildScanReportSettings ?: return
 
@@ -211,7 +213,7 @@ class BuildReportsService {
     internal fun addBuildScanReport(
         buildOperationRecords: Collection<BuildOperationRecord>,
         parameters: BuildReportParameters,
-        buildScanExtension: BuildScanExtensionHolder
+        buildScanExtension: BuildScanExtensionHolder,
     ) {
         val buildScanSettings = parameters.reportingSettings.buildScanReportSettings ?: return
 
@@ -255,14 +257,14 @@ class BuildReportsService {
     private fun addBuildScanValue(
         buildScan: BuildScanExtensionHolder,
         data: GradleCompileStatisticsData,
-        customValue: String
+        customValue: String,
     ) {
         buildScan.buildScan.value(data.getTaskName(), customValue)
         customValues++
     }
 
-    private fun reportTryK2ToConsole(
-        data: BuildExecutionData
+    private fun reportTryNextToConsole(
+        data: BuildExecutionData,
     ) {
         val tasksData = data.buildOperationRecord
             .filterIsInstance<TaskRecord>()
@@ -270,21 +272,22 @@ class BuildReportsService {
                 // Filtering by only KGP tasks and by those that actually do compilation
                 it.isFromKotlinPlugin && it.kotlinLanguageVersion != null
             }
-        log.warn("##### 'kotlin.experimental.tryK2' results #####")
+        log.warn("##### 'kotlin.experimental.tryNext' results #####")
         if (tasksData.isEmpty()) {
             log.warn("No Kotlin compilation tasks have been run")
             log.warn("#####")
         } else {
-            val tasksCountWithKotlin2 = tasksData.count {
-                it.kotlinLanguageVersion != null && it.kotlinLanguageVersion >= KotlinVersion.KOTLIN_2_0
+            val tasksCountWithKotlinNext = tasksData.count {
+                it.kotlinLanguageVersion != null && it.kotlinLanguageVersion >= KotlinVersion.nextKotlinLanguageVersion
             }
-            val taskWithK2Percent = (tasksCountWithKotlin2 * 100) / tasksData.count()
+            val taskWithNextPercent = (tasksCountWithKotlinNext * 100) / tasksData.count()
             val statsData = tasksData.map { it.path to it.kotlinLanguageVersion?.version }
             statsData.sortedBy { it.first }.forEach { record ->
                 log.warn("${record.first}: ${record.second} language version")
             }
             log.warn(
-                "##### $taskWithK2Percent% ($tasksCountWithKotlin2/${tasksData.count()}) tasks have been compiled with Kotlin 2.0 #####"
+                "##### $taskWithNextPercent% ($tasksCountWithKotlinNext/${tasksData.count()}) tasks have been compiled with " +
+                        "Kotlin ${KotlinVersion.nextKotlinLanguageVersion.version} #####"
             )
         }
     }
@@ -307,7 +310,8 @@ class BuildReportsService {
         }
 
         val timeData =
-            data.getBuildTimesMetrics().map { (key, value) -> "${key.getReadableString()}: ${value}ms" } //sometimes it is better to have separate variable to be able debug
+            data.getBuildTimesMetrics()
+                .map { (key, value) -> "${key.getReadableString()}: ${value}ms" } //sometimes it is better to have separate variable to be able debug
         val perfData = data.getPerformanceMetrics().map { (key, value) ->
             when (key.getType()) {
                 ValueType.BYTES -> "${key.getReadableString()}: ${formatSize(value)}"
@@ -417,5 +421,5 @@ data class BuildReportParameters(
     val label: String?,
     val projectName: String,
     val kotlinVersion: String,
-    val additionalTags: Set<StatTag>
+    val additionalTags: Set<StatTag>,
 )

@@ -7,17 +7,16 @@
 #define RUNTIME_MM_THREAD_DATA_H
 
 #include <atomic>
+#include <vector>
 
 #include "GlobalData.hpp"
 #include "GlobalsRegistry.hpp"
 #include "GC.hpp"
-#include "ObjectFactory.hpp"
 #include "ShadowStack.hpp"
 #include "SpecialRefRegistry.hpp"
 #include "ThreadLocalStorage.hpp"
 #include "Utils.hpp"
 #include "ThreadSuspension.hpp"
-#include "std_support/Vector.hpp"
 
 struct ObjHeader;
 
@@ -33,6 +32,7 @@ public:
         globalsThreadQueue_(GlobalsRegistry::Instance()),
         specialRefRegistry_(SpecialRefRegistry::instance()),
         gcScheduler_(GlobalData::Instance().gcScheduler(), *this),
+        allocator_(GlobalData::Instance().allocator()),
         gc_(GlobalData::Instance().gc(), *this),
         suspensionData_(ThreadState::kNative, *this) {}
 
@@ -52,9 +52,11 @@ public:
 
     ShadowStack& shadowStack() noexcept { return shadowStack_; }
 
-    std_support::vector<std::pair<ObjHeader**, ObjHeader*>>& initializingSingletons() noexcept { return initializingSingletons_; }
+    std::vector<std::pair<ObjHeader**, ObjHeader*>>& initializingSingletons() noexcept { return initializingSingletons_; }
 
     gcScheduler::GCScheduler::ThreadData& gcScheduler() noexcept { return gcScheduler_; }
+
+    alloc::Allocator::ThreadData& allocator() noexcept { return allocator_; }
 
     gc::GC::ThreadData& gc() noexcept { return gc_; }
 
@@ -69,7 +71,7 @@ public:
     void ClearForTests() noexcept {
         globalsThreadQueue_.ClearForTests();
         specialRefRegistry_.clearForTests();
-        gc_.ClearForTests();
+        allocator_.clearForTests();
     }
 
 private:
@@ -79,8 +81,9 @@ private:
     SpecialRefRegistry::ThreadQueue specialRefRegistry_;
     ShadowStack shadowStack_;
     gcScheduler::GCScheduler::ThreadData gcScheduler_;
+    alloc::Allocator::ThreadData allocator_;
     gc::GC::ThreadData gc_;
-    std_support::vector<std::pair<ObjHeader**, ObjHeader*>> initializingSingletons_;
+    std::vector<std::pair<ObjHeader**, ObjHeader*>> initializingSingletons_;
     ThreadSuspensionData suspensionData_;
 };
 

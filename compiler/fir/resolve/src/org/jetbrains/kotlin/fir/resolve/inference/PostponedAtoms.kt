@@ -46,14 +46,8 @@ class ResolvedLambdaAtom(
     val parameters: List<ConeKotlinType>,
     var returnType: ConeKotlinType,
     typeVariableForLambdaReturnType: ConeTypeVariableForLambdaReturnType?,
-    candidateOfOuterCall: Candidate?,
     val coerceFirstParameterToExtensionReceiver: Boolean
 ) : PostponedResolvedAtom() {
-    init {
-        candidateOfOuterCall?.let {
-            it.postponedAtoms += this
-        }
-    }
 
     var typeVariableForLambdaReturnType = typeVariableForLambdaReturnType
         private set
@@ -83,6 +77,15 @@ class ResolvedLambdaAtom(
     fun replaceTypeVariableForLambdaReturnType(typeVariableForLambdaReturnType: ConeTypeVariableForLambdaReturnType) {
         this.typeVariableForLambdaReturnType = typeVariableForLambdaReturnType
     }
+
+    /**
+     * Set to true by resolution stage, if the corresponding parameter has BuilderInference annotation
+     * ```kotlin
+     *     fun foo(@BuilderInference b: Buildee<T>.() -> Unit) {}
+     *     fun test() = foo({ ... }) // Will be true for the lambda argument passed to b
+     * ```
+     */
+    var isCorrespondingParameterAnnotatedWithBuilderInference: Boolean = false
 }
 
 class LambdaWithTypeVariableAsExpectedTypeAtom(
@@ -90,9 +93,6 @@ class LambdaWithTypeVariableAsExpectedTypeAtom(
     private val initialExpectedTypeType: ConeKotlinType,
     val candidateOfOuterCall: Candidate,
 ) : PostponedResolvedAtom(), LambdaWithTypeVariableAsExpectedTypeMarker {
-    init {
-        candidateOfOuterCall.postponedAtoms += this
-    }
 
     override var parameterTypesFromDeclaration: List<ConeKotlinType?>? = null
         private set

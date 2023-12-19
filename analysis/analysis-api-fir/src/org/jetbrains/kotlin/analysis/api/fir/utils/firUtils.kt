@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2020 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Copyright 2010-2023 JetBrains s.r.o. and Kotlin Programming Language contributors.
  * Use of this source code is governed by the Apache 2.0 license that can be found in the license/LICENSE.txt file.
  */
 package org.jetbrains.kotlin.analysis.api.fir.utils
@@ -10,6 +10,7 @@ import org.jetbrains.kotlin.analysis.api.KtConstantValueForAnnotation
 import org.jetbrains.kotlin.analysis.api.KtInitializerValue
 import org.jetbrains.kotlin.analysis.api.KtNonConstantInitializerValue
 import org.jetbrains.kotlin.analysis.api.components.KtConstantEvaluationMode
+import org.jetbrains.kotlin.analysis.api.fir.KtSymbolByFirBuilder
 import org.jetbrains.kotlin.analysis.api.fir.evaluate.FirAnnotationValueConverter
 import org.jetbrains.kotlin.analysis.api.fir.evaluate.FirCompileTimeConstantEvaluator
 import org.jetbrains.kotlin.analysis.api.types.KtTypeNullability
@@ -54,6 +55,8 @@ internal fun KtTypeNullability.toConeNullability() = when (this) {
  * @return An [FqName] by which this symbol can be imported (if it is possible)
  */
 internal fun FirCallableSymbol<*>.computeImportableName(useSiteSession: FirSession): FqName? {
+    if (callableId.isLocal) return null
+
     // if classId == null, callable is topLevel
     val containingClassId = callableId.classId
         ?: return callableId.asSingleFqName()
@@ -70,16 +73,13 @@ internal fun FirCallableSymbol<*>.computeImportableName(useSiteSession: FirSessi
     return if (canBeImported) callableId.asSingleFqName() else null
 }
 
-internal fun FirExpression.asKtInitializerValue(
-    session: FirSession,
-    forAnnotationDefaultValue: Boolean
-): KtInitializerValue {
+internal fun FirExpression.asKtInitializerValue(builder: KtSymbolByFirBuilder, forAnnotationDefaultValue: Boolean): KtInitializerValue {
     val ktExpression = psi as? KtExpression
-    val evaluated =
-        FirCompileTimeConstantEvaluator.evaluateAsKtConstantValue(this, KtConstantEvaluationMode.CONSTANT_EXPRESSION_EVALUATION)
+    val evaluated = FirCompileTimeConstantEvaluator.evaluateAsKtConstantValue(this, KtConstantEvaluationMode.CONSTANT_EXPRESSION_EVALUATION)
+
     return when (evaluated) {
         null -> if (forAnnotationDefaultValue) {
-            val annotationConstantValue = FirAnnotationValueConverter.toConstantValue(this, session)
+            val annotationConstantValue = FirAnnotationValueConverter.toConstantValue(this, builder)
             if (annotationConstantValue != null) {
                 KtConstantValueForAnnotation(annotationConstantValue, ktExpression)
             } else {

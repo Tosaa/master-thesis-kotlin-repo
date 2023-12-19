@@ -7,6 +7,7 @@ package org.jetbrains.kotlin.ir.backend.js.utils.serialization
 
 import org.jetbrains.kotlin.ir.backend.js.transformers.irToJs.JsIrIcClassModel
 import org.jetbrains.kotlin.ir.backend.js.transformers.irToJs.JsIrProgramFragment
+import org.jetbrains.kotlin.ir.backend.js.transformers.irToJs.JsIrProgramFragments
 import org.jetbrains.kotlin.js.backend.ast.*
 import org.jetbrains.kotlin.js.backend.ast.metadata.*
 import org.jetbrains.kotlin.utils.addToStdlib.safeAs
@@ -15,8 +16,8 @@ import java.io.DataOutputStream
 import java.io.OutputStream
 import java.util.*
 
-fun List<JsIrProgramFragment>.serializeTo(output: OutputStream) {
-    JsIrAstSerializer().appendAll(this).saveTo(output)
+fun JsIrProgramFragments.serializeTo(output: OutputStream) {
+    JsIrAstSerializer().append(this).saveTo(output)
 }
 
 private class DataWriter {
@@ -89,9 +90,9 @@ private class JsIrAstSerializer {
     private val fileStack: Deque<String> = ArrayDeque()
     private val importedNames = mutableSetOf<JsName>()
 
-    fun appendAll(fragments: List<JsIrProgramFragment>): JsIrAstSerializer {
-        fragmentSerializer.writeInt(fragments.size)
-        fragments.forEach(::append)
+    fun append(fragments: JsIrProgramFragments): JsIrAstSerializer {
+        append(fragments.mainFragment)
+        fragmentSerializer.ifNotNull(fragments.exportFragment, ::append)
         return this
     }
 
@@ -132,6 +133,7 @@ private class JsIrAstSerializer {
 
         writeCompositeBlock(fragment.declarations)
         writeCompositeBlock(fragment.initializers)
+        writeCompositeBlock(fragment.eagerInitializers)
         writeCompositeBlock(fragment.exports)
         writeCompositeBlock(fragment.polyfills)
 
@@ -149,20 +151,17 @@ private class JsIrAstSerializer {
             writeIrIcModel(model)
         }
 
-        ifNotNull(fragment.testFunInvocation) {
-            writeStatement(it)
+        ifNotNull(fragment.mainFunctionTag) {
+            writeString(it)
         }
 
-        ifNotNull(fragment.mainFunction) {
-            writeStatement(it)
+        ifNotNull(fragment.testEnvironment) {
+            writeInt(internalizeString(it.testFunctionTag))
+            writeInt(internalizeString(it.suiteFunctionTag))
         }
 
         ifNotNull(fragment.dts) {
             writeString(it.raw)
-        }
-
-        ifNotNull(fragment.suiteFn) {
-            writeInt(internalizeName(it))
         }
 
         writeCollection(fragment.definitions) {
@@ -328,6 +327,9 @@ private class JsIrAstSerializer {
                 writeString(import.module)
 
                 when (val target = import.target) {
+                    is JsImport.Target.Effect -> {
+                        writeByte(ImportType.EFFECT)
+                    }
                     is JsImport.Target.All -> {
                         writeByte(ImportType.ALL)
                         writeInt(internalizeName(target.alias.name!!))

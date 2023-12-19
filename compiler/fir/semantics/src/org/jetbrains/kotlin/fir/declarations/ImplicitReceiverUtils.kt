@@ -22,10 +22,8 @@ import org.jetbrains.kotlin.fir.types.ConeErrorType
 import org.jetbrains.kotlin.fir.types.ConeKotlinType
 import org.jetbrains.kotlin.fir.types.ConeStubType
 import org.jetbrains.kotlin.fir.types.coneType
-import org.jetbrains.kotlin.fir.utils.exceptions.withConeTypeEntry
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.utils.addIfNotNull
-import org.jetbrains.kotlin.utils.exceptions.errorWithAttachment
 
 fun SessionHolder.collectImplicitReceivers(
     type: ConeKotlinType?,
@@ -87,7 +85,7 @@ fun SessionHolder.collectTowerDataElementsForClass(owner: FirClass, defaultType:
             ?.asTowerDataElementForStaticScope(staticScopeOwnerSymbol = superClass.symbol)
             ?.let(superClassesStaticsAndCompanionReceivers::add)
 
-        (superClass as? FirRegularClass)?.companionObjectSymbol?.let {
+        superClass.companionObjectSymbol?.let {
             val superCompanionReceiver = ImplicitDispatchReceiverValue(
                 it, session, scopeSession
             )
@@ -282,13 +280,14 @@ class FirTowerDataElement(
     private fun ImplicitReceiverValue<*>.getImplicitScope(
         processTypeScope: FirTypeScope.(ConeKotlinType) -> FirTypeScope,
     ): FirScope {
-        return when (val type = type.fullyExpandedType(useSiteSession)) {
-            is ConeErrorType,
-            is ConeStubType -> FirTypeScope.Empty
-            else -> implicitScope?.processTypeScope(type) ?: errorWithAttachment("Scope for type ${type::class.simpleName} is null") {
-                withConeTypeEntry("type", type)
-            }
-        }
+        // N.B.: implicitScope == null when the type sits in a user-defined 'kotlin' package,
+        // but there is no '-Xallow-kotlin-package' compiler argument provided
+        val implicitScope = implicitScope ?: return FirTypeScope.Empty
+
+        val type = type.fullyExpandedType(useSiteSession)
+        if (type is ConeErrorType || type is ConeStubType) return FirTypeScope.Empty
+
+        return implicitScope.processTypeScope(type)
     }
 }
 

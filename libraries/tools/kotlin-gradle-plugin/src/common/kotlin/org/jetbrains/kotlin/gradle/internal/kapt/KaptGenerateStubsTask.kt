@@ -35,10 +35,10 @@ import org.jetbrains.kotlin.gradle.report.BuildReportMode
 import org.jetbrains.kotlin.gradle.tasks.KaptGenerateStubs
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 import org.jetbrains.kotlin.gradle.tasks.toSingleCompilerPluginOptions
-import org.jetbrains.kotlin.gradle.utils.configureExperimentalTryK2
+import org.jetbrains.kotlin.gradle.utils.classpathAsList
+import org.jetbrains.kotlin.gradle.utils.configureExperimentalTryNext
+import org.jetbrains.kotlin.gradle.utils.destinationAsFile
 import org.jetbrains.kotlin.gradle.utils.toPathsArray
-import org.jetbrains.kotlin.incremental.classpathAsList
-import org.jetbrains.kotlin.incremental.destinationAsFile
 import javax.inject.Inject
 
 @CacheableTask
@@ -49,7 +49,7 @@ abstract class KaptGenerateStubsTask @Inject constructor(
 ) : KotlinCompile(
     objectFactory
         .newInstance(KotlinJvmCompilerOptionsDefault::class.java)
-        .configureExperimentalTryK2(project),
+        .configureExperimentalTryNext(project),
     workerExecutor,
     objectFactory
 ), KaptGenerateStubs {
@@ -152,4 +152,7 @@ abstract class KaptGenerateStubsTask @Inject constructor(
             args.freeArgs += (scriptSources.asFileTree.files + javaSources.files + sources.asFileTree.files).map { it.absolutePath }
         }
     }
+
+    override fun isIncrementalCompilationEnabled(): Boolean =
+        super.isIncrementalCompilationEnabled() && !useK2Kapt.get() && ("-Xuse-kapt4" !in compilerOptions.freeCompilerArgs.get())
 }

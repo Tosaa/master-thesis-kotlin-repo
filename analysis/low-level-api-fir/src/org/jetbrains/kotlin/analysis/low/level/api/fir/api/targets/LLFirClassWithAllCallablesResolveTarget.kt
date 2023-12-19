@@ -5,6 +5,7 @@
 
 package org.jetbrains.kotlin.analysis.low.level.api.fir.api.targets
 
+import org.jetbrains.kotlin.analysis.low.level.api.fir.util.forEachDeclaration
 import org.jetbrains.kotlin.fir.FirElementWithResolveState
 import org.jetbrains.kotlin.fir.declarations.FirCallableDeclaration
 import org.jetbrains.kotlin.fir.declarations.FirFile
@@ -13,23 +14,22 @@ import org.jetbrains.kotlin.fir.declarations.FirRegularClass
 /**
  * [LLFirResolveTarget] representing a class with all callable members (functions and properties).
  */
-class LLFirClassWithAllCallablesResolveTarget(
+internal class LLFirClassWithAllCallablesResolveTarget(
     firFile: FirFile,
-    classPath: List<FirRegularClass>,
+    containerClasses: List<FirRegularClass>,
     target: FirRegularClass,
-) : LLFirResolveTargetWithDedicatedElement<FirRegularClass>(firFile, classPath, target) {
-    override fun forEachTarget(action: (FirElementWithResolveState) -> Unit) {
-        action(target)
-        forEachCallable(action)
-    }
-
-    inline fun forEachCallable(action: (FirCallableDeclaration) -> Unit) {
-        for (member in target.declarations) {
-            if (member is FirCallableDeclaration) {
-                action(member)
+) : LLFirResolveTarget(firFile, containerClasses, target) {
+    override fun visitTargetElement(
+        element: FirElementWithResolveState,
+        visitor: LLFirResolveTargetVisitor,
+    ) {
+        visitor.performAction(element)
+        visitor.withRegularClass(element as FirRegularClass) {
+            element.forEachDeclaration {
+                if (it is FirCallableDeclaration) {
+                    visitor.performAction(it)
+                }
             }
         }
     }
-
-    override fun toStringForTarget(): String = target.name.asString()
 }

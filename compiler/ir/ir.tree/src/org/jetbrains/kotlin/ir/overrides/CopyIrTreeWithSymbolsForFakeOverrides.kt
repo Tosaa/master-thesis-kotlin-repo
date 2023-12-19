@@ -9,7 +9,6 @@ import org.jetbrains.kotlin.ir.declarations.IrClass
 import org.jetbrains.kotlin.ir.declarations.IrOverridableMember
 import org.jetbrains.kotlin.ir.declarations.IrTypeParametersContainer
 import org.jetbrains.kotlin.ir.expressions.IrConstructorCall
-import org.jetbrains.kotlin.ir.linkage.partial.IrUnimplementedOverridesStrategy
 import org.jetbrains.kotlin.ir.symbols.IrClassifierSymbol
 import org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol
 import org.jetbrains.kotlin.ir.types.*
@@ -17,6 +16,8 @@ import org.jetbrains.kotlin.ir.types.impl.buildSimpleType
 import org.jetbrains.kotlin.ir.types.impl.makeTypeProjection
 import org.jetbrains.kotlin.ir.util.*
 import org.jetbrains.kotlin.ir.visitors.acceptVoid
+import org.jetbrains.kotlin.name.StandardClassIds.Annotations.FlexibleNullability
+import org.jetbrains.kotlin.utils.addIfNotNull
 import org.jetbrains.kotlin.utils.memoryOptimizedMap
 
 // This is basically modelled after the inliner copier.
@@ -26,16 +27,20 @@ class CopyIrTreeWithSymbolsForFakeOverrides(
     private val parent: IrClass,
     unimplementedOverridesStrategy: IrUnimplementedOverridesStrategy
 ) {
+    private val symbolRemapper = FakeOverrideSymbolRemapperImpl(typeArguments, NullDescriptorsRemapper)
+
+    private val copier = FakeOverrideCopier(
+        symbolRemapper,
+        FakeOverrideTypeRemapper(symbolRemapper, typeArguments),
+        SymbolRenamer.DEFAULT,
+        parent,
+        unimplementedOverridesStrategy
+    )
+
     fun copy(): IrOverridableMember {
-        // Create new symbols.
         overridableMember.acceptVoid(symbolRemapper)
 
-        // Make symbol remapper aware of the callsite's type arguments.
-        // Copy IR.
-        val result = overridableMember.transform(
-            if (parent.isEffectivelyExternal()) copierMakingExternal else copier,
-            data = null
-        ) as IrOverridableMember
+        val result = overridableMember.transform(copier, null) as IrOverridableMember
 
         result.patchDeclarationParents(parent)
 
@@ -57,12 +62,27 @@ class CopyIrTreeWithSymbolsForFakeOverrides(
                     ?: argument
             }
 
+        private fun IrType.mergeTypeAnnotations(other: IrType): IrType {
+            // Flexible types are represented as a type annotation in IR, so we need to keep it when substituting type during override.
+            // Note that it's incorrect to merge _all_ type annotations though, because for a Collection subclass:
+            //
+            //     abstract class Z : Collection<Int>
+            //
+            // `Z.contains` should have the signature `(Int) -> Boolean`, NOT `(@UnsafeVariance Int) -> Boolean` which would occur if we
+            // copied all type annotations.
+            return addAnnotations(buildList {
+                for (fqName in TYPE_ANNOTATIONS_TO_MERGE) {
+                    addIfNotNull(other.annotations.findAnnotation(fqName))
+                }
+            })
+        }
+
         override fun remapType(type: IrType): IrType {
             if (type !is IrSimpleType) return type
 
             return when (val substitutedType = typeArguments[type.classifier]) {
                 is IrDynamicType -> substitutedType
-                is IrSimpleType -> substitutedType.mergeNullability(type)
+                is IrSimpleType -> substitutedType.mergeNullability(type).mergeTypeAnnotations(type)
                 else -> type.buildSimpleType {
                     kotlinType = null
                     classifier = symbolRemapper.getReferencedClassifier(type.classifier)
@@ -76,9 +96,7 @@ class CopyIrTreeWithSymbolsForFakeOverrides(
     private class FakeOverrideSymbolRemapperImpl(
         private val typeArguments: Map<IrTypeParameterSymbol, IrType>,
         descriptorsRemapper: DescriptorsRemapper
-    ) :
-        DeepCopySymbolRemapper(descriptorsRemapper) {
-
+    ) : DeepCopySymbolRemapper(descriptorsRemapper) {
         override fun getReferencedClassifier(symbol: IrClassifierSymbol): IrClassifierSymbol {
             val result = super.getReferencedClassifier(symbol)
             if (result !is IrTypeParameterSymbol)
@@ -87,27 +105,10 @@ class CopyIrTreeWithSymbolsForFakeOverrides(
         }
     }
 
-    private val symbolRemapper =
-        FakeOverrideSymbolRemapperImpl(
-            typeArguments,
-            NullDescriptorsRemapper
+    private companion object {
+        // TODO: RawTypeAnnotation, FlexibleMutability, EnhancedNullability?
+        val TYPE_ANNOTATIONS_TO_MERGE = listOf(
+            FlexibleNullability.asSingleFqName(),
         )
-
-    private val copier = FakeOverrideCopier(
-        symbolRemapper,
-        FakeOverrideTypeRemapper(symbolRemapper, typeArguments),
-        SymbolRenamer.DEFAULT,
-        makeExternal = false,
-        parent,
-        unimplementedOverridesStrategy
-    )
-
-    private val copierMakingExternal = FakeOverrideCopier(
-        symbolRemapper,
-        FakeOverrideTypeRemapper(symbolRemapper, typeArguments),
-        SymbolRenamer.DEFAULT,
-        makeExternal = true,
-        parent,
-        unimplementedOverridesStrategy
-    )
+    }
 }

@@ -7,13 +7,15 @@ package org.jetbrains.kotlin.fir.resolve.transformers.body.resolve
 
 import org.jetbrains.kotlin.config.LanguageFeature
 import org.jetbrains.kotlin.descriptors.ClassKind
-import org.jetbrains.kotlin.fir.*
+import org.jetbrains.kotlin.fir.FirSession
+import org.jetbrains.kotlin.fir.correspondingProperty
 import org.jetbrains.kotlin.fir.declarations.*
 import org.jetbrains.kotlin.fir.declarations.impl.FirDefaultPropertyAccessor
 import org.jetbrains.kotlin.fir.declarations.utils.isCompanion
 import org.jetbrains.kotlin.fir.declarations.utils.isInner
 import org.jetbrains.kotlin.fir.expressions.FirCallableReferenceAccess
 import org.jetbrains.kotlin.fir.expressions.FirWhenExpression
+import org.jetbrains.kotlin.fir.languageVersionSettings
 import org.jetbrains.kotlin.fir.resolve.*
 import org.jetbrains.kotlin.fir.resolve.calls.ImplicitExtensionReceiverValue
 import org.jetbrains.kotlin.fir.resolve.calls.ImplicitReceiverValue
@@ -38,6 +40,7 @@ import org.jetbrains.kotlin.fir.symbols.impl.FirFunctionSymbol
 import org.jetbrains.kotlin.fir.types.*
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.name.SpecialNames.UNDERSCORE_FOR_UNUSED_VAR
+import org.jetbrains.kotlin.resolve.calls.inference.model.ConstraintStorage
 import org.jetbrains.kotlin.util.PrivateForInline
 
 class BodyResolveContext(
@@ -86,6 +89,34 @@ class BodyResolveContext(
 
     @set:PrivateForInline
     var inferenceSession: FirInferenceSession = FirInferenceSession.DEFAULT
+
+    /**
+     * This is required to avoid changing current mode into [FirTowerDataMode.CLASS_HEADER_ANNOTATIONS].
+     * E.g., we can visit the same annotation in two ways – during a class visiting and outside of this class
+     */
+    @set:PrivateForInline
+    var insideClassHeader: Boolean = false
+
+    @OptIn(PrivateForInline::class)
+    inline fun insideClassHeader(action: () -> Unit) {
+        val old = insideClassHeader
+        insideClassHeader = true
+        try {
+            action()
+        } finally {
+            insideClassHeader = old
+        }
+    }
+
+    /**
+     * CS for an outer type system if it's relevant, for example, in the case of `val x by myGenericDelegateCall()`,
+     * relevant `getValue` call is expected to be resolved in the context of an outer CS built from `myGenericDelegateCall()` and
+     * probably using its type variables inside `getValue` candidates resolution.
+     *
+     * Note that it's not assumed to modify the storage, but only use it as a base system content for the candidate.
+     */
+    @set:PrivateForInline
+    var outerConstraintStorage: ConstraintStorage = ConstraintStorage.Empty
 
     val anonymousFunctionsAnalyzedInDependentContext: MutableSet<FirFunctionSymbol<*>> = mutableSetOf()
 
@@ -440,10 +471,11 @@ class BodyResolveContext(
         // Otherwise, reuse staticsAndCompanion.
         val forConstructorHeader = if (typeParameterScope != null) {
             towerDataContext
-                .addNonLocalScope(typeParameterScope)
                 .addNonLocalTowerDataElements(towerElementsForClass.superClassesStaticsAndCompanionReceivers)
                 .run { towerElementsForClass.companionReceiver?.let { addReceiver(null, it) } ?: this }
                 .addNonLocalScopesIfNotNull(towerElementsForClass.companionStaticScope, towerElementsForClass.staticScope)
+                // Note: scopes here are in reverse order, so type parameter scope is the most prioritized
+                .addNonLocalScope(typeParameterScope)
         } else {
             staticsAndCompanion
         }
@@ -492,7 +524,8 @@ class BodyResolveContext(
         }
     }
 
-    fun <T> withScopesForScript(
+    @OptIn(PrivateForInline::class)
+    fun <T> withScript(
         owner: FirScript,
         holder: SessionHolder,
         f: () -> T
@@ -510,7 +543,12 @@ class BodyResolveContext(
         val forMembersResolution =
             statics
                 .addLocalScope(parameterScope)
-                .addContextReceiverGroup(towerElementsForScript.implicitReceivers)
+                // TODO: temporary solution for avoiding problem described in KT-62712, flatten back after fix
+                .let { baseCtx ->
+                    towerElementsForScript.implicitReceivers.fold(baseCtx) { ctx, it ->
+                        ctx.addContextReceiverGroup(listOf(it))
+                    }
+                }
 
         val newContexts = FirRegularTowerDataContexts(
             regular = forMembersResolution,
@@ -524,11 +562,14 @@ class BodyResolveContext(
         )
 
         return withTowerDataContexts(newContexts) {
-            f()
+            withContainer(owner) {
+                f()
+            }
         }
     }
 
-    fun <T> withScopesForCodeFragment(codeFragment: FirCodeFragment, holder: SessionHolder, f: () -> T): T {
+    @OptIn(PrivateForInline::class)
+    fun <T> withCodeFragment(codeFragment: FirCodeFragment, holder: SessionHolder, f: () -> T): T {
         val codeFragmentContext = codeFragment.codeFragmentContext ?: error("Context is not set for a code fragment")
         val towerDataContext = codeFragmentContext.towerDataContext
 
@@ -553,7 +594,7 @@ class BodyResolveContext(
         )
 
         return withTowerDataContexts(newContext) {
-            f()
+            withContainer(codeFragment, f)
         }
     }
 
@@ -640,7 +681,7 @@ class BodyResolveContext(
                 }
                 val receiverTypeRef = function.receiverParameter?.typeRef
                 val type = receiverTypeRef?.coneType
-                val additionalLabelName = type?.labelName()
+                val additionalLabelName = type?.labelName(holder.session)
                 withLabelAndReceiverType(function.name, function, type, holder, additionalLabelName, f)
             } else {
                 f()
@@ -648,8 +689,11 @@ class BodyResolveContext(
         }
     }
 
-    private fun ConeKotlinType.labelName(): Name? {
-        return (this as? ConeLookupTagBasedType)?.lookupTag?.name
+    private fun ConeKotlinType.labelName(session: FirSession): Name? {
+        return when {
+            !session.languageVersionSettings.supportsFeature(LanguageFeature.ContextReceivers) -> null
+            else -> (this as? ConeLookupTagBasedType)?.lookupTag?.name
+        }
     }
 
     @OptIn(PrivateForInline::class)
@@ -726,16 +770,19 @@ class BodyResolveContext(
     }
 
     @OptIn(PrivateForInline::class)
-    inline fun <T> forEnumEntry(
+    inline fun <T> withEnumEntry(
+        enumEntry: FirEnumEntry,
         f: () -> T
-    ): T = withTowerDataMode(FirTowerDataMode.ENUM_ENTRY, f)
+    ): T = withTowerDataMode(FirTowerDataMode.ENUM_ENTRY) {
+        withContainer(enumEntry, f)
+    }
 
     @OptIn(PrivateForInline::class)
     inline fun <T> forAnnotation(
         f: () -> T
     ): T {
-        return when (containerIfAny) {
-            is FirRegularClass -> withTowerDataMode(FirTowerDataMode.CLASS_HEADER_ANNOTATIONS, f)
+        return when {
+            containerIfAny is FirRegularClass && !insideClassHeader -> withTowerDataMode(FirTowerDataMode.CLASS_HEADER_ANNOTATIONS, f)
             else -> f()
         }
     }
@@ -794,13 +841,14 @@ class BodyResolveContext(
             val receiverTypeRef = property.receiverParameter?.typeRef
             addLocalScope(FirLocalScope(holder.session))
             if (!forContracts && receiverTypeRef == null && property.returnTypeRef !is FirImplicitTypeRef &&
-                !property.isLocal && property.delegate == null
+                !property.isLocal && property.delegate == null &&
+                property.contextReceivers.isEmpty()
             ) {
                 storeBackingField(property, holder.session)
             }
             withContainer(accessor) {
                 val type = receiverTypeRef?.coneType
-                val additionalLabelName = type?.labelName()
+                val additionalLabelName = type?.labelName(holder.session)
                 withLabelAndReceiverType(property.name, property, type, holder, additionalLabelName, f)
             }
         }
@@ -830,6 +878,21 @@ class BodyResolveContext(
             inferenceSession.f()
         }
     }
+
+    @OptIn(PrivateForInline::class)
+    inline fun <T> withOuterConstraintStorage(
+        storage: ConstraintStorage,
+        f: () -> T
+    ): T {
+        val oldStorage = this.outerConstraintStorage
+        this.outerConstraintStorage = storage
+        return try {
+            f()
+        } finally {
+            this.outerConstraintStorage = oldStorage
+        }
+    }
+
 
     @OptIn(PrivateForInline::class)
     inline fun <T> withConstructor(constructor: FirConstructor, f: () -> T): T =

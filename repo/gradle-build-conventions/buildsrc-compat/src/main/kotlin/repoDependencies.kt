@@ -50,45 +50,15 @@ fun Project.commonDependencyVersion(group: String, artifact: String): String =
         else -> throw GradleException("Neither versions.$artifact nor versions.$group is defined in the root project's extra")
     } as String
 
-fun Project.preloadedDeps(
-    vararg artifactBaseNames: String,
-    baseDir: File = File(rootDir, "dependencies"),
-    subDir: String? = null,
-    optional: Boolean = false
-): ConfigurableFileCollection {
-    val dir = if (subDir != null) File(baseDir, subDir) else baseDir
-    if (!dir.exists() || !dir.isDirectory) {
-        if (optional) return files()
-        throw GradleException("Invalid base directory $dir")
-    }
-    val matchingFiles = dir.listFiles { file -> artifactBaseNames.any { file.matchMaybeVersionedArtifact(it) } }
-    if (matchingFiles == null || matchingFiles.size < artifactBaseNames.size) {
-        throw GradleException(
-            "Not all matching artifacts '${artifactBaseNames.joinToString()}' found in the '$dir' " +
-                    "(missing: ${
-                        artifactBaseNames.filterNot { request ->
-                            matchingFiles?.any {
-                                it.matchMaybeVersionedArtifact(
-                                    request
-                                )
-                            } ?: false
-                        }.joinToString()
-                    };" +
-                    " found: ${matchingFiles?.joinToString { it.name }})"
-        )
-    }
-    return files(*matchingFiles.map { it.canonicalPath }.toTypedArray())
-}
-
 fun kotlinDep(artifactBaseName: String, version: String, classifier: String? = null): String =
     listOfNotNull("org.jetbrains.kotlin:kotlin-$artifactBaseName:$version", classifier).joinToString(":")
 
 @JvmOverloads
 fun Project.kotlinStdlib(suffix: String? = null, classifier: String? = null): Any {
     return if (kotlinBuildProperties.useBootstrapStdlib)
-        kotlinDep(listOfNotNull("stdlib", suffix.takeUnless { kotlinBuildProperties.kotlinStdlibMpp && it == "mpp" }).joinToString("-"), bootstrapKotlinVersion, classifier)
+        kotlinDep(listOfNotNull("stdlib", suffix).joinToString("-"), bootstrapKotlinVersion, classifier)
     else
-        dependencies.project(listOfNotNull(":kotlin-stdlib", suffix.takeUnless { kotlinBuildProperties.kotlinStdlibMpp && it == "mpp" }).joinToString("-"), classifier)
+        dependencies.project(listOfNotNull(":kotlin-stdlib", suffix).joinToString("-"), classifier)
 }
 
 fun Project.kotlinBuiltins(): Any = kotlinBuiltins(forJvm = false)
@@ -187,54 +157,6 @@ fun DependencyHandler.jpsLikeModuleDependency(moduleName: String, scope: JpsDepS
             }
         }
     }
-}
-
-
-fun Project.testApiJUnit5(
-    vintageEngine: Boolean = false,
-    runner: Boolean = false,
-    suiteApi: Boolean = false,
-    jupiterParams: Boolean = false
-) {
-    with(dependencies) {
-        val platformVersion = commonDependencyVersion("org.junit", "junit-bom")
-        testApi(platform("org.junit:junit-bom:$platformVersion"))
-        testApi("org.junit.jupiter:junit-jupiter")
-        if (vintageEngine) {
-            testApi("org.junit.vintage:junit-vintage-engine:$platformVersion")
-        }
-
-        if (jupiterParams) {
-            testApi("org.junit.jupiter:junit-jupiter-params:$platformVersion")
-        }
-
-        val componentsVersion = commonDependencyVersion("org.junit.platform", "")
-
-        val components = mutableListOf(
-            "org.junit.platform:junit-platform-commons",
-            "org.junit.platform:junit-platform-launcher"
-        )
-        if (runner) {
-            components += "org.junit.platform:junit-platform-runner"
-        }
-        if (suiteApi) {
-            components += "org.junit.platform:junit-platform-suite-api"
-        }
-
-        for (component in components) {
-            testApi("$component:$componentsVersion")
-        }
-
-        // This dependency is needed only for FileComparisonFailure
-        add("testImplementation", intellijJavaRt())
-
-        // This is needed only for using FileComparisonFailure, which relies on JUnit 3 classes
-        add("testRuntimeOnly", commonDependency("junit:junit"))
-    }
-}
-
-private fun DependencyHandler.testApi(dependencyNotation: Any) {
-    add("testApi", dependencyNotation)
 }
 
 val Project.protobufRelocatedVersion: String get() = findProperty("versions.protobuf-relocated") as String

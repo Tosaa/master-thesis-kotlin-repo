@@ -7,6 +7,7 @@ package org.jetbrains.kotlin.fir.analysis.js.checkers
 
 import org.jetbrains.kotlin.fir.analysis.checkers.declaration.*
 import org.jetbrains.kotlin.fir.analysis.js.checkers.declaration.*
+import org.jetbrains.kotlin.fir.analysis.web.common.checkers.declaration.FirJsExportAnnotationChecker
 
 object JsDeclarationCheckers : DeclarationCheckers() {
     override val functionCheckers: Set<FirFunctionChecker>
@@ -32,7 +33,8 @@ object JsDeclarationCheckers : DeclarationCheckers() {
             FirJsMultipleInheritanceChecker,
             FirJsDynamicDeclarationChecker,
             FirJsInheritanceClassChecker,
-            FirJsExternalInheritorOnlyChecker
+            FirJsExternalInheritorOnlyChecker,
+            FirJsNameClashClassMembersChecker
         )
 
     override val simpleFunctionCheckers: Set<FirSimpleFunctionChecker>
@@ -45,5 +47,11 @@ object JsDeclarationCheckers : DeclarationCheckers() {
     override val propertyCheckers: Set<FirPropertyChecker>
         get() = setOf(
             FirJsPropertyDelegationByDynamicChecker
+        )
+
+    override val fileCheckers: Set<FirFileChecker>
+        get() = setOf(
+            FirJsPackageDirectiveChecker,
+            FirJsNameClashFileTopLevelDeclarationsChecker
         )
 }

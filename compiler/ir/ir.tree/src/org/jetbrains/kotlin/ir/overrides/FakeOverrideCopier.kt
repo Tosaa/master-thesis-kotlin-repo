@@ -6,14 +6,12 @@
 package org.jetbrains.kotlin.ir.overrides
 
 import org.jetbrains.kotlin.ir.declarations.*
-import org.jetbrains.kotlin.ir.linkage.partial.IrUnimplementedOverridesStrategy
 import org.jetbrains.kotlin.ir.util.*
 
 class FakeOverrideCopier(
     private val symbolRemapper: SymbolRemapper,
     private val typeRemapper: TypeRemapper,
     private val symbolRenamer: SymbolRenamer,
-    private val makeExternal: Boolean,
     private val parent: IrClass,
     private val unimplementedOverridesStrategy: IrUnimplementedOverridesStrategy
 ) : DeepCopyIrTreeWithSymbols(symbolRemapper, typeRemapper, symbolRenamer) {
@@ -35,8 +33,9 @@ class FakeOverrideCopier(
             isSuspend = declaration.isSuspend,
             isOperator = declaration.isOperator,
             isInfix = declaration.isInfix,
-            isExternal = makeExternal,
+            isExternal = declaration.isExternal,
         ).apply {
+            contextReceiverParametersCount = declaration.contextReceiverParametersCount
             transformAnnotations(declaration)
             copyTypeParametersFrom(declaration)
             typeRemapper.withinScope(this) {
@@ -82,7 +81,7 @@ class FakeOverrideCopier(
             isLateinit = declaration.isLateinit,
             isDelegated = declaration.isDelegated,
             isExpect = declaration.isExpect,
-            isExternal = makeExternal
+            isExternal = declaration.isExternal,
         ).apply {
             transformAnnotations(declaration)
             this.getter = declaration.getter?.transform()
@@ -94,7 +93,7 @@ class FakeOverrideCopier(
         declaration.factory.createValueParameter(
             startOffset = declaration.startOffset,
             endOffset = declaration.endOffset,
-            origin = mapDeclarationOrigin(declaration.origin),
+            origin = IrDeclarationOrigin.DEFINED,
             name = symbolRenamer.getValueParameterName(declaration.symbol),
             type = declaration.type.remapType(),
             isAssignable = declaration.isAssignable,

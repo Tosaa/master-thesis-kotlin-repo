@@ -9,12 +9,10 @@ import org.gradle.util.GradleVersion
 import org.jetbrains.kotlin.gradle.testbase.*
 import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.DisplayName
-import org.junit.jupiter.api.condition.OS
 import kotlin.io.path.appendText
 import kotlin.io.path.name
 import kotlin.io.path.walk
 
-@OsCondition(enabledOnCI = [OS.LINUX])
 @DisplayName("Kapt 4 base checks")
 @Disabled("Causes OOM on Windows")
 class Kapt4IT : Kapt3IT() {
@@ -23,12 +21,6 @@ class Kapt4IT : Kapt3IT() {
     override fun TestProject.customizeProject() {
         forceKapt4()
     }
-
-    @Disabled("Currently failing. See KT-60950")
-    override fun kaptGenerateStubsShouldNotCaptureSourcesStateInConfigurationCache(gradleVersion: GradleVersion) {}
-
-    @Disabled("Currently failing. See KT-60951")
-    override fun testChangeClasspathICRebuild(gradleVersion: GradleVersion) {}
 
     @Disabled("Doesn't make sense in Kapt 4")
     override fun useGeneratedKotlinSourceK2(gradleVersion: GradleVersion) {}
@@ -58,7 +50,6 @@ class Kapt4IT : Kapt3IT() {
     }
 }
 
-@OsCondition(enabledOnCI = [OS.LINUX])
 @DisplayName("Kapt 4 with classloaders cache")
 class Kapt4ClassLoadersCacheIT : Kapt3ClassLoadersCacheIT() {
     override val defaultBuildOptions = super.defaultBuildOptions.copyEnsuringK2()
@@ -66,6 +57,9 @@ class Kapt4ClassLoadersCacheIT : Kapt3ClassLoadersCacheIT() {
     override fun TestProject.customizeProject() {
         forceKapt4()
     }
+
+    @Disabled("Enable when KT-61845 is fixed")
+    override fun testKt18799(gradleVersion: GradleVersion) {}
 
     @Disabled("Doesn't make sense in Kapt 4")
     override fun useGeneratedKotlinSourceK2(gradleVersion: GradleVersion) {}
@@ -82,11 +76,11 @@ class Kapt4ClassLoadersCacheIT : Kapt3ClassLoadersCacheIT() {
     @Disabled("Doesn't work in 2.0. Neither with Kapt 3 nor with Kapt 4")
     override fun testMPPKaptPresence(gradleVersion: GradleVersion) {}
 
-    @Disabled("Currently failing. See KT-60950")
-    override fun kaptGenerateStubsShouldNotCaptureSourcesStateInConfigurationCache(gradleVersion: GradleVersion) {}
+    @Disabled("Incremental compilation doesn't work in 2.0")
+    override fun testSimpleWithIC(gradleVersion: GradleVersion) {}
 
-    @Disabled("Currently failing. See KT-60951")
-    override fun testChangeClasspathICRebuild(gradleVersion: GradleVersion) {}
+    @Disabled("Incremental compilation doesn't work in 2.0")
+    override fun testSimpleWithIC_withClasspathSnapshot(gradleVersion: GradleVersion) {}
 }
 
 fun TestProject.forceKapt4() {

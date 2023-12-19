@@ -9,6 +9,7 @@ import org.jetbrains.kotlin.mainKts.MainKtsScript
 import org.jetbrains.kotlin.mainKts.SCRIPT_FILE_LOCATION_DEFAULT_VARIABLE_NAME
 import org.jetbrains.kotlin.mainKts.impl.Directories
 import org.jetbrains.kotlin.scripting.compiler.plugin.assertTrue
+import org.jetbrains.kotlin.scripting.compiler.plugin.expectTestToFailOnK2
 import org.junit.Assert
 import org.junit.Assert.assertEquals
 import org.junit.Ignore
@@ -72,7 +73,7 @@ class MainKtsTest {
         val resErr = evalFile(File("$TEST_DATA_ROOT/resolve-error-hamcrest-via-junit.main.kts"))
         Assert.assertTrue(
             resErr is ResultWithDiagnostics.Failure &&
-                    resErr.reports.any { it.message == "Unresolved reference: hamcrest" }
+                    resErr.reports.any { it.message.contains("Unresolved reference") && it.message.contains("hamcrest") }
         )
     }
 
@@ -109,7 +110,7 @@ class MainKtsTest {
     @Test
     fun testUnresolvedJunit() {
         val res = evalFile(File("$TEST_DATA_ROOT/hello-unresolved-junit.main.kts"))
-        assertFailed("Unresolved reference: junit", res)
+        assertFailed("Unresolved reference 'junit'.", res)
     }
 
     @Test
@@ -156,7 +157,8 @@ class MainKtsTest {
     fun testCyclicImportError() {
         val res = evalFile(File("$TEST_DATA_ROOT/import-cycle-1.main.kts"))
         // TODO: the second error is due to the late cycle detection, see TODO in makeCompiledScript$makeOtherScripts
-        assertFailedAny("Unable to handle recursive script dependencies", "is already bound", res = res)
+        // TODO: third error is due to the early IR backend error, consider processing it in makeCompiledScript$makeOtherScripts
+        assertFailedAny("Unable to handle recursive script dependencies", "is already bound", "Duplicate JVM class name", res = res)
     }
 
     @Test
@@ -244,7 +246,7 @@ class MainKtsTest {
     }
 
     @Test
-    fun testHelloSerialization() {
+    fun testHelloSerialization() = expectTestToFailOnK2 {
         // the embeddable plugin is needed for this test, because embeddable compiler is used.
         val serializationPluginClasspath = System.getProperty("kotlin.script.test.kotlinx.serialization.plugin.classpath")!!
         val out = captureOut {
@@ -252,7 +254,7 @@ class MainKtsTest {
                 File("$TEST_DATA_ROOT/hello-kotlinx-serialization.main.kts"),
                 compilation = {
                     compilerOptions(
-                        "-Xplugin", serializationPluginClasspath
+                        "-Xplugin=$serializationPluginClasspath"
                     )
                 }
             )
@@ -311,8 +313,13 @@ class MainKtsTest {
             "test failed - expecting a failure$expected but received " +
                     (if (res is ResultWithDiagnostics.Failure) "failure" else "success") +
                     ":\n  ${reports.joinToString("\n  ")}",
-            res is ResultWithDiagnostics.Failure && reports.any { report -> expectedErrors.any { report.contains(it) } }
+            res is ResultWithDiagnostics.Failure && reports.any { report -> expectedErrors.any { report.containsIgnoringPunctuation(it) } }
         )
+    }
+
+    private val regexNonWord = "\\W".toRegex()
+    private fun String.containsIgnoringPunctuation(it: String): Boolean {
+        return this.replace(regexNonWord, "").contains(it.replace(regexNonWord, ""))
     }
 
     private fun evalSuccessWithOut(scriptFile: File, cacheDir: File? = null): List<String> =

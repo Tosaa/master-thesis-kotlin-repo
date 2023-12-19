@@ -25,17 +25,19 @@ import org.jetbrains.kotlin.fir.declarations.utils.isLocal
 import org.jetbrains.kotlin.fir.diagnostics.ConeSimpleDiagnostic
 import org.jetbrains.kotlin.fir.diagnostics.DiagnosticKind
 import org.jetbrains.kotlin.fir.expressions.*
+import org.jetbrains.kotlin.fir.expressions.impl.FirSingleExpressionBlock
 import org.jetbrains.kotlin.fir.references.FirResolvedErrorReference
 import org.jetbrains.kotlin.fir.references.FirResolvedNamedReference
 import org.jetbrains.kotlin.fir.resolve.*
-import org.jetbrains.kotlin.fir.resolve.calls.FirNamedReferenceWithCandidate
+import org.jetbrains.kotlin.fir.resolve.calls.Candidate
 import org.jetbrains.kotlin.fir.resolve.calls.candidate
 import org.jetbrains.kotlin.fir.resolve.dfa.FirControlFlowGraphReferenceImpl
 import org.jetbrains.kotlin.fir.resolve.diagnostics.ConeLocalVariableNoTypeOrInitializer
-import org.jetbrains.kotlin.fir.resolve.inference.FirStubTypeTransformer
+import org.jetbrains.kotlin.fir.resolve.inference.FirDelegatedPropertyInferenceSession
 import org.jetbrains.kotlin.fir.resolve.inference.ResolvedLambdaAtom
 import org.jetbrains.kotlin.fir.resolve.inference.extractLambdaInfoFromFunctionType
-import org.jetbrains.kotlin.fir.resolve.substitution.createTypeSubstitutorByTypeConstructor
+import org.jetbrains.kotlin.fir.resolve.substitution.ChainedSubstitutor
+import org.jetbrains.kotlin.fir.resolve.substitution.ConeSubstitutor
 import org.jetbrains.kotlin.fir.resolve.transformers.FirCallCompletionResultsWriterTransformer
 import org.jetbrains.kotlin.fir.resolve.transformers.FirStatusResolver
 import org.jetbrains.kotlin.fir.resolve.transformers.contracts.runContractResolveForFunction
@@ -45,8 +47,15 @@ import org.jetbrains.kotlin.fir.types.*
 import org.jetbrains.kotlin.fir.types.builder.buildErrorTypeRef
 import org.jetbrains.kotlin.fir.types.builder.buildResolvedTypeRef
 import org.jetbrains.kotlin.fir.types.impl.FirImplicitTypeRefImplWithoutSource
+import org.jetbrains.kotlin.fir.utils.exceptions.withFirEntry
 import org.jetbrains.kotlin.fir.visitors.FirTransformer
 import org.jetbrains.kotlin.fir.visitors.transformSingle
+import org.jetbrains.kotlin.resolve.calls.inference.buildCurrentSubstitutor
+import org.jetbrains.kotlin.resolve.calls.inference.components.TypeVariableDirectionCalculator
+import org.jetbrains.kotlin.resolve.calls.inference.model.ProvideDelegateFixationPosition
+import org.jetbrains.kotlin.types.model.TypeConstructorMarker
+import org.jetbrains.kotlin.util.PrivateForInline
+import org.jetbrains.kotlin.utils.exceptions.requireWithAttachment
 
 open class FirDeclarationsResolveTransformer(
     transformer: FirAbstractBodyResolveTransformerDispatcher
@@ -98,9 +107,23 @@ open class FirDeclarationsResolveTransformer(
 
     override fun transformEnumEntry(enumEntry: FirEnumEntry, data: ResolutionMode): FirEnumEntry {
         if (implicitTypeOnly || enumEntry.initializerResolved) return enumEntry
-        return context.forEnumEntry {
+        return context.withEnumEntry(enumEntry) {
             (enumEntry.transformChildren(this, data) as FirEnumEntry)
         }
+    }
+
+    override fun transformDanglingModifierList(
+        danglingModifierList: FirDanglingModifierList,
+        data: ResolutionMode
+    ): FirDanglingModifierList {
+        if (implicitTypeOnly) return danglingModifierList
+
+        @OptIn(PrivateForInline::class)
+        context.withContainer(danglingModifierList) {
+            danglingModifierList.transformAnnotations(transformer, data)
+        }
+
+        return danglingModifierList
     }
 
     override fun transformProperty(property: FirProperty, data: ResolutionMode): FirProperty = whileAnalysing(session, property) {
@@ -119,53 +142,73 @@ open class FirDeclarationsResolveTransformer(
         }
 
         val returnTypeRefBeforeResolve = property.returnTypeRef
-        val bodyResolveState = property.bodyResolveState
-        if (bodyResolveState == FirPropertyBodyResolveState.EVERYTHING_RESOLVED) return property
-
-        val canHaveDeepImplicitTypeRefs = property.backingField != null
-        if (returnTypeRefBeforeResolve !is FirImplicitTypeRef && implicitTypeOnly && !canHaveDeepImplicitTypeRefs) {
+        val cannotHaveDeepImplicitTypeRefs = property.backingField?.returnTypeRef !is FirImplicitTypeRef
+        if (implicitTypeOnly && returnTypeRefBeforeResolve !is FirImplicitTypeRef && cannotHaveDeepImplicitTypeRefs) {
             return property
         }
 
-        property.transformReceiverParameter(transformer, ResolutionMode.ContextIndependent)
-        doTransformTypeParameters(property)
         val shouldResolveEverything = !implicitTypeOnly
+        val bodyResolveState = property.bodyResolveState
         return withFullBodyResolve {
             val initializerIsAlreadyResolved = bodyResolveState >= FirPropertyBodyResolveState.INITIALIZER_RESOLVED
             if (!initializerIsAlreadyResolved) {
                 dataFlowAnalyzer.enterProperty(property)
             }
+
             var backingFieldIsAlreadyResolved = false
             context.withProperty(property) {
+                // this is required to resolve annotations on properties of local classes
+                if (shouldResolveEverything) {
+                    property.transformReceiverParameter(transformer, ResolutionMode.ContextIndependent)
+                    doTransformTypeParameters(property)
+                }
+
                 context.forPropertyInitializer {
                     if (!initializerIsAlreadyResolved) {
                         val resolutionMode = withExpectedType(returnTypeRefBeforeResolve)
                         property.transformReturnTypeRef(transformer, resolutionMode)
                             .transformInitializer(transformer, resolutionMode)
-                            .transformTypeParameters(transformer, resolutionMode)
                             .replaceBodyResolveState(FirPropertyBodyResolveState.INITIALIZER_RESOLVED)
                     }
-                    // Return type needs to be resolved before resolving annotations (transformOtherChildren) because of a possible cycle
-                    // @Ann(myConst) const val myConst = ""
+
                     if (property.initializer != null) {
                         storeVariableReturnType(property)
                     }
-                    if (!initializerIsAlreadyResolved) {
-                        property.transformOtherChildren(transformer, data)
-                    }
+
                     val canResolveBackingFieldEarly = property.hasExplicitBackingField || property.returnTypeRef is FirResolvedTypeRef
                     if (!initializerIsAlreadyResolved && canResolveBackingFieldEarly) {
-                        property.transformBackingField(transformer, withExpectedType(property.returnTypeRef))
+                        property.backingField?.let {
+                            transformBackingField(it, withExpectedType(property.returnTypeRef), shouldResolveEverything)
+                        }
+
                         backingFieldIsAlreadyResolved = true
                     }
                 }
+
+                // this is required to resolve annotations on properties of local classes
+                if (shouldResolveEverything) {
+                    property.transformAnnotations(transformer, data)
+                    if (initializerIsAlreadyResolved) {
+                        property.backingField?.transformAnnotations(transformer, data)
+                    }
+                }
+
                 val delegate = property.delegate
                 if (delegate != null) {
-                    transformPropertyAccessorsWithDelegate(property, delegate)
-                    if (property.delegateFieldSymbol != null) {
-                        replacePropertyReferenceTypeInDelegateAccessors(property)
+                    if (bodyResolveState == FirPropertyBodyResolveState.ALL_BODIES_RESOLVED) {
+                        requireWithAttachment(shouldResolveEverything, { "Invariant is broken" }) {
+                            withFirEntry("property", property)
+                        }
+
+                        property.transformAccessors(SetterResolutionMode.FULLY_RESOLVE, shouldResolveEverything = true)
+                    } else {
+                        transformPropertyAccessorsWithDelegate(property, delegate, shouldResolveEverything)
+                        if (property.delegateFieldSymbol != null) {
+                            replacePropertyReferenceTypeInDelegateAccessors(property)
+                        }
+
+                        property.replaceBodyResolveState(FirPropertyBodyResolveState.ALL_BODIES_RESOLVED)
                     }
-                    property.replaceBodyResolveState(FirPropertyBodyResolveState.EVERYTHING_RESOLVED)
                 } else {
                     val hasDefaultAccessors =
                         (property.getter == null || property.getter is FirDefaultPropertyAccessor) &&
@@ -176,10 +219,11 @@ open class FirDeclarationsResolveTransformer(
                     val mayResolveGetter = mayResolveSetter || !propertyTypeIsKnown
                     if (mayResolveGetter) {
                         property.transformAccessors(
-                            if (mayResolveSetter) SetterResolutionMode.FULLY_RESOLVE else SetterResolutionMode.ONLY_IMPLICIT_PARAMETER_TYPE
+                            if (mayResolveSetter) SetterResolutionMode.FULLY_RESOLVE else SetterResolutionMode.ONLY_IMPLICIT_PARAMETER_TYPE,
+                            shouldResolveEverything,
                         )
                         property.replaceBodyResolveState(
-                            if (mayResolveSetter) FirPropertyBodyResolveState.EVERYTHING_RESOLVED
+                            if (mayResolveSetter) FirPropertyBodyResolveState.ALL_BODIES_RESOLVED
                             else FirPropertyBodyResolveState.INITIALIZER_AND_GETTER_RESOLVED
                         )
                     } else {
@@ -190,15 +234,20 @@ open class FirDeclarationsResolveTransformer(
                         property.setter?.transformReturnTypeRef(transformer, withExpectedType(session.builtinTypes.unitType.type))
                     }
                 }
-            }
-            if (!initializerIsAlreadyResolved) {
-                if (!backingFieldIsAlreadyResolved) {
-                    property.transformBackingField(transformer, withExpectedType(property.returnTypeRef))
+
+                if (!initializerIsAlreadyResolved && !backingFieldIsAlreadyResolved) {
+                    property.backingField?.let {
+                        transformBackingField(it, withExpectedType(property.returnTypeRef), shouldResolveEverything)
+                    }
                 }
+            }
+
+            if (!initializerIsAlreadyResolved) {
                 dataFlowAnalyzer.exitProperty(property)?.let {
                     property.replaceControlFlowGraphReference(FirControlFlowGraphReferenceImpl(it))
                 }
             }
+
             property
         }
     }
@@ -228,29 +277,29 @@ open class FirDeclarationsResolveTransformer(
         //     get() = delegate.getValue(thisRef, kProperty: KProperty0/1/2<..., SomeType>)
         //     set() = delegate.getValue(thisRef, kProperty: KProperty0/1/2<..., SomeType>, value)
         val propertyReferenceAccess = resolvedArgumentMapping?.keys?.toList()?.getOrNull(1) as? FirCallableReferenceAccess ?: return
-        val typeRef = propertyReferenceAccess.typeRef
-        if (typeRef is FirResolvedTypeRef && property.returnTypeRef is FirResolvedTypeRef) {
-            val typeArguments = (typeRef.type as ConeClassLikeType).typeArguments
+        val type = propertyReferenceAccess.resolvedType
+        if (property.returnTypeRef is FirResolvedTypeRef) {
+            val typeArguments = (type.type as ConeClassLikeType).typeArguments
             val extensionType = property.receiverParameter?.typeRef?.coneType
             val dispatchType = context.containingClass?.let { containingClass ->
                 containingClass.symbol.constructStarProjectedType(containingClass.typeParameters.size)
             }
-            propertyReferenceAccess.replaceTypeRef(
-                buildResolvedTypeRef {
-                    source = typeRef.source
-                    annotations.addAll(typeRef.annotations)
-                    type = (typeRef.type as ConeClassLikeType).lookupTag.constructClassType(
-                        typeArguments.mapIndexed { index, argument ->
-                            when (index) {
-                                typeArguments.lastIndex -> property.returnTypeRef.coneType
-                                0 -> extensionType ?: dispatchType
-                                else -> dispatchType
-                            } ?: argument
-                        }.toTypedArray(),
-                        isNullable = false
+            propertyReferenceAccess.replaceConeTypeOrNull(
+                (type.type as ConeClassLikeType).lookupTag.constructClassType(
+                    typeArguments.mapIndexed { index, argument ->
+                        when (index) {
+                            typeArguments.lastIndex -> property.returnTypeRef.coneType
+                            0 -> extensionType ?: dispatchType
+                            else -> dispatchType
+                        } ?: argument
+                    }.toTypedArray(),
+                    isNullable = false
+                ).also {
+                    session.lookupTracker?.recordTypeResolveAsLookup(
+                        it,
+                        propertyReferenceAccess.source ?: source,
+                        components.file.source
                     )
-                }.also {
-                    session.lookupTracker?.recordTypeResolveAsLookup(it, propertyReferenceAccess.source ?: source, components.file.source)
                 }
             )
         }
@@ -260,11 +309,17 @@ open class FirDeclarationsResolveTransformer(
         (property.getter?.body?.statements?.singleOrNull() as? FirReturnExpression)?.let { returnExpression ->
             (returnExpression.result as? FirFunctionCall)?.replacePropertyReferenceTypeInDelegateAccessors(property)
         }
-        (property.setter?.body?.statements?.singleOrNull() as? FirFunctionCall)?.replacePropertyReferenceTypeInDelegateAccessors(property)
+        (property.setter?.body?.statements?.singleOrNull() as? FirReturnExpression)?.let { returnExpression ->
+            (returnExpression.result as? FirFunctionCall)?.replacePropertyReferenceTypeInDelegateAccessors(property)
+        }
         (property.delegate as? FirFunctionCall)?.replacePropertyReferenceTypeInDelegateAccessors(property)
     }
 
-    private fun transformPropertyAccessorsWithDelegate(property: FirProperty, delegate: FirExpression) {
+    private fun transformPropertyAccessorsWithDelegate(
+        property: FirProperty,
+        delegate: FirExpression,
+        shouldResolveEverything: Boolean,
+    ) {
         val isImplicitTypedProperty = property.returnTypeRef is FirImplicitTypeRef
 
         context.forPropertyDelegateAccessors(property, resolutionContext, callCompleter) {
@@ -283,13 +338,20 @@ open class FirDeclarationsResolveTransformer(
             // It's necessary because we need to supply the property type as the 3rd argument for `setValue` and there might be uninferred
             // variables from `getValue`.
             // The same logic was used at K1 (see org.jetbrains.kotlin.resolve.DelegatedPropertyResolver.inferDelegateTypeFromGetSetValueMethods)
-            property.transformAccessors(if (isImplicitTypedProperty) SetterResolutionMode.SKIP else SetterResolutionMode.FULLY_RESOLVE)
+            property.transformAccessors(
+                if (isImplicitTypedProperty) SetterResolutionMode.SKIP else SetterResolutionMode.FULLY_RESOLVE,
+                shouldResolveEverything,
+            )
+
             val completedCalls = completeCandidates()
 
             val finalSubstitutor = createFinalSubstitutor()
 
-            val stubTypeCompletionResultsWriter = FirStubTypeTransformer(finalSubstitutor)
-            property.transformSingle(stubTypeCompletionResultsWriter, null)
+            finalSubstitutor.substituteOrNull(property.returnTypeRef.coneType)?.let { substitutedType ->
+                property.replaceReturnTypeRef(property.returnTypeRef.withReplacedConeType(substitutedType))
+            }
+            property.getter?.transformTypeWithPropertyType(property.returnTypeRef, forceUpdateForNonImplicitTypes = true)
+            property.setter?.transformTypeWithPropertyType(property.returnTypeRef, forceUpdateForNonImplicitTypes = true)
             property.replaceReturnTypeRef(
                 property.returnTypeRef.approximateDeclarationType(
                     session,
@@ -309,13 +371,13 @@ open class FirDeclarationsResolveTransformer(
 
         // `isImplicitTypedProperty` means we haven't run setter resolution yet (see its second usage)
         if (isImplicitTypedProperty) {
-            property.resolveSetter(mayResolveSetterBody = true)
+            property.resolveSetter(mayResolveSetterBody = true, shouldResolveEverything = shouldResolveEverything)
         }
 
         dataFlowAnalyzer.exitDelegateExpression(delegate)
     }
 
-    override fun transformPropertyAccessor(propertyAccessor: FirPropertyAccessor, data: ResolutionMode): FirStatement {
+    override fun transformPropertyAccessor(propertyAccessor: FirPropertyAccessor, data: ResolutionMode): FirPropertyAccessor {
         return propertyAccessor.also {
             transformProperty(it.propertySymbol.fir, data)
         }
@@ -326,28 +388,9 @@ open class FirDeclarationsResolveTransformer(
         data: ResolutionMode,
     ): FirStatement {
         // First, resolve delegate expression in dependent context, and add potentially partially resolved call to inference session
-        // (that is why we use ContextDependent.Delegate instead of plain ContextDependent)
+        // (that is why we use ResolutionMode.ContextDependent.Delegate instead of plain ContextDependent)
         val delegateExpression = wrappedDelegateExpression.expression.transformSingle(transformer, ResolutionMode.ContextDependent.Delegate)
             .transformSingle(components.integerLiteralAndOperatorApproximationTransformer, null)
-
-        // Second, replace result type of delegate expression with stub type if delegate not yet resolved
-        if (delegateExpression is FirResolvable) {
-            val calleeReference = delegateExpression.calleeReference
-            if (calleeReference is FirNamedReferenceWithCandidate) {
-                val system = calleeReference.candidate.system
-                system.notFixedTypeVariables.forEach {
-                    system.markPostponedVariable(it.value.typeVariable)
-                }
-                val typeVariableTypeToStubType = context.inferenceSession.createSyntheticStubTypes(system)
-
-                val substitutor = createTypeSubstitutorByTypeConstructor(
-                    typeVariableTypeToStubType, session.typeContext, approximateIntegerLiterals = true
-                )
-                val delegateExpressionTypeRef = delegateExpression.typeRef
-                val stubTypeSubstituted = substitutor.substituteOrNull(delegateExpressionTypeRef.coneType)
-                delegateExpression.replaceTypeRef(delegateExpressionTypeRef.withReplacedConeType(stubTypeSubstituted))
-            }
-        }
 
         val provideDelegateCall = wrappedDelegateExpression.delegateProvider as FirFunctionCall
         provideDelegateCall.replaceExplicitReceiver(delegateExpression)
@@ -356,28 +399,25 @@ open class FirDeclarationsResolveTransformer(
         // TODO: this generates some nodes in the control flow graph which we don't want if we
         //  end up not selecting this option, KT-59684
         transformer.expressionsTransformer?.transformFunctionCallInternal(
-            provideDelegateCall, ResolutionMode.ContextIndependent, provideDelegate = true
+            provideDelegateCall, ResolutionMode.ContextDependent, provideDelegate = true
         )
 
         // If we got successful candidate for provideDelegate, let's select it
         val provideDelegateCandidate = provideDelegateCall.candidate()
         if (provideDelegateCandidate != null && provideDelegateCandidate.isSuccessful) {
-            val system = provideDelegateCandidate.system
-            system.notFixedTypeVariables.forEach {
-                system.markPostponedVariable(it.value.typeVariable)
-            }
-            val typeVariableTypeToStubType = context.inferenceSession.createSyntheticStubTypes(system)
-            val substitutor = createTypeSubstitutorByTypeConstructor(
-                typeVariableTypeToStubType, session.typeContext, approximateIntegerLiterals = true
+            val additionalBinding = findResultTypeForInnerVariableIfNeeded(provideDelegateCall, provideDelegateCandidate)
+
+            val substitutor = ChainedSubstitutor(
+                provideDelegateCandidate.substitutor,
+                (context.inferenceSession as FirDelegatedPropertyInferenceSession).currentConstraintStorage.buildCurrentSubstitutor(
+                    session.typeContext, additionalBinding?.let(::mapOf) ?: emptyMap()
+                ) as ConeSubstitutor
             )
 
-            val stubTypeSubstituted = substitutor.substituteOrSelf(
-                provideDelegateCandidate.substitutor.substituteOrSelf(
-                    components.typeFromCallee(provideDelegateCall).type
-                )
-            )
+            val toTypeVariableSubstituted =
+                substitutor.substituteOrSelf(components.typeFromCallee(provideDelegateCall).type)
 
-            provideDelegateCall.replaceTypeRef(provideDelegateCall.typeRef.resolvedTypeFromPrototype(stubTypeSubstituted))
+            provideDelegateCall.replaceConeTypeOrNull(toTypeVariableSubstituted)
             return provideDelegateCall
         }
 
@@ -390,6 +430,88 @@ open class FirDeclarationsResolveTransformer(
         return delegateExpression
     }
 
+    /**
+     * For supporting the case when `provideDelegate` has a signature with type variable as a return type, like
+     *  fun <K> K.provideDelegate(receiver: Any?, property: kotlin.reflect.KProperty<*>): K = this
+     *
+     * Here, if delegate expression returns something like `Delegate<Tv>` where Tv is a variable and the `Delegate` class contains
+     * the member `getValue`, we need to fix `K` into `Delegate<Tv>`, so that resulting `provideDelegate()` expression would have the type,
+     * so we could look into its member scope (as we can't look into the member scope of `K` type variable).
+     *
+     * On another hand, we can't just actually fix `K` variable (or just run FULL completion there) as the current result might refer
+     * other not fixed yet type variables, and we would break the contract that fixation results should not contain other type variables.
+     *
+     * Thus, to support exactly the case when we had to look into the member scope of `K`, we just pretend like we fixing it
+     *
+     * @see compiler/testData/diagnostics/tests/delegatedProperty/provideDelegate/provideDelegateResolutionWithStubTypes.kt
+     *
+     * In K1, it was working because we used stub types that are not counted as actual type variables, and we've been completing
+     * `provideDelegate` FULLy in the context where outer type variables were stubs (thus counted as proper types).
+     *
+     * But in K2, we decided to get rid of the stub type concept and just stick to the type variables.
+     *
+     * @return K to Delegate<Tv> or null in case return type of `provideDelegate` is not a type variable.
+     *
+     * TODO: reconsider the place where the function belong and it necessity after PCLA is implemented (KT-61740 for tracking)
+     */
+    private fun findResultTypeForInnerVariableIfNeeded(
+        provideDelegate: FirFunctionCall,
+        candidate: Candidate
+    ): Pair<TypeConstructorMarker, ConeKotlinType>? {
+        // We're only interested in the case when `provideDelegate` candidate returns a type variable
+        // because in other cases we could look into the member scope of the type.
+        val returnTypeBasedOnVariable =
+            components.typeFromCallee(provideDelegate).type
+                // Substitut type parameter to type variable
+                .let(candidate.substitutor::substituteOrSelf)
+                .unwrapTopLevelVariableType() ?: return null
+        val typeVariable = returnTypeBasedOnVariable.typeConstructor
+
+        val candidateSystem = candidate.system
+        val candidateStorage = candidateSystem.currentStorage()
+        val allTypeVariables = candidateStorage.allTypeVariables.keys.toList()
+        // Subset of type variables obtained from the `provideDelegate` call
+        val typeVariablesRelatedToProvideDelegate =
+            allTypeVariables.subList(candidateStorage.outerSystemVariablesPrefixSize, allTypeVariables.size).toSet()
+
+        val variableWithConstraints =
+            candidateSystem.notFixedTypeVariables[typeVariable] ?: error("Not found type variable $typeVariable")
+
+        var resultType: ConeKotlinType? = null
+
+        // Temporary declare all the "outer" variables as proper (i.e., all inner variables as improper)
+        // Without that, all variables (both inner and outer ones) would be considered as improper,
+        // while we want to fix to assume `Delegate<Tv>` as proper because `Tv` belongs to the outer system
+        candidateSystem.withTypeVariablesThatAreNotCountedAsProperTypes(typeVariablesRelatedToProvideDelegate) {
+            // TODO: reconsider the approach here (KT-61781 for tracking)
+            // Actually, this code might fail with an exception in some rare cases (see KT-61781)
+            // The problem is that in the issue example, when fixing T type variable, it has two upper bounds: X and Delegate<Y>
+            // So, when ResultTypeResolver builds result type, it tries to intersect them and fails with an exception,
+            // because both TypeIntersector and CommonSuperTypeCalculator are not ready to the situation
+            // where the part of an input is a type variable.
+            //
+            // Just for the inspiration, take a look at ResultTypeResolver.Context.buildNotFixedVariablesToStubTypesSubstitutor usages:
+            // it seems like they do something relevant.
+            resultType = inferenceComponents.resultTypeResolver.findResultTypeOrNull(
+                candidateSystem, variableWithConstraints, TypeVariableDirectionCalculator.ResolveDirection.UNKNOWN
+            ) as? ConeKotlinType ?: return@withTypeVariablesThatAreNotCountedAsProperTypes
+
+
+            check(!candidateStorage.hasContradiction) { "We only should try fixing variables on successful provideDelegate candidate" }
+            // We don't actually fix it, but add an equality constraint as approximation
+            candidateSystem.addEqualityConstraint(returnTypeBasedOnVariable, resultType!!, ProvideDelegateFixationPosition)
+
+            check(!candidateStorage.hasContradiction) {
+                "Currently, we see no cases when contradiction might happen after adding equality constraint like that." +
+                        "But if you see the message, please report your case to https://youtrack.jetbrains.com/newIssue?project=KT"
+            }
+        }
+
+        return resultType?.let {
+            typeVariable to it
+        }
+    }
+
     private fun transformLocalVariable(variable: FirProperty): FirProperty = whileAnalysing(session, variable) {
         assert(variable.isLocal)
         val delegate = variable.delegate
@@ -397,7 +519,7 @@ open class FirDeclarationsResolveTransformer(
         val hadExplicitType = variable.returnTypeRef !is FirImplicitTypeRef
 
         if (delegate != null) {
-            transformPropertyAccessorsWithDelegate(variable, delegate)
+            transformPropertyAccessorsWithDelegate(variable, delegate, shouldResolveEverything = true)
             if (variable.delegateFieldSymbol != null) {
                 replacePropertyReferenceTypeInDelegateAccessors(variable)
             }
@@ -413,7 +535,11 @@ open class FirDeclarationsResolveTransformer(
             variable.transformBackingField(transformer, withExpectedType(variable.returnTypeRef))
             variable.transformAccessors()
         }
-        variable.transformOtherChildren(transformer, ResolutionMode.ContextIndependent)
+
+        // We need this return type transformation to resolve annotations from an implicit type
+        variable.transformReturnTypeRef(transformer, ResolutionMode.ContextIndependent)
+            .transformOtherChildren(transformer, ResolutionMode.ContextIndependent)
+
         context.storeVariable(variable, session)
         dataFlowAnalyzer.exitLocalVariableDeclaration(variable, hadExplicitType)
         return variable
@@ -427,13 +553,11 @@ open class FirDeclarationsResolveTransformer(
     }
 
     private fun FirProperty.transformAccessors(
-        setterResolutionMode: SetterResolutionMode = SetterResolutionMode.FULLY_RESOLVE
+        setterResolutionMode: SetterResolutionMode = SetterResolutionMode.FULLY_RESOLVE,
+        shouldResolveEverything: Boolean = true,
     ) {
-        if (bodyResolveState < FirPropertyBodyResolveState.INITIALIZER_AND_GETTER_RESOLVED) {
-            getter?.let {
-                transformAccessor(it, this)
-            }
-        }
+        getter?.let { transformAccessor(it, this, shouldResolveEverything) }
+
         if (returnTypeRef is FirImplicitTypeRef) {
             storeVariableReturnType(this) // Here, we expect `this.returnTypeRef` is updated from the getter's return type
             // We need update type of getter for case when its type was approximated
@@ -441,18 +565,26 @@ open class FirDeclarationsResolveTransformer(
         }
 
         if (setterResolutionMode != SetterResolutionMode.SKIP) {
-            resolveSetter(mayResolveSetterBody = setterResolutionMode == SetterResolutionMode.FULLY_RESOLVE)
+            resolveSetter(mayResolveSetterBody = setterResolutionMode == SetterResolutionMode.FULLY_RESOLVE, shouldResolveEverything)
         }
+    }
+
+    private fun ConeKotlinType.unwrapTopLevelVariableType(): ConeTypeVariableType? = when {
+        this is ConeTypeVariableType -> this
+        this is ConeFlexibleType -> lowerBound.unwrapTopLevelVariableType()
+        this is ConeDefinitelyNotNullType -> original.unwrapTopLevelVariableType()
+        else -> null
     }
 
     private fun FirProperty.resolveSetter(
         mayResolveSetterBody: Boolean,
+        shouldResolveEverything: Boolean,
     ) {
         setter?.let {
             it.transformTypeWithPropertyType(returnTypeRef)
 
             if (mayResolveSetterBody) {
-                transformAccessor(it, this)
+                transformAccessor(it, this, shouldResolveEverything)
             }
         }
     }
@@ -469,7 +601,7 @@ open class FirDeclarationsResolveTransformer(
             }
             isSetter -> {
                 val valueParameter = valueParameters.firstOrNull() ?: return
-                if (valueParameter.returnTypeRef is FirImplicitTypeRef) {
+                if (valueParameter.returnTypeRef is FirImplicitTypeRef || forceUpdateForNonImplicitTypes) {
                     valueParameter.replaceReturnTypeRef(propertyTypeRef.copyWithNewSource(returnTypeRef.source))
                 }
             }
@@ -478,7 +610,8 @@ open class FirDeclarationsResolveTransformer(
 
     private fun transformAccessor(
         accessor: FirPropertyAccessor,
-        owner: FirProperty
+        owner: FirProperty,
+        shouldResolveEverything: Boolean,
     ): Unit = whileAnalysing(session, accessor) {
         context.withPropertyAccessor(owner, accessor, components) {
             val propertyTypeRef = owner.returnTypeRef
@@ -490,9 +623,9 @@ open class FirDeclarationsResolveTransformer(
             }
 
             if (accessor is FirDefaultPropertyAccessor || accessor.body == null) {
-                transformFunction(accessor, ResolutionMode.ContextIndependent)
+                transformFunction(accessor, ResolutionMode.ContextIndependent, shouldResolveEverything)
             } else {
-                transformFunctionWithGivenSignature(accessor)
+                transformFunctionWithGivenSignature(accessor, shouldResolveEverything)
             }
         }
     }
@@ -510,24 +643,41 @@ open class FirDeclarationsResolveTransformer(
         )
     }
 
+    override fun transformFile(
+        file: FirFile,
+        data: ResolutionMode,
+    ): FirFile {
+        checkSessionConsistency(file)
+        return withFileAnalysisExceptionWrapping(file) {
+            doTransformFile(file, data)
+        }
+    }
+
     override fun transformRegularClass(
         regularClass: FirRegularClass,
-        data: ResolutionMode
-    ): FirStatement =
-        whileAnalysing(session, regularClass) {
-            return context.withContainingClass(regularClass) {
-                if (regularClass.isLocal && regularClass !in context.targetedLocalClasses) {
-                    return regularClass.runAllPhasesForLocalClass(transformer, components, data, transformer.firResolveContextCollector)
-                }
-
-                doTransformTypeParameters(regularClass)
-                doTransformRegularClass(regularClass, data)
+        data: ResolutionMode,
+    ): FirRegularClass = whileAnalysing(session, regularClass) {
+        context.withContainingClass(regularClass) {
+            val isLocal = regularClass.isLocal
+            if (isLocal && regularClass !in context.targetedLocalClasses) {
+                return regularClass.runAllPhasesForLocalClass(transformer, components, data, transformer.firResolveContextCollector)
             }
+
+            if (isLocal || !implicitTypeOnly) {
+                context.insideClassHeader {
+                    regularClass.transformAnnotations(this, ResolutionMode.ContextIndependent)
+                    regularClass.transformTypeParameters(this, ResolutionMode.ContextIndependent)
+                    regularClass.transformSuperTypeRefs(this, ResolutionMode.ContextIndependent)
+                }
+            }
+
+            doTransformRegularClass(regularClass, data)
         }
+    }
 
     fun withScript(script: FirScript, action: () -> FirScript): FirScript {
         dataFlowAnalyzer.enterScript(script)
-        val result = context.withScopesForScript(script, components) {
+        val result = context.withScript(script, components) {
             action()
         }
         dataFlowAnalyzer.exitScript() // TODO: FirScript should be a FirControlFlowGraphOwner, KT-59683
@@ -540,7 +690,7 @@ open class FirDeclarationsResolveTransformer(
 
     override fun transformCodeFragment(codeFragment: FirCodeFragment, data: ResolutionMode): FirCodeFragment {
         dataFlowAnalyzer.enterCodeFragment(codeFragment)
-        context.withScopesForCodeFragment(codeFragment, components) {
+        context.withCodeFragment(codeFragment, components) {
             transformBlock(codeFragment.block, data)
         }
         dataFlowAnalyzer.exitCodeFragment()
@@ -548,14 +698,49 @@ open class FirDeclarationsResolveTransformer(
     }
 
     override fun transformTypeAlias(typeAlias: FirTypeAlias, data: ResolutionMode): FirTypeAlias = whileAnalysing(session, typeAlias) {
+        if (implicitTypeOnly) return typeAlias
         if (typeAlias.isLocal && typeAlias !in context.targetedLocalClasses) {
             return typeAlias.runAllPhasesForLocalClass(transformer, components, data, transformer.firResolveContextCollector)
         }
-        doTransformTypeParameters(typeAlias)
-        typeAlias.transformAnnotations(transformer, data)
-        transformer.firResolveContextCollector?.addDeclarationContext(typeAlias, context)
-        typeAlias.transformExpandedTypeRef(transformer, data)
+
+        @OptIn(PrivateForInline::class)
+        context.withContainer(typeAlias) {
+            doTransformTypeParameters(typeAlias)
+            typeAlias.transformAnnotations(transformer, data)
+            transformer.firResolveContextCollector?.addDeclarationContext(typeAlias, context)
+            typeAlias.transformExpandedTypeRef(transformer, data)
+        }
+
         return typeAlias
+    }
+
+    private fun doTransformFile(
+        file: FirFile,
+        data: ResolutionMode,
+    ): FirFile = withFile(file) {
+        transformer.firResolveContextCollector?.addFileContext(file, context.towerDataContext)
+
+        transformDeclarationContent(file, data) as FirFile
+    }
+
+    open fun withFile(
+        file: FirFile,
+        action: () -> FirFile,
+    ): FirFile {
+        val result = context.withFile(file, components) {
+            // TODO Must be done within 'withFile' as the context - any the analyzer - is cleared as the first step.
+            //  yuk. maybe the clear shouldn't happen for `enterFile`? or at maybe separately?
+            dataFlowAnalyzer.enterFile(file, buildGraph = transformer.buildCfgForFiles)
+
+            action()
+        }
+
+        val controlFlowGraph = dataFlowAnalyzer.exitFile()
+        if (controlFlowGraph != null) {
+            result.replaceControlFlowGraphReference(FirControlFlowGraphReferenceImpl(controlFlowGraph))
+        }
+
+        return result
     }
 
     protected fun doTransformRegularClass(
@@ -585,7 +770,7 @@ open class FirDeclarationsResolveTransformer(
     override fun transformAnonymousObject(
         anonymousObject: FirAnonymousObject,
         data: ResolutionMode
-    ): FirStatement = whileAnalysing(session, anonymousObject) {
+    ): FirAnonymousObject = whileAnalysing(session, anonymousObject) {
         if (anonymousObject !in context.targetedLocalClasses) {
             return anonymousObject.runAllPhasesForLocalClass(transformer, components, data, transformer.firResolveContextCollector)
         }
@@ -606,9 +791,7 @@ open class FirDeclarationsResolveTransformer(
         simpleFunction: FirSimpleFunction,
         data: ResolutionMode
     ): FirSimpleFunction = whileAnalysing(session, simpleFunction) {
-        if (simpleFunction.bodyResolved) {
-            return simpleFunction
-        }
+        val shouldResolveEverything = !implicitTypeOnly
         val returnTypeRef = simpleFunction.returnTypeRef
         if ((returnTypeRef !is FirImplicitTypeRef) && implicitTypeOnly) {
             return simpleFunction
@@ -616,9 +799,13 @@ open class FirDeclarationsResolveTransformer(
 
         val containingDeclaration = context.containerIfAny
         return context.withSimpleFunction(simpleFunction, session) {
-            doTransformTypeParameters(simpleFunction)
+            // this is required to resolve annotations on functions of local classes
+            if (shouldResolveEverything) {
+                simpleFunction.transformReceiverParameter(this, data)
+                doTransformTypeParameters(simpleFunction)
+            }
 
-            if (containingDeclaration != null && containingDeclaration !is FirClass) {
+            if (containingDeclaration != null && containingDeclaration !is FirClass && (containingDeclaration !is FirScript || simpleFunction.isLocal)) {
                 // For class members everything should be already prepared
                 prepareSignatureForBodyResolve(simpleFunction)
                 simpleFunction.transformStatus(this, simpleFunction.resolveStatus().mode())
@@ -627,35 +814,36 @@ open class FirDeclarationsResolveTransformer(
                     simpleFunction.runContractResolveForFunction(session, scopeSession, context)
                 }
             }
+
             context.forFunctionBody(simpleFunction, components) {
                 withFullBodyResolve {
-                    transformFunctionWithGivenSignature(simpleFunction)
+                    transformFunctionWithGivenSignature(simpleFunction, shouldResolveEverything = shouldResolveEverything)
                 }
             }
         }
     }
 
-    private fun <F : FirFunction> transformFunctionWithGivenSignature(function: F): F {
+    private fun <F : FirFunction> transformFunctionWithGivenSignature(function: F, shouldResolveEverything: Boolean): F {
         @Suppress("UNCHECKED_CAST")
-        val result = transformFunction(function, ResolutionMode.ContextIndependent) as F
+        val result = transformFunction(function, ResolutionMode.ContextIndependent, shouldResolveEverything) as F
 
         val body = result.body
         if (result.returnTypeRef is FirImplicitTypeRef) {
             val simpleFunction = function as? FirSimpleFunction
             val returnExpression = (body?.statements?.singleOrNull() as? FirReturnExpression)?.result
-            val returnTypeRef = if (returnExpression?.typeRef is FirResolvedTypeRef) {
-                returnExpression.resultType.approximateDeclarationType(
+            val expressionType = returnExpression?.resolvedType
+            val returnTypeRef = expressionType
+                ?.toFirResolvedTypeRef(result.returnTypeRef.source)
+                ?.approximateDeclarationType(
                     session,
                     simpleFunction?.visibilityForApproximation(),
                     isLocal = simpleFunction?.isLocal == true,
                     isInlineFunction = simpleFunction?.isInline == true
-                ).copyWithNewSource(result.returnTypeRef.source)
-            } else {
-                buildErrorTypeRef {
+                )
+                ?: buildErrorTypeRef {
                     source = result.returnTypeRef.source
                     diagnostic = ConeSimpleDiagnostic("empty body", DiagnosticKind.Other)
                 }
-            }
             result.transformReturnTypeRef(transformer, withExpectedType(returnTypeRef))
         }
 
@@ -665,14 +853,41 @@ open class FirDeclarationsResolveTransformer(
     override fun transformFunction(
         function: FirFunction,
         data: ResolutionMode
-    ): FirStatement = whileAnalysing(session, function) {
+    ): FirFunction {
         if (function.bodyResolved) return function
+
+        return transformFunction(function, data, shouldResolveEverything = true)
+    }
+
+    private fun transformFunction(
+        function: FirFunction,
+        data: ResolutionMode,
+        shouldResolveEverything: Boolean,
+    ): FirFunction = whileAnalysing(session, function) {
+        val bodyResolved = function.bodyResolved
         dataFlowAnalyzer.enterFunction(function)
-        return transformDeclarationContent(function, data).also {
-            val result = it as FirFunction
-            val controlFlowGraphReference = dataFlowAnalyzer.exitFunction(result)
-            result.replaceControlFlowGraphReference(controlFlowGraphReference)
-        } as FirStatement
+
+        transformer.firResolveContextCollector?.addDeclarationContext(function, context)
+        if (shouldResolveEverything) {
+            // Annotations here are required only in the case of a local class member function.
+            // Separate annotation transformers are responsible in the case of non-local functions.
+            function.transformReturnTypeRef(this, data).transformValueParameters(this, data).transformAnnotations(this, data)
+        }
+
+        if (!bodyResolved) {
+            function.transformBody(this, data)
+        }
+
+        if (shouldResolveEverything && function is FirContractDescriptionOwner) {
+            function.transformContractDescription(this, data)
+        }
+
+        val controlFlowGraphReference = dataFlowAnalyzer.exitFunction(function)
+        if (!bodyResolved) {
+            function.replaceControlFlowGraphReference(controlFlowGraphReference)
+        }
+
+        return function
     }
 
     override fun transformConstructor(constructor: FirConstructor, data: ResolutionMode): FirConstructor =
@@ -681,13 +896,17 @@ open class FirDeclarationsResolveTransformer(
             val container = context.containerIfAny as? FirRegularClass
             if (constructor.isPrimary && container?.classKind == ClassKind.ANNOTATION_CLASS) {
                 return withFirArrayOfCallTransformer {
-
                     doTransformConstructor(constructor, data)
                 }
             }
 
             return doTransformConstructor(constructor, data)
         }
+
+    override fun transformErrorPrimaryConstructor(
+        errorPrimaryConstructor: FirErrorPrimaryConstructor,
+        data: ResolutionMode,
+    ): FirErrorPrimaryConstructor = transformConstructor(errorPrimaryConstructor, data) as FirErrorPrimaryConstructor
 
     private fun doTransformConstructor(constructor: FirConstructor, data: ResolutionMode): FirConstructor {
         val owningClass = context.containerIfAny as? FirRegularClass
@@ -740,7 +959,7 @@ open class FirDeclarationsResolveTransformer(
     override fun transformValueParameter(
         valueParameter: FirValueParameter,
         data: ResolutionMode
-    ): FirStatement = whileAnalysing(session, valueParameter) {
+    ): FirValueParameter = whileAnalysing(session, valueParameter) {
         dataFlowAnalyzer.enterValueParameter(valueParameter)
         val result = context.withValueParameter(valueParameter, session) {
             transformDeclarationContent(
@@ -759,7 +978,7 @@ open class FirDeclarationsResolveTransformer(
     override fun transformAnonymousFunction(
         anonymousFunction: FirAnonymousFunction,
         data: ResolutionMode
-    ): FirStatement = whileAnalysing(session, anonymousFunction) {
+    ): FirAnonymousFunction = whileAnalysing(session, anonymousFunction) {
         // Either ContextDependent, ContextIndependent or WithExpectedType could be here
         anonymousFunction.transformAnnotations(transformer, ResolutionMode.ContextIndependent)
         if (data !is ResolutionMode.LambdaResolution) {
@@ -877,7 +1096,7 @@ open class FirDeclarationsResolveTransformer(
         // In correct code this doesn't matter, as all return expression types should be subtypes of the expected type.
         // In incorrect code, this would change diagnostics: we can get errors either on the entire lambda, or only on its
         // return statements. The former kind of makes more sense, but the latter is more readable.
-        val inferredFromReturnExpressions = session.typeContext.commonSuperTypeOrNull(returnExpressions.map { it.expression.resultType.coneType })
+        val inferredFromReturnExpressions = session.typeContext.commonSuperTypeOrNull(returnExpressions.map { it.expression.resolvedType })
         return inferredFromReturnExpressions?.let { returnTypeRef.resolvedTypeFromPrototype(it) }
             ?: session.builtinTypes.unitType // Empty lambda returns Unit
     }
@@ -956,7 +1175,13 @@ open class FirDeclarationsResolveTransformer(
     override fun transformBackingField(
         backingField: FirBackingField,
         data: ResolutionMode,
-    ): FirStatement = whileAnalysing(session, backingField) {
+    ): FirBackingField = transformBackingField(backingField, data, shouldResolveEverything = true)
+
+    private fun transformBackingField(
+        backingField: FirBackingField,
+        data: ResolutionMode,
+        shouldResolveEverything: Boolean,
+    ): FirBackingField = whileAnalysing(session, backingField) {
         val propertyType = data.expectedType
         val initializerData = when {
             backingField.returnTypeRef is FirResolvedTypeRef -> withExpectedType(backingField.returnTypeRef)
@@ -969,7 +1194,10 @@ open class FirDeclarationsResolveTransformer(
             else -> ResolutionMode.ContextDependent
         }
         backingField.transformInitializer(transformer, initializerData)
-        backingField.transformAnnotations(transformer, data)
+        if (shouldResolveEverything) {
+            backingField.transformAnnotations(transformer, data)
+        }
+
         if (
             backingField.returnTypeRef is FirErrorTypeRef ||
             backingField.returnTypeRef is FirResolvedTypeRef
@@ -979,7 +1207,7 @@ open class FirDeclarationsResolveTransformer(
         val inferredType = if (backingField is FirDefaultPropertyBackingField) {
             propertyType
         } else {
-            backingField.initializer?.unwrapSmartcastExpression()?.typeRef
+            backingField.initializer?.unwrapSmartcastExpression()?.resolvedType?.toFirResolvedTypeRef()
         }
         val resultType = inferredType
             ?: return backingField.transformReturnTypeRef(
@@ -1008,9 +1236,9 @@ open class FirDeclarationsResolveTransformer(
             val resultType = when {
                 initializer != null -> {
                     val unwrappedInitializer = initializer.unwrapSmartcastExpression()
-                    unwrappedInitializer.resultType
+                    unwrappedInitializer.resolvedType.toFirResolvedTypeRef()
                 }
-                variable.getter != null && variable.getter !is FirDefaultPropertyAccessor -> variable.getter?.returnTypeRef
+                variable.getter?.body is FirSingleExpressionBlock -> variable.getter?.returnTypeRef
                 else -> null
             }
 
@@ -1043,12 +1271,14 @@ open class FirDeclarationsResolveTransformer(
         return when (this) {
             is FirImplicitTypeRef -> buildErrorTypeRef {
                 diagnostic = ConeSimpleDiagnostic("No result type for initializer", DiagnosticKind.InferenceError)
+                annotations.addAll(this@toExpectedTypeRef.annotations)
             }
             is FirErrorTypeRef -> buildErrorTypeRef {
                 diagnostic = this@toExpectedTypeRef.diagnostic
                 this@toExpectedTypeRef.source?.fakeElement(KtFakeSourceElementKind.ImplicitTypeRef)?.let {
                     source = it
                 }
+                annotations.addAll(this@toExpectedTypeRef.annotations)
             }
             else -> {
                 buildResolvedTypeRef {
@@ -1091,10 +1321,9 @@ open class FirDeclarationsResolveTransformer(
     private val FirVariable.initializerResolved: Boolean
         get() {
             val initializer = initializer ?: return false
-            return initializer.typeRef is FirResolvedTypeRef && initializer !is FirErrorExpression
+            return initializer.isResolved && initializer !is FirErrorExpression
         }
 
-    protected val FirFunction.bodyResolved: Boolean
-        get() = body !is FirLazyBlock && body?.typeRef is FirResolvedTypeRef
-
+    private val FirFunction.bodyResolved: Boolean
+        get() = body?.isResolved == true
 }

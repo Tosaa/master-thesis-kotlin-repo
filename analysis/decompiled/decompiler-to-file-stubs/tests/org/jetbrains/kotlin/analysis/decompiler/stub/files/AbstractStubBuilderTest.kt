@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2021 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Copyright 2010-2023 JetBrains s.r.o. and Kotlin Programming Language contributors.
  * Use of this source code is governed by the Apache 2.0 license that can be found in the license/LICENSE.txt file.
  */
 
@@ -10,7 +10,7 @@ import com.intellij.psi.PsiElement
 import com.intellij.psi.impl.DebugUtil
 import com.intellij.psi.stubs.PsiFileStub
 import com.intellij.psi.stubs.StubElement
-import org.jetbrains.kotlin.name.SpecialNames
+import org.jetbrains.annotations.TestOnly
 import org.jetbrains.kotlin.psi.stubs.impl.STUB_TO_STRING_PREFIX
 import org.jetbrains.kotlin.test.KotlinTestUtils
 import java.nio.file.Paths
@@ -40,12 +40,13 @@ abstract class AbstractStubBuilderTest : AbstractDecompiledClassTest() {
     protected abstract fun getStubToTest(classFile: VirtualFile): PsiFileStub<*>
 }
 
-private fun StubElement<out PsiElement>.serializeToString(): String {
+@TestOnly
+fun StubElement<out PsiElement>.serializeToString(): String {
     return serializeStubToString(this)
 }
 
 private fun serializeStubToString(stubElement: StubElement<*>): String {
-    val treeStr = DebugUtil.stubTreeToString(stubElement).replace(SpecialNames.SAFE_IDENTIFIER_FOR_NO_NAME.asString(), "<no name>")
+    val treeStr = DebugUtil.stubTreeToString(stubElement)
 
     // Nodes are stored in form "NodeType:Node" and have too many repeating information for Kotlin stubs
     // Remove all repeating information (See KotlinStubBaseImpl.toString())

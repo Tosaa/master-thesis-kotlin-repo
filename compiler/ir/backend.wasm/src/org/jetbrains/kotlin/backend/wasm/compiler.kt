@@ -7,6 +7,7 @@ package org.jetbrains.kotlin.backend.wasm
 
 import org.jetbrains.kotlin.backend.common.linkage.issues.checkNoUnboundSymbols
 import org.jetbrains.kotlin.backend.common.phaser.PhaseConfig
+import org.jetbrains.kotlin.backend.common.phaser.PhaserState
 import org.jetbrains.kotlin.backend.common.phaser.invokeToplevel
 import org.jetbrains.kotlin.backend.wasm.ir2wasm.JsModuleAndQualifierReference
 import org.jetbrains.kotlin.backend.wasm.ir2wasm.WasmCompiledModuleFragment
@@ -83,7 +84,12 @@ fun compileToLoweredIr(
         for (file in module.files)
             markExportedDeclarations(context, file, exportedDeclarations)
 
-    wasmPhases.invokeToplevel(phaseConfig, context, allModules)
+    val phaserState = PhaserState<IrModuleFragment>()
+    loweringList.forEachIndexed { _, lowering ->
+        allModules.forEach { module ->
+            lowering.invoke(phaseConfig, phaserState, context, module)
+        }
+    }
 
     return Pair(allModules, context)
 }
@@ -179,7 +185,7 @@ private fun generateSourceMap(
         prev = location
 
         location.apply {
-            // TODO resulting path goes too deep since temporary directory we compiled first is deeper than final destination.   
+            // TODO resulting path goes too deep since temporary directory we compiled first is deeper than final destination.
             val relativePath = pathResolver.getPathRelativeToSourceRoots(File(file)).substring(3)
             sourceMapBuilder.addMapping(relativePath, null, { null }, line, column, null, mapping.offset)
         }

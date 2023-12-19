@@ -30,6 +30,12 @@ import org.jetbrains.kotlin.types.model.TypeConstructorMarker
 import org.jetbrains.kotlin.types.model.TypeParameterMarker
 
 /**
+ * Usage of marked API can be unsafe at the stage when IR for the whole module is not built yet (specifically in fir2ir)
+ */
+@RequiresOptIn(level = RequiresOptIn.Level.WARNING)
+annotation class UnsafeDuringIrConstructionAPI
+
+/**
  * A special object that can be used to refer to [IrDeclaration]s and some other entities from IR nodes.
  *
  * For example, [IrCall] uses [IrSimpleFunctionSymbol] to refer to the [IrSimpleFunction] that is being called.
@@ -59,6 +65,7 @@ interface IrSymbol : DeclarationSymbolMarker {
      * **A:** Because we most often need to access a symbol's owner in lowerings, which happen after linkage, at which point all symbols
      * should be already bound. Declaring this property nullable would make working with it more difficult most of the time.
      */
+    @UnsafeDuringIrConstructionAPI
     val owner: IrSymbolOwner
 
     /**
@@ -118,6 +125,7 @@ val IrSymbol.isPublicApi: Boolean
  * Only leaf interfaces in the symbol hierarchy inherit from this interface.
  */
 interface IrBindableSymbol<out Descriptor : DeclarationDescriptor, Owner : IrSymbolOwner> : IrSymbol {
+    @UnsafeDuringIrConstructionAPI
     override val owner: Owner
 
     @ObsoleteDescriptorBasedAPI
@@ -221,6 +229,7 @@ sealed interface IrValueSymbol : IrSymbol {
     @ObsoleteDescriptorBasedAPI
     override val descriptor: ValueDescriptor
 
+    @UnsafeDuringIrConstructionAPI
     override val owner: IrValueDeclaration
 }
 
@@ -243,6 +252,7 @@ sealed interface IrReturnTargetSymbol : IrSymbol {
     @ObsoleteDescriptorBasedAPI
     override val descriptor: FunctionDescriptor
 
+    @UnsafeDuringIrConstructionAPI
     override val owner: IrReturnTarget
 }
 
@@ -252,6 +262,7 @@ sealed interface IrReturnTargetSymbol : IrSymbol {
  * @see IrFunctionReference
  */
 sealed interface IrFunctionSymbol : IrReturnTargetSymbol, FunctionSymbolMarker {
+    @UnsafeDuringIrConstructionAPI
     override val owner: IrFunction
 }
 

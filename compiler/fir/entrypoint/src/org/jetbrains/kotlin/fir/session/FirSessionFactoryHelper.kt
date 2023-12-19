@@ -8,9 +8,14 @@ package org.jetbrains.kotlin.fir.session
 import org.jetbrains.annotations.TestOnly
 import org.jetbrains.kotlin.config.*
 import org.jetbrains.kotlin.fir.*
+import org.jetbrains.kotlin.fir.analysis.FirDefaultOverridesBackwardCompatibilityHelper
+import org.jetbrains.kotlin.fir.analysis.FirOverridesBackwardCompatibilityHelper
 import org.jetbrains.kotlin.fir.extensions.FirExtensionRegistrar
 import org.jetbrains.kotlin.fir.extensions.FirExtensionService
 import org.jetbrains.kotlin.fir.java.FirProjectSessionProvider
+import org.jetbrains.kotlin.fir.resolve.calls.ConeCallConflictResolverFactory
+import org.jetbrains.kotlin.fir.scopes.FirPlatformClassMapper
+import org.jetbrains.kotlin.fir.scopes.impl.FirDelegatedMembersFilter
 import org.jetbrains.kotlin.fir.session.environment.AbstractProjectEnvironment
 import org.jetbrains.kotlin.fir.session.environment.AbstractProjectFileSearchScope
 import org.jetbrains.kotlin.incremental.components.EnumWhenTracker
@@ -70,15 +75,15 @@ object FirSessionFactoryHelper {
             sessionProvider,
             javaSourcesScope,
             projectEnvironment,
-            incrementalCompilationContext,
+            { incrementalCompilationContext?.createSymbolProviders(it, mainModuleData, projectEnvironment) },
             extensionRegistrars,
             languageVersionSettings,
             lookupTracker,
             enumWhenTracker,
             importTracker,
-            needRegisterJavaElementFinder,
+            needRegisterJavaElementFinder = needRegisterJavaElementFinder,
             registerExtraComponents = {},
-            sessionConfigurator,
+            init = sessionConfigurator,
         )
     }
 
@@ -122,5 +127,18 @@ object FirSessionFactoryHelper {
 
             register(FirExtensionService::class, FirExtensionService(this))
         }
+    }
+
+    /**
+     * Registers default components for [FirSession]
+     * They could be overridden by calling a function that registers specific platform components
+     */
+    @OptIn(SessionConfiguration::class)
+    fun FirSession.registerDefaultComponents() {
+        register(FirVisibilityChecker::class, FirVisibilityChecker.Default)
+        register(ConeCallConflictResolverFactory::class, DefaultCallConflictResolverFactory)
+        register(FirPlatformClassMapper::class, FirPlatformClassMapper.Default)
+        register(FirOverridesBackwardCompatibilityHelper::class, FirDefaultOverridesBackwardCompatibilityHelper)
+        register(FirDelegatedMembersFilter::class, FirDelegatedMembersFilter.Default)
     }
 }

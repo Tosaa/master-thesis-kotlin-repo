@@ -87,13 +87,8 @@ class SerializableCompanionIrGenerator(
         }
 
         val annotationClass = compilerContext.referenceClass(SerializationAnnotations.namedCompanionClassId) ?: return
-
-        val annotationCtor = annotationClass.constructors.single { it.owner.isPrimary }
-        val annotationType = annotationClass.defaultType
-
-        val annotationCall = IrConstructorCallImpl.fromSymbolOwner(irClass.startOffset, irClass.endOffset, annotationType, annotationCtor)
-
-        compilerContext.annotationsRegistrar.addMetadataVisibleAnnotationsToElement(irClass, annotationCall)
+        val annotationCall = irClass.createAnnotationCallWithoutArgs(annotationClass)
+        compilerContext.metadataDeclarationRegistrar.addMetadataVisibleAnnotationsToElement(irClass, annotationCall)
     }
 
     private fun IrBuilderWithScope.patchSerializableClassWithMarkerAnnotation(serializer: IrClass) {

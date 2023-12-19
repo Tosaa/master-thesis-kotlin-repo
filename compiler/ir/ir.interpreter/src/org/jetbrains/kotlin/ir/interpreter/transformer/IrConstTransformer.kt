@@ -13,7 +13,6 @@ import org.jetbrains.kotlin.ir.declarations.*
 import org.jetbrains.kotlin.ir.expressions.*
 import org.jetbrains.kotlin.ir.expressions.impl.IrConstImpl
 import org.jetbrains.kotlin.ir.interpreter.IrInterpreter
-import org.jetbrains.kotlin.ir.interpreter.IrInterpreterConfiguration
 import org.jetbrains.kotlin.ir.interpreter.checker.EvaluationMode
 import org.jetbrains.kotlin.ir.interpreter.checker.IrInterpreterChecker
 import org.jetbrains.kotlin.ir.interpreter.checker.IrInterpreterCheckerData
@@ -27,8 +26,12 @@ import org.jetbrains.kotlin.ir.util.classId
 import org.jetbrains.kotlin.ir.util.dump
 import org.jetbrains.kotlin.ir.util.parentAsClass
 import org.jetbrains.kotlin.ir.visitors.IrElementTransformer
+import org.jetbrains.kotlin.ir.visitors.IrElementVisitorVoid
+import org.jetbrains.kotlin.ir.visitors.acceptChildrenVoid
+import org.jetbrains.kotlin.ir.visitors.acceptVoid
 
-fun IrFile.transformConst(
+fun IrElement.transformConst(
+    irFile: IrFile,
     interpreter: IrInterpreter,
     mode: EvaluationMode,
     evaluatedConstTracker: EvaluatedConstTracker? = null,
@@ -36,24 +39,23 @@ fun IrFile.transformConst(
     onWarning: (IrFile, IrElement, IrErrorExpression) -> Unit = { _, _, _ -> },
     onError: (IrFile, IrElement, IrErrorExpression) -> Unit = { _, _, _ -> },
     suppressExceptions: Boolean = false,
-) {
-    val preprocessedFile = this.preprocessForConstTransformer(interpreter, mode)
-
+): IrElement {
     val checker = IrInterpreterCommonChecker()
     val irConstExpressionTransformer = IrConstOnlyNecessaryTransformer(
-        interpreter, preprocessedFile, mode, checker, evaluatedConstTracker, inlineConstTracker, onWarning, onError, suppressExceptions
+        interpreter, irFile, mode, checker, evaluatedConstTracker, inlineConstTracker, onWarning, onError, suppressExceptions
     )
-    preprocessedFile.transform(irConstExpressionTransformer, IrConstTransformer.Data())
 
     val irConstDeclarationAnnotationTransformer = IrConstDeclarationAnnotationTransformer(
-        interpreter, preprocessedFile, mode, checker, evaluatedConstTracker, inlineConstTracker, onWarning, onError, suppressExceptions
+        interpreter, irFile, mode, checker, evaluatedConstTracker, inlineConstTracker, onWarning, onError, suppressExceptions
     )
-    preprocessedFile.transform(irConstDeclarationAnnotationTransformer, IrConstTransformer.Data())
 
     val irConstTypeAnnotationTransformer = IrConstTypeAnnotationTransformer(
-        interpreter, preprocessedFile, mode, checker, evaluatedConstTracker, inlineConstTracker, onWarning, onError, suppressExceptions
+        interpreter, irFile, mode, checker, evaluatedConstTracker, inlineConstTracker, onWarning, onError, suppressExceptions
     )
-    preprocessedFile.transform(irConstTypeAnnotationTransformer, IrConstTransformer.Data())
+
+    return this.transform(irConstExpressionTransformer, IrConstTransformer.Data())
+        .transform(irConstDeclarationAnnotationTransformer, IrConstTransformer.Data())
+        .transform(irConstTypeAnnotationTransformer, IrConstTransformer.Data())
 }
 
 fun IrFile.runConstOptimizations(
@@ -63,14 +65,18 @@ fun IrFile.runConstOptimizations(
     inlineConstTracker: InlineConstTracker? = null,
     suppressExceptions: Boolean = false,
 ) {
+    val preprocessedFile = this.preprocessForConstTransformer(interpreter, mode)
+
     val checker = IrInterpreterCommonChecker()
     val irConstExpressionTransformer = IrConstAllTransformer(
-        interpreter, this, mode, checker, evaluatedConstTracker, inlineConstTracker, { _, _, _ -> }, { _, _, _ -> }, suppressExceptions
+        interpreter, preprocessedFile, mode, checker, evaluatedConstTracker, inlineConstTracker,
+        { _, _, _ -> }, { _, _, _ -> },
+        suppressExceptions
     )
-    this.transform(irConstExpressionTransformer, IrConstTransformer.Data())
+    preprocessedFile.transform(irConstExpressionTransformer, IrConstTransformer.Data())
 }
 
-fun IrFile.preprocessForConstTransformer(
+private fun IrFile.preprocessForConstTransformer(
     interpreter: IrInterpreter,
     mode: EvaluationMode,
 ): IrFile {
@@ -81,10 +87,8 @@ fun IrFile.preprocessForConstTransformer(
     return preprocessedFile
 }
 
-// Note: We are using `IrElementTransformer` here instead of `IrElementTransformerVoid` to avoid conflicts with `IrTypeVisitorVoid`
-// that is used later in `IrConstTypeAnnotationTransformer`.
 internal abstract class IrConstTransformer(
-    protected val interpreter: IrInterpreter,
+    private val interpreter: IrInterpreter,
     private val irFile: IrFile,
     private val mode: EvaluationMode,
     private val checker: IrInterpreterChecker,
@@ -94,7 +98,7 @@ internal abstract class IrConstTransformer(
     private val onError: (IrFile, IrElement, IrErrorExpression) -> Unit,
     private val suppressExceptions: Boolean,
 ) : IrElementTransformer<IrConstTransformer.Data> {
-    internal data class Data(val inAnnotation: Boolean = false)
+    internal data class Data(val inConstantExpression: Boolean = false)
 
     private fun IrExpression.warningIfError(original: IrExpression): IrExpression {
         if (this is IrErrorExpression) {
@@ -116,11 +120,9 @@ internal abstract class IrConstTransformer(
         return this
     }
 
-    protected fun IrExpression.canBeInterpreted(
-        configuration: IrInterpreterConfiguration = interpreter.environment.configuration
-    ): Boolean {
+    protected fun IrExpression.canBeInterpreted(): Boolean {
         return try {
-            this.accept(checker, IrInterpreterCheckerData(irFile, mode, interpreter.irBuiltIns, configuration))
+            this.accept(checker, IrInterpreterCheckerData(irFile, mode, interpreter.irBuiltIns))
         } catch (e: Throwable) {
             if (suppressExceptions) {
                 return false
@@ -146,16 +148,32 @@ internal abstract class IrConstTransformer(
         )
 
         if (result is IrConst<*>) {
-            val field = when (this) {
-                is IrGetField -> this.symbol.owner
-                is IrCall -> this.symbol.owner.property?.backingField
-                else -> null
-            }
-
-            if (field != null) inlineConstTracker?.reportOnIr(irFile, field, result)
+            reportInlinedJavaConst(result)
         }
 
         return if (failAsError) result.reportIfError(this) else result.warningIfError(this)
+    }
+
+    private fun IrExpression.reportInlinedJavaConst(result: IrConst<*>) {
+        this.acceptVoid(object : IrElementVisitorVoid {
+            override fun visitElement(element: IrElement) {
+                element.acceptChildrenVoid(this)
+            }
+
+            private fun report(field: IrField) {
+                inlineConstTracker?.reportOnIr(irFile, field, result)
+            }
+
+            override fun visitGetField(expression: IrGetField) {
+                report(expression.symbol.owner)
+                super.visitGetField(expression)
+            }
+
+            override fun visitCall(expression: IrCall) {
+                expression.symbol.owner.property?.backingField?.let { backingField -> report(backingField) }
+                super.visitCall(expression)
+            }
+        })
     }
 }
 

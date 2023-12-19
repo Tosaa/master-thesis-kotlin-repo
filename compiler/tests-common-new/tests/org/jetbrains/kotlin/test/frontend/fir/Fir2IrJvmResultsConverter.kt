@@ -7,6 +7,7 @@ package org.jetbrains.kotlin.test.frontend.fir
 
 import org.jetbrains.kotlin.backend.jvm.JvmIrCodegenFactory
 import org.jetbrains.kotlin.backend.jvm.JvmIrDeserializerImpl
+import org.jetbrains.kotlin.backend.jvm.JvmIrTypeSystemContext
 import org.jetbrains.kotlin.builtins.DefaultBuiltIns
 import org.jetbrains.kotlin.cli.common.CLIConfigurationKeys
 import org.jetbrains.kotlin.cli.jvm.compiler.NoScopeRecordCliBindingTrace
@@ -19,14 +20,12 @@ import org.jetbrains.kotlin.constant.EvaluatedConstTracker
 import org.jetbrains.kotlin.container.get
 import org.jetbrains.kotlin.diagnostics.DiagnosticReporterFactory
 import org.jetbrains.kotlin.fir.backend.Fir2IrCommonMemberStorage
-import org.jetbrains.kotlin.fir.backend.Fir2IrComponents
 import org.jetbrains.kotlin.fir.backend.Fir2IrConfiguration
-import org.jetbrains.kotlin.fir.backend.IrBuiltInsOverFir
 import org.jetbrains.kotlin.fir.backend.jvm.*
+import org.jetbrains.kotlin.fir.pipeline.convertToIrAndActualize
 import org.jetbrains.kotlin.fir.pipeline.signatureComposerForJvmFir2Ir
 import org.jetbrains.kotlin.fir.psi
 import org.jetbrains.kotlin.ir.backend.jvm.serialization.JvmIrMangler
-import org.jetbrains.kotlin.ir.declarations.IrModuleFragment
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.resolve.CompilerEnvironment
 import org.jetbrains.kotlin.resolve.lazy.declarations.FileBasedDeclarationProviderFactory
@@ -85,55 +84,46 @@ class Fir2IrJvmResultsConverter(
 
         val phaseConfig = configuration.get(CLIConfigurationKeys.PHASE_CONFIG)
 
-        val dependentIrParts = mutableListOf<IrModuleFragment>()
-        lateinit var backendInput: JvmIrCodegenFactory.JvmIrBackendInput
-        lateinit var mainModuleComponents: Fir2IrComponents
-
         val generateSignatures = compilerConfigurationProvider.getCompilerConfiguration(module)
             .getBoolean(JVMConfigurationKeys.LINK_VIA_SIGNATURES)
         val commonMemberStorage = Fir2IrCommonMemberStorage(signatureComposerForJvmFir2Ir(generateSignatures), FirJvmKotlinMangler())
-        var irBuiltIns: IrBuiltInsOverFir? = null
         val diagnosticReporter = DiagnosticReporterFactory.createReporter()
 
-        for ((index, firOutputPart) in inputArtifact.partsForDependsOnModules.withIndex()) {
-            val compilerConfiguration = compilerConfigurationProvider.getCompilerConfiguration(module)
-            val fir2IrConfiguration = Fir2IrConfiguration(
-                languageVersionSettings = module.languageVersionSettings,
-                diagnosticReporter = diagnosticReporter,
-                linkViaSignatures = compilerConfiguration.getBoolean(JVMConfigurationKeys.LINK_VIA_SIGNATURES),
-                evaluatedConstTracker = compilerConfiguration
-                    .putIfAbsent(CommonConfigurationKeys.EVALUATED_CONST_TRACKER, EvaluatedConstTracker.create()),
-                inlineConstTracker = compilerConfiguration[CommonConfigurationKeys.INLINE_CONST_TRACKER],
-                expectActualTracker = compilerConfiguration[CommonConfigurationKeys.EXPECT_ACTUAL_TRACKER],
-                allowNonCachedDeclarations = false
-            )
-            val (irModuleFragment, components, pluginContext) = firOutputPart.firAnalyzerFacade.result.outputs.single().convertToIr(
-                fir2IrExtensions,
-                fir2IrConfiguration,
-                commonMemberStorage,
-                irBuiltIns,
-                irMangler,
-                FirJvmVisibilityConverter,
-                DefaultBuiltIns.Instance
-            )
-            irBuiltIns = components.irBuiltIns
+        val compilerConfiguration = compilerConfigurationProvider.getCompilerConfiguration(module)
+        val fir2IrConfiguration = Fir2IrConfiguration(
+            languageVersionSettings = module.languageVersionSettings,
+            diagnosticReporter = diagnosticReporter,
+            linkViaSignatures = compilerConfiguration.getBoolean(JVMConfigurationKeys.LINK_VIA_SIGNATURES),
+            evaluatedConstTracker = compilerConfiguration
+                .putIfAbsent(CommonConfigurationKeys.EVALUATED_CONST_TRACKER, EvaluatedConstTracker.create()),
+            inlineConstTracker = compilerConfiguration[CommonConfigurationKeys.INLINE_CONST_TRACKER],
+            expectActualTracker = compilerConfiguration[CommonConfigurationKeys.EXPECT_ACTUAL_TRACKER],
+            allowNonCachedDeclarations = false,
+            useIrFakeOverrideBuilder = module.shouldUseIrFakeOverrideBuilder(),
+        )
 
-            if (index < inputArtifact.partsForDependsOnModules.size - 1) {
-                dependentIrParts.add(irModuleFragment)
-            } else {
-                mainModuleComponents = components
-                backendInput = JvmIrCodegenFactory.JvmIrBackendInput(
-                    irModuleFragment,
-                    components.symbolTable,
-                    phaseConfig,
-                    components.irProviders,
-                    fir2IrExtensions,
-                    FirJvmBackendExtension(components, irActualizedResult = null),
-                    pluginContext,
-                    notifyCodegenStart = {},
-                )
-            }
-        }
+        val fir2irResult = inputArtifact.toFirResult().convertToIrAndActualize(
+            fir2IrExtensions,
+            fir2IrConfiguration,
+            module.irGenerationExtensions(testServices),
+            signatureComposerForJvmFir2Ir(generateSignatures),
+            irMangler,
+            FirJvmKotlinMangler(),
+            FirJvmVisibilityConverter,
+            DefaultBuiltIns.Instance,
+            ::JvmIrTypeSystemContext
+        )
+
+        val backendInput = JvmIrCodegenFactory.JvmIrBackendInput(
+            fir2irResult.irModuleFragment,
+            fir2irResult.components.symbolTable,
+            phaseConfig,
+            fir2irResult.components.irProviders,
+            fir2IrExtensions,
+            FirJvmBackendExtension(fir2irResult.components, actualizedExpectDeclarations = null),
+            fir2irResult.pluginContext,
+            notifyCodegenStart = {},
+        )
 
         val codegenFactory = JvmIrCodegenFactory(configuration, phaseConfig)
         val generationState = GenerationState.Builder(
@@ -142,22 +132,19 @@ class Fir2IrJvmResultsConverter(
         ).isIrBackend(
             true
         ).jvmBackendClassResolver(
-            FirJvmBackendClassResolver(mainModuleComponents)
+            FirJvmBackendClassResolver(fir2irResult.components)
         ).diagnosticReporter(
             diagnosticReporter
         ).build()
 
-        val result = IrBackendInput.JvmIrBackendInput(
+        return IrBackendInput.JvmIrBackendInput(
             generationState,
             codegenFactory,
             backendInput,
-            dependentIrParts,
             sourceFiles,
             descriptorMangler = commonMemberStorage.symbolTable.signaturer.mangler,
             irMangler = irMangler,
             firMangler = commonMemberStorage.firSignatureComposer.mangler,
         )
-
-        return result
     }
 }

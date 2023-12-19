@@ -1,13 +1,13 @@
 /*
- * Copyright 2010-2020 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Copyright 2010-2023 JetBrains s.r.o. and Kotlin Programming Language contributors.
  * Use of this source code is governed by the Apache 2.0 license that can be found in the license/LICENSE.txt file.
  */
 
 package org.jetbrains.kotlin.analysis.low.level.api.fir.providers
 
 import com.intellij.psi.search.GlobalSearchScope
+import org.jetbrains.kotlin.analysis.low.level.api.fir.caches.getNotNullValueForNotNullContext
 import org.jetbrains.kotlin.analysis.low.level.api.fir.file.builder.LLFirFileBuilder
-import org.jetbrains.kotlin.analysis.low.level.api.fir.project.structure.CompositeKotlinPackageProvider
 import org.jetbrains.kotlin.analysis.low.level.api.fir.resolve.extensions.LLFirResolveExtensionTool
 import org.jetbrains.kotlin.analysis.low.level.api.fir.resolve.extensions.llResolveExtensionTool
 import org.jetbrains.kotlin.analysis.low.level.api.fir.sessions.LLFirSession
@@ -16,6 +16,7 @@ import org.jetbrains.kotlin.analysis.low.level.api.fir.util.LLFirKotlinSymbolNam
 import org.jetbrains.kotlin.analysis.providers.KotlinDeclarationProvider
 import org.jetbrains.kotlin.analysis.providers.createPackageProvider
 import org.jetbrains.kotlin.analysis.providers.impl.declarationProviders.CompositeKotlinDeclarationProvider
+import org.jetbrains.kotlin.analysis.providers.impl.packageProviders.CompositeKotlinPackageProvider
 import org.jetbrains.kotlin.builtins.StandardNames
 import org.jetbrains.kotlin.config.AnalysisFlags
 import org.jetbrains.kotlin.fir.caches.firCachesFactory
@@ -62,14 +63,14 @@ internal class LLFirProviderHelper(
         )
     )
 
-    private val packageProvider = CompositeKotlinPackageProvider.create(
+    val packageProvider = CompositeKotlinPackageProvider.create(
         listOfNotNull(
             firSession.project.createPackageProvider(searchScope),
             extensionTool?.packageProvider,
         )
     )
 
-    private val allowKotlinPackage = canContainKotlinPackage ||
+    val allowKotlinPackage: Boolean = canContainKotlinPackage ||
             firSession.languageVersionSettings.getFlag(AnalysisFlags.allowKotlinPackage)
 
     private val classifierByClassId =
@@ -101,10 +102,7 @@ internal class LLFirProviderHelper(
     val symbolNameCache = FirCompositeCachedSymbolNamesProvider.create(
         firSession,
         listOfNotNull(
-            object : LLFirKotlinSymbolNamesProvider(declarationProvider) {
-                // This is a temporary workaround for KTIJ-25536.
-                override fun getPackageNamesWithTopLevelCallables(): Set<String>? = null
-            },
+            LLFirKotlinSymbolNamesProvider(declarationProvider, allowKotlinPackage),
             extensionTool?.symbolNamesProvider,
         )
     )
@@ -115,12 +113,7 @@ internal class LLFirProviderHelper(
     ): FirClassLikeDeclaration? {
         if (classId.isLocal) return null
         if (!allowKotlinPackage && classId.isKotlinPackage()) return null
-        return classifierByClassId.getValue(classId, classLikeDeclaration)
-    }
-
-    fun getTopLevelClassNamesInPackage(packageFqName: FqName): Set<Name> {
-        if (!allowKotlinPackage && packageFqName.isKotlinPackage()) return emptySet()
-        return declarationProvider.getTopLevelKotlinClassLikeDeclarationNamesInPackage(packageFqName)
+        return classifierByClassId.getNotNullValueForNotNullContext(classId, classLikeDeclaration)
     }
 
     fun getTopLevelCallableSymbols(packageFqName: FqName, name: Name): List<FirCallableSymbol<*>> {

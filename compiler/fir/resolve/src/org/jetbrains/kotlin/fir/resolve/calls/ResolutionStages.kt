@@ -9,6 +9,7 @@ import org.jetbrains.kotlin.config.LanguageFeature
 import org.jetbrains.kotlin.descriptors.Modality
 import org.jetbrains.kotlin.fir.FirElement
 import org.jetbrains.kotlin.fir.declarations.*
+import org.jetbrains.kotlin.fir.declarations.utils.isFun
 import org.jetbrains.kotlin.fir.declarations.utils.isInfix
 import org.jetbrains.kotlin.fir.declarations.utils.isOperator
 import org.jetbrains.kotlin.fir.declarations.utils.modality
@@ -19,13 +20,15 @@ import org.jetbrains.kotlin.fir.references.FirSuperReference
 import org.jetbrains.kotlin.fir.references.FirThisReference
 import org.jetbrains.kotlin.fir.resolve.directExpansionType
 import org.jetbrains.kotlin.fir.resolve.fullyExpandedType
-import org.jetbrains.kotlin.fir.resolve.inference.ConeTypeParameterBasedTypeVariable
-import org.jetbrains.kotlin.fir.resolve.inference.ResolvedCallableReferenceAtom
-import org.jetbrains.kotlin.fir.resolve.inference.csBuilder
-import org.jetbrains.kotlin.fir.resolve.inference.hasBuilderInferenceAnnotation
+import org.jetbrains.kotlin.fir.resolve.inference.*
 import org.jetbrains.kotlin.fir.resolve.inference.model.ConeExplicitTypeParameterConstraintPosition
 import org.jetbrains.kotlin.fir.resolve.toSymbol
-import org.jetbrains.kotlin.fir.scopes.*
+import org.jetbrains.kotlin.fir.scopes.FirTypeScope
+import org.jetbrains.kotlin.fir.scopes.FirUnstableSmartcastTypeScope
+import org.jetbrains.kotlin.fir.scopes.ProcessorAction
+import org.jetbrains.kotlin.fir.scopes.impl.typeAliasForConstructor
+import org.jetbrains.kotlin.fir.scopes.processOverriddenFunctions
+import org.jetbrains.kotlin.fir.symbols.ConeTypeParameterLookupTag
 import org.jetbrains.kotlin.fir.symbols.FirBasedSymbol
 import org.jetbrains.kotlin.fir.symbols.SyntheticSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.*
@@ -58,7 +61,7 @@ internal object CheckExplicitReceiverConsistency : ResolutionStage() {
         when (receiverKind) {
             NO_EXPLICIT_RECEIVER -> {
                 if (explicitReceiver != null && explicitReceiver !is FirResolvedQualifier && !explicitReceiver.isSuperReferenceExpression()) {
-                    return sink.yieldDiagnostic(InapplicableWrongReceiver(actualType = explicitReceiver.typeRef.coneTypeSafe()))
+                    return sink.yieldDiagnostic(InapplicableWrongReceiver(actualType = explicitReceiver.resolvedType))
                 }
             }
             EXTENSION_RECEIVER, DISPATCH_RECEIVER -> {
@@ -122,6 +125,23 @@ object CheckExtensionReceiver : ResolutionStage() {
             isDispatch = false,
         )
 
+        candidate.chosenExtensionReceiver = receiver.expression
+
+        val checkBuilderInferenceRestriction =
+            !context.session.languageVersionSettings
+                .supportsFeature(LanguageFeature.NoBuilderInferenceWithoutAnnotationRestriction)
+        if (checkBuilderInferenceRestriction) {
+            val resolvedType = receiver.expression.resolvedType
+            if (resolvedType is ConeStubTypeForChainInference) {
+                val typeVariable = resolvedType.constructor.variable
+                sink.yieldDiagnostic(
+                    StubBuilderInferenceReceiver(
+                        (typeVariable.typeConstructor.originalTypeParameter as ConeTypeParameterLookupTag).typeParameterSymbol
+                    )
+                )
+            }
+        }
+
         sink.yieldIfNeed()
     }
 
@@ -137,7 +157,7 @@ private fun Candidate.prepareReceivers(
     context: ResolutionContext,
 ): ReceiverDescription {
     val argumentType = captureFromTypeParameterUpperBoundIfNeeded(
-        argumentType = argumentExtensionReceiver.typeRef.coneType,
+        argumentType = argumentExtensionReceiver.resolvedType,
         expectedType = expectedType,
         session = context.session
     ).let { prepareCapturedType(it, context) }
@@ -160,8 +180,16 @@ object CheckDispatchReceiver : ResolutionStage() {
             }
         }
 
-        val dispatchReceiverValueType = candidate.dispatchReceiver?.typeRef?.coneType ?: return
-        val isReceiverNullable = !AbstractNullabilityChecker.isSubtypeOfAny(context.session.typeContext, dispatchReceiverValueType)
+        val dispatchReceiverValueType = candidate.dispatchReceiver?.resolvedType ?: return
+
+        // TODO (KT-63959): Actually, we should treat stub types as non-nullable for the isReceiverNullable check
+        // Otherwise, we won't able to resolve to member toString/hashCode due to UnsafeCall error
+        // It was possible in K1, due to the fact that K1 doesn't use AbstractNullabilityChecker directly
+        // But, AbstractNullabilityChecker.isSubtypeOfAny doesn't respect stubTypeEqualToAnything
+        val isStubType = dispatchReceiverValueType is ConeStubTypeForChainInference
+        val isReceiverNullable =
+            !AbstractNullabilityChecker.isSubtypeOfAny(context.session.typeContext, dispatchReceiverValueType) && !isStubType
+
 
         val isCandidateFromUnstableSmartcast =
             (candidate.originScope as? FirUnstableSmartcastTypeScope)?.isSymbolFromUnstableSmartcast(candidate.symbol) == true
@@ -187,7 +215,10 @@ object CheckDispatchReceiver : ResolutionStage() {
                 UnstableSmartCast(
                     smartcastedReceiver,
                     targetType,
-                    context.session.typeContext.isTypeMismatchDueToNullability(smartcastedReceiver.originalExpression.typeRef.coneType, targetType)
+                    context.session.typeContext.isTypeMismatchDueToNullability(
+                        smartcastedReceiver.originalExpression.resolvedType,
+                        targetType
+                    )
                 )
             )
         } else if (isReceiverNullable) {
@@ -269,7 +300,7 @@ object CheckDslScopeViolation : ResolutionStage() {
                     candidate,
                     sink,
                     context,
-                    { getDslMarkersOfImplicitReceiver(thisReference.boundSymbol, receiver.typeRef.coneType, context) }
+                    { getDslMarkersOfImplicitReceiver(thisReference.boundSymbol, receiver.resolvedType, context) }
                 ) {
                     // Here we rely on the fact that receiver expression of implicit receiver value can not be changed
                     //   during resolution of one single call
@@ -307,7 +338,7 @@ object CheckDslScopeViolation : ResolutionStage() {
         // ```
         // `useX()` is a call to `invoke` with `useX` as the dispatch receiver. In the FIR tree, extension receiver is represented as an
         // implicit `this` expression passed as the first argument.
-        if (candidate.dispatchReceiver?.typeRef?.coneType?.fullyExpandedType(context.session)?.isSomeFunctionType(context.session) == true &&
+        if (candidate.dispatchReceiver?.resolvedType?.fullyExpandedType(context.session)?.isSomeFunctionType(context.session) == true &&
             (candidate.symbol as? FirNamedFunctionSymbol)?.name == OperatorNameConventions.INVOKE
         ) {
             val firstArg = candidate.argumentMapping?.keys?.firstOrNull() as? FirThisReceiverExpression ?: return
@@ -376,7 +407,7 @@ object CheckDslScopeViolation : ResolutionStage() {
 
     private fun FirThisReceiverExpression.getDslMarkersOfThisReceiverExpression(context: ResolutionContext): Set<ClassId> {
         return buildSet {
-            collectDslMarkerAnnotations(context, typeRef.coneType)
+            collectDslMarkerAnnotations(context, resolvedType)
         }
     }
 
@@ -461,12 +492,17 @@ internal object CheckArguments : CheckerStage() {
         candidate.symbol.lazyResolveToPhase(FirResolvePhase.STATUS)
         val argumentMapping =
             candidate.argumentMapping ?: error("Argument should be already mapped while checking arguments!")
-        for (argument in callInfo.arguments) {
+
+        val isInvokeFromExtensionFunctionType = candidate.explicitReceiverKind == DISPATCH_RECEIVER
+                && candidate.dispatchReceiver?.resolvedType?.isExtensionFunctionType == true
+                && (candidate.symbol as? FirNamedFunctionSymbol)?.name == OperatorNameConventions.INVOKE
+
+        for ((index, argument) in callInfo.arguments.withIndex()) {
             candidate.resolveArgument(
                 callInfo,
                 argument,
                 argumentMapping[argument],
-                isReceiver = false,
+                isReceiver = index == 0 && isInvokeFromExtensionFunctionType,
                 sink = sink,
                 context = context
             )
@@ -477,8 +513,17 @@ internal object CheckArguments : CheckerStage() {
                 sink.yieldDiagnostic(InapplicableCandidate)
             }
 
+            // Logic description: only candidates from Kotlin, but using Java SAM types, are discriminated
             candidate.usesSAM && !candidate.isJavaApplicableCandidate() -> {
-                sink.markCandidateForCompatibilityResolve(context)
+                if (argumentMapping.values.any {
+                        val coneType = it.returnTypeRef.coneType
+                        context.bodyResolveComponents.samResolver.isSamType(coneType) &&
+                                // Candidate is not from Java, so no flexible types are possible here
+                                coneType.toRegularClassSymbol(context.session)?.isJavaOrEnhancement == true
+                    }
+                ) {
+                    sink.markCandidateForCompatibilityResolve(context)
+                }
             }
         }
     }
@@ -574,6 +619,13 @@ internal object CheckVisibility : CheckerStage() {
                     sink.yieldDiagnostic(VisibilityError)
                 }
             }
+
+            val typeAlias = declaration.typeAliasForConstructor
+            if (typeAlias != null) {
+                if (!visibilityChecker.isVisible(typeAlias.fir, candidate)) {
+                    sink.yieldDiagnostic(VisibilityError)
+                }
+            }
         }
     }
 }
@@ -631,8 +683,17 @@ internal object PostponedVariablesInitializerResolutionStage : ResolutionStage()
     override suspend fun check(candidate: Candidate, callInfo: CallInfo, sink: CheckerSink, context: ResolutionContext) {
         val argumentMapping = candidate.argumentMapping ?: return
         if (candidate.typeArgumentMapping is TypeArgumentMapping.Mapped) return
-        for (parameter in argumentMapping.values) {
+
+        val atomsToMark = mutableSetOf<FirAnonymousFunction>()
+
+        for ((argument, parameter) in argumentMapping) {
             if (!parameter.hasBuilderInferenceAnnotation(context.session)) continue
+            val unwrapped = argument.unwrapArgument()
+            if (unwrapped is FirAnonymousFunctionExpression) {
+                atomsToMark.add(unwrapped.anonymousFunction)
+            }
+
+            // TODO (KT-63958): This is effectively dead-code, since UseBuilderInferenceOnlyIfNeeded is always enabled
             val type = parameter.returnTypeRef.coneType
             val receiverType = type.receiverType(callInfo.session) ?: continue
             val dontUseBuilderInferenceIfPossible =
@@ -651,26 +712,49 @@ internal object PostponedVariablesInitializerResolutionStage : ResolutionStage()
                 }
             }
         }
+
+        candidate.postponedAtoms.forEach { postponedAtomContainer ->
+            when (postponedAtomContainer) {
+                is ResolvedLambdaAtom -> {
+                    if (postponedAtomContainer.atom in atomsToMark) {
+                        postponedAtomContainer.isCorrespondingParameterAnnotatedWithBuilderInference = true
+                    }
+                }
+                is LambdaWithTypeVariableAsExpectedTypeAtom -> {
+                    // Although, one may annotate fun foo(@BuilderInference t: T)
+                    // it makes little sense
+                }
+                is ResolvedCallableReferenceAtom -> {
+                    // Builder inference doesn't apply to such atoms.
+                }
+            }
+        }
     }
 }
 
 internal object CheckCallModifiers : CheckerStage() {
     override suspend fun check(candidate: Candidate, callInfo: CallInfo, sink: CheckerSink, context: ResolutionContext) {
         if (callInfo.callSite is FirFunctionCall) {
-            val functionSymbol = candidate.symbol as? FirNamedFunctionSymbol ?: return
-            when {
-                callInfo.callSite.origin == FirFunctionCallOrigin.Infix && !functionSymbol.fir.isInfix ->
-                    sink.reportDiagnostic(InfixCallOfNonInfixFunction(functionSymbol))
-                callInfo.callSite.origin == FirFunctionCallOrigin.Operator && !functionSymbol.fir.isOperator ->
-                    sink.reportDiagnostic(OperatorCallOfNonOperatorFunction(functionSymbol))
-                callInfo.isImplicitInvoke && !functionSymbol.fir.isOperator ->
-                    sink.reportDiagnostic(OperatorCallOfNonOperatorFunction(functionSymbol))
+            when (val functionSymbol = candidate.symbol) {
+                is FirNamedFunctionSymbol -> when {
+                    callInfo.callSite.origin == FirFunctionCallOrigin.Infix && !functionSymbol.fir.isInfix ->
+                        sink.reportDiagnostic(InfixCallOfNonInfixFunction(functionSymbol))
+                    callInfo.callSite.origin == FirFunctionCallOrigin.Operator && !functionSymbol.fir.isOperator ->
+                        sink.reportDiagnostic(OperatorCallOfNonOperatorFunction(functionSymbol))
+                    callInfo.isImplicitInvoke && !functionSymbol.fir.isOperator ->
+                        sink.reportDiagnostic(OperatorCallOfNonOperatorFunction(functionSymbol))
+                }
+                is FirConstructorSymbol -> {
+                    if (callInfo.callSite.origin == FirFunctionCallOrigin.Operator) {
+                        sink.reportDiagnostic(OperatorCallOfConstructor(functionSymbol))
+                    }
+                }
             }
         }
     }
 }
 
-internal object CheckDeprecatedSinceKotlin : ResolutionStage() {
+internal object CheckHiddenDeclaration : ResolutionStage() {
     override suspend fun check(candidate: Candidate, callInfo: CallInfo, sink: CheckerSink, context: ResolutionContext) {
         val symbol = candidate.symbol as? FirCallableSymbol<*> ?: return
         val deprecation = symbol.getDeprecation(context.session, callInfo.callSite)
@@ -684,15 +768,15 @@ internal object CheckDeprecatedSinceKotlin : ResolutionStage() {
         callInfo: CallInfo,
         candidate: Candidate,
     ): Boolean {
-        if (callInfo.callSite.isSuperCall()) return false
+        val isSuperCall = callInfo.callSite.isSuperCall()
         if (symbol.fir.dispatchReceiverType == null || symbol !is FirNamedFunctionSymbol) return false
-        if (symbol.fir.isHiddenEverywhereBesideSuperCalls == true) return true
+        if (symbol.isHidden(isSuperCall)) return true
 
         val scope = candidate.originScope as? FirTypeScope ?: return false
 
         var result = false
         scope.processOverriddenFunctions(symbol) {
-            if (it.fir.isHiddenEverywhereBesideSuperCalls == true) {
+            if (it.isHidden(isSuperCall)) {
                 result = true
                 ProcessorAction.STOP
             } else {
@@ -705,6 +789,11 @@ internal object CheckDeprecatedSinceKotlin : ResolutionStage() {
 
     private fun FirElement.isSuperCall(): Boolean =
         this is FirQualifiedAccessExpression && explicitReceiver?.calleeReference is FirSuperReference
+
+    private fun FirCallableSymbol<*>.isHidden(isSuperCall: Boolean): Boolean {
+        val fir = fir
+        return !isSuperCall && fir.isHiddenEverywhereBesideSuperCalls == true || fir.isHiddenToOvercomeSignatureClash == true
+    }
 }
 
 private val DYNAMIC_EXTENSION_ANNOTATION_CLASS_ID: ClassId = ClassId.topLevel(DYNAMIC_EXTENSION_FQ_NAME)
@@ -713,7 +802,7 @@ internal object ProcessDynamicExtensionAnnotation : ResolutionStage() {
     override suspend fun check(candidate: Candidate, callInfo: CallInfo, sink: CheckerSink, context: ResolutionContext) {
         if (candidate.symbol.origin === FirDeclarationOrigin.DynamicScope) return
         val extensionReceiver = candidate.chosenExtensionReceiver ?: return
-        val argumentIsDynamic = extensionReceiver.typeRef.coneType is ConeDynamicType
+        val argumentIsDynamic = extensionReceiver.resolvedType is ConeDynamicType
         val parameterIsDynamic = (candidate.symbol as? FirCallableSymbol)?.resolvedReceiverTypeRef?.type is ConeDynamicType
         if (parameterIsDynamic != argumentIsDynamic ||
             parameterIsDynamic && !candidate.symbol.hasAnnotation(DYNAMIC_EXTENSION_ANNOTATION_CLASS_ID, context.session)
@@ -728,7 +817,7 @@ internal object LowerPriorityIfDynamic : ResolutionStage() {
         when {
             candidate.symbol.origin is FirDeclarationOrigin.DynamicScope ->
                 candidate.addDiagnostic(LowerPriorityForDynamic)
-            candidate.callInfo.isImplicitInvoke && candidate.callInfo.explicitReceiver?.typeRef?.coneTypeSafe<ConeDynamicType>() != null ->
+            candidate.callInfo.isImplicitInvoke && candidate.callInfo.explicitReceiver?.resolvedType is ConeDynamicType ->
                 candidate.addDiagnostic(LowerPriorityForDynamic)
         }
     }
@@ -740,6 +829,15 @@ internal object ConstraintSystemForks : ResolutionStage() {
 
         candidate.system.checkIfForksMightBeSuccessfullyResolved()?.let { csError ->
             sink.yieldDiagnostic(InferenceError(csError))
+        }
+    }
+}
+
+internal object TypeParameterAsCallable : ResolutionStage() {
+    override suspend fun check(candidate: Candidate, callInfo: CallInfo, sink: CheckerSink, context: ResolutionContext) {
+        val symbol = candidate.symbol
+        if (symbol is FirTypeParameterSymbol && !(callInfo.isUsedAsGetClassReceiver && symbol.isReified)) {
+            sink.yieldDiagnostic(TypeParameterAsExpression)
         }
     }
 }

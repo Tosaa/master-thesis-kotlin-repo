@@ -8,6 +8,6 @@ expect class Foo
 -- JVM --
 Exit code: COMPILATION_ERROR
 Output:
-compiler/testData/multiplatform/weakIncompatibilityWithoutActualModifier/jvm.kt:1:11: error: declaration must be marked with 'actual'
+compiler/testData/multiplatform/weakIncompatibilityWithoutActualModifier/jvm.kt:1:11: error: declaration must be marked with 'actual'.
 interface Foo
           ^

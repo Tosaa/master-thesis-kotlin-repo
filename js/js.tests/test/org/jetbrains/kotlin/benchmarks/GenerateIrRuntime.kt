@@ -26,6 +26,7 @@ import org.jetbrains.kotlin.cli.jvm.compiler.EnvironmentConfigFiles
 import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment
 import org.jetbrains.kotlin.config.*
 import org.jetbrains.kotlin.descriptors.impl.ModuleDescriptorImpl
+import org.jetbrains.kotlin.diagnostics.DiagnosticReporterFactory
 import org.jetbrains.kotlin.incremental.ChangedFiles
 import org.jetbrains.kotlin.incremental.IncrementalJsCompilerRunner
 import org.jetbrains.kotlin.incremental.multiproject.EmptyModulesApiHistory
@@ -36,6 +37,7 @@ import org.jetbrains.kotlin.ir.backend.js.*
 import org.jetbrains.kotlin.ir.backend.js.lower.serialization.ir.JsIrLinker
 import org.jetbrains.kotlin.ir.backend.js.lower.serialization.ir.JsIrModuleSerializer
 import org.jetbrains.kotlin.ir.backend.js.lower.serialization.ir.JsManglerDesc
+import org.jetbrains.kotlin.ir.backend.js.lower.serialization.ir.collectExportedNames
 import org.jetbrains.kotlin.ir.backend.js.transformers.irToJs.IrModuleToJsTransformer
 import org.jetbrains.kotlin.ir.backend.js.transformers.irToJs.TranslationMode
 import org.jetbrains.kotlin.ir.declarations.IrModuleFragment
@@ -480,7 +482,7 @@ class GenerateIrRuntime {
         val irProviders = listOf(irLinker)
 
         val psi2IrTranslator = Psi2IrTranslator(languageVersionSettings, psi2IrContext.configuration, messageLogger::checkNoUnboundSymbols)
-        return psi2IrTranslator.generateModuleFragment(psi2IrContext, files, irProviders, emptyList(), null)
+        return psi2IrTranslator.generateModuleFragment(psi2IrContext, files, irProviders, emptyList())
     }
 
     @OptIn(ExperimentalPathApi::class)
@@ -490,17 +492,18 @@ class GenerateIrRuntime {
         files: List<KtFile>,
         perFile: Boolean = false
     ): String {
+        val diagnosticReporter = DiagnosticReporterFactory.createPendingReporter()
         val tmpKlibDir = createTempDirectory().also { it.toFile().deleteOnExit() }.toString()
         val metadataSerializer = KlibMetadataIncrementalSerializer(configuration, project, false)
         serializeModuleIntoKlib(
             moduleName,
             configuration,
             IrMessageLogger.None,
+            diagnosticReporter,
             files.map(::KtPsiSourceFile),
             tmpKlibDir,
             emptyList(),
             moduleFragment,
-            mutableMapOf(),
             emptyList(),
             true,
             perFile,
@@ -529,9 +532,7 @@ class GenerateIrRuntime {
         val serializedIr = JsIrModuleSerializer(
             IrMessageLogger.None,
             module.irBuiltins,
-            mutableMapOf(),
             CompatibilityMode.CURRENT,
-            skipExpects = true,
             normalizeAbsolutePaths = false,
             emptyList(),
             configuration.languageVersionSettings,
@@ -604,14 +605,15 @@ class GenerateIrRuntime {
             symbolTable,
             additionalExportedDeclarationNames = emptySet(),
             keep = emptySet(),
-            configuration
+            configuration,
+            null
         )
 
         ExternalDependenciesGenerator(symbolTable, listOf(jsLinker)).generateUnboundSymbolsAsDependencies()
 
-        jsPhases.invokeToplevel(phaseConfig, context, listOf(module))
+        jsPhases.invokeToplevel(phaseConfig, context, module)
 
-        val transformer = IrModuleToJsTransformer(context, null)
+        val transformer = IrModuleToJsTransformer(context, shouldReferMainFunction = false)
 
         return transformer.generateModule(listOf(module), setOf(TranslationMode.PER_MODULE_DEV), false)
     }

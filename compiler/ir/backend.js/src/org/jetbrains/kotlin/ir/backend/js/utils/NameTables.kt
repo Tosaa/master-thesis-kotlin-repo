@@ -5,6 +5,7 @@
 
 package org.jetbrains.kotlin.ir.backend.js.utils
 
+import org.jetbrains.kotlin.descriptors.DescriptorVisibilities.INTERNAL
 import org.jetbrains.kotlin.ir.IrElement
 import org.jetbrains.kotlin.ir.backend.js.JsIrBackendContext
 import org.jetbrains.kotlin.ir.backend.js.JsLoweredDeclarationOrigin
@@ -26,24 +27,6 @@ import java.util.*
 import kotlin.collections.set
 import kotlin.math.abs
 
-// TODO remove direct usages of [mapToKey] from [NameTable] & co and move it to scripting & REPL infrastructure. Review usages.
-private fun <T> mapToKey(declaration: T): String {
-    return with(JsManglerIr) {
-        if (declaration is IrDeclaration) {
-            try {
-                declaration.hashedMangle(compatibleMode = false).toString()
-            } catch (e: Throwable) {
-                // FIXME: We can't mangle some local declarations. But
-                "wrong_key"
-            }
-        } else if (declaration is String) {
-            declaration.hashMangle.toString()
-        } else {
-            error("Key is not generated for " + declaration?.let { it::class.simpleName })
-        }
-    }
-}
-
 abstract class NameScope {
     abstract fun isReserved(name: String): Boolean
 
@@ -55,7 +38,6 @@ abstract class NameScope {
 class NameTable<T>(
     val parent: NameScope = EmptyScope,
     val reserved: MutableSet<String> = mutableSetOf(),
-    val mappedNames: MutableMap<String, String>? = null,
 ) : NameScope() {
     val names = mutableMapOf<T, String>()
 
@@ -68,7 +50,6 @@ class NameTable<T>(
     fun declareStableName(declaration: T, name: String) {
         names[declaration] = name
         reserved.add(name)
-        mappedNames?.set(mapToKey(declaration), name)
     }
 
     fun declareFreshName(declaration: T, suggestedName: String): String {
@@ -123,11 +104,27 @@ private fun List<IrType>.joinTypes(context: JsIrBackendContext): String {
     return joinToString("$", "$") { superType -> superType.asString(context) }
 }
 
+private fun IrFunction.findOriginallyContainingModule(): IrModuleFragment? {
+    if (JsLoweredDeclarationOrigin.isBridgeDeclarationOrigin(origin)) {
+        val thisSimpleFunction = this as? IrSimpleFunction ?: error("Bridge must be IrSimpleFunction")
+        val bridgeFrom = thisSimpleFunction.overriddenSymbols.firstOrNull() ?: error("Couldn't find the overridden function for the bridge")
+        return bridgeFrom.owner.findOriginallyContainingModule()
+    }
+    return (getPackageFragment() as? IrFile)?.module
+}
+
 fun calculateJsFunctionSignature(declaration: IrFunction, context: JsIrBackendContext): String {
     val declarationName = declaration.nameIfPropertyAccessor() ?: declaration.getJsNameOrKotlinName().asString()
 
     val nameBuilder = StringBuilder()
     nameBuilder.append(declarationName)
+
+    if (declaration.visibility === INTERNAL && declaration.parentClassOrNull != null) {
+        val containingModule = declaration.findOriginallyContainingModule()
+        if (containingModule != null) {
+            nameBuilder.append("_\$m_").append(containingModule.name.toString())
+        }
+    }
 
     // TODO should we skip type parameters and use upper bound of type parameter when print type of value parameters?
     declaration.typeParameters.ifNotEmpty {

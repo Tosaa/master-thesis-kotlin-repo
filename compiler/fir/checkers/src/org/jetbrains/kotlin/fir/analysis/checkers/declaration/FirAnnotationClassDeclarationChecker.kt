@@ -18,8 +18,8 @@ import org.jetbrains.kotlin.fir.analysis.checkers.*
 import org.jetbrains.kotlin.fir.analysis.checkers.context.CheckerContext
 import org.jetbrains.kotlin.fir.analysis.diagnostics.*
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors.CYCLE_IN_ANNOTATION_PARAMETER
-import org.jetbrains.kotlin.fir.analysis.getRetention
-import org.jetbrains.kotlin.fir.analysis.getRetentionAnnotation
+import org.jetbrains.kotlin.fir.declarations.getRetention
+import org.jetbrains.kotlin.fir.declarations.getRetentionAnnotation
 import org.jetbrains.kotlin.fir.declarations.*
 import org.jetbrains.kotlin.fir.declarations.utils.isLocal
 import org.jetbrains.kotlin.fir.declarations.utils.isSynthetic
@@ -67,7 +67,7 @@ object FirAnnotationClassDeclarationChecker : FirRegularClassChecker() {
                         reporter.reportOn(source, FirErrors.VAR_ANNOTATION_PARAMETER, context)
                     }
                     val defaultValue = parameter.defaultValue
-                    if (defaultValue != null && checkConstantArguments(defaultValue, context.session) != null) {
+                    if (defaultValue != null && !canBeEvaluatedAtCompileTime(defaultValue, context.session)) {
                         reporter.reportOn(defaultValue.source, FirErrors.ANNOTATION_PARAMETER_DEFAULT_VALUE_MUST_BE_CONSTANT, context)
                     }
 
@@ -168,7 +168,7 @@ object FirAnnotationClassDeclarationChecker : FirRegularClassChecker() {
     }
 
     private fun checkCyclesInParameters(annotation: FirRegularClassSymbol, context: CheckerContext, reporter: DiagnosticReporter) {
-        val primaryConstructor = annotation.primaryConstructorSymbol() ?: return
+        val primaryConstructor = annotation.primaryConstructorSymbol(context.session) ?: return
         val checker = CycleChecker(annotation, context.session)
         for (valueParameter in primaryConstructor.valueParameterSymbols) {
             if (checker.parameterHasCycle(annotation, valueParameter)) {
@@ -182,7 +182,7 @@ object FirAnnotationClassDeclarationChecker : FirRegularClassChecker() {
         private val annotationsWithCycle = mutableSetOf(targetAnnotation)
 
         fun annotationHasCycle(annotation: FirRegularClassSymbol): Boolean {
-            val primaryConstructor = annotation.primaryConstructorSymbol() ?: return false
+            val primaryConstructor = annotation.primaryConstructorSymbol(session) ?: return false
             for (valueParameter in primaryConstructor.valueParameterSymbols) {
                 if (parameterHasCycle(annotation, valueParameter)) return true
             }

@@ -6,7 +6,6 @@
 package org.jetbrains.kotlin.gradle.native
 
 import org.gradle.api.JavaVersion
-import org.gradle.testkit.runner.BuildResult
 import org.gradle.util.GradleVersion
 import org.jetbrains.kotlin.gradle.testbase.*
 import org.jetbrains.kotlin.gradle.util.replaceText
@@ -355,7 +354,7 @@ class AppleFrameworkIT : KGPBaseTest() {
                 .appendText("this can't be compiled")
 
             buildAndFail(":shared:embedAndSignAppleFrameworkForXcode", environmentVariables = environmentVariables) {
-                assertOutputContains("/sharedAppleFramework/shared/src/commonMain/kotlin/com/github/jetbrains/myapplication/Greeting.kt:7:2: error: Expecting a top level declaration")
+                assertOutputContains("/sharedAppleFramework/shared/src/commonMain/kotlin/com/github/jetbrains/myapplication/Greeting.kt:7:2: error: Syntax error: Expecting a top level declaration")
                 assertOutputContains("error: Compilation finished with errors")
             }
         }
@@ -419,7 +418,7 @@ class AppleFrameworkIT : KGPBaseTest() {
                 "-Pkotlin.native.useXcodeMessageStyle=true",
                 environmentVariables = environmentVariables
             ) {
-                assertOutputContains("/sharedAppleFramework/shared/src/commonMain/kotlin/com/github/jetbrains/myapplication/Greeting.kt:7:2: error: Expecting a top level declaration")
+                assertOutputContains("/sharedAppleFramework/shared/src/commonMain/kotlin/com/github/jetbrains/myapplication/Greeting.kt:7:2: error: Syntax error: Expecting a top level declaration")
                 assertOutputContains("error: Compilation finished with errors")
             }
         }
@@ -453,7 +452,7 @@ class AppleFrameworkIT : KGPBaseTest() {
                 "-Pkotlin.native.disableCompilerDaemon=true",
                 environmentVariables = environmentVariables
             ) {
-                assertOutputContains("/sharedAppleFramework/shared/src/commonMain/kotlin/com/github/jetbrains/myapplication/Greeting.kt:7:2: error: Expecting a top level declaration")
+                assertOutputContains("/sharedAppleFramework/shared/src/commonMain/kotlin/com/github/jetbrains/myapplication/Greeting.kt:7:2: error: Syntax error: Expecting a top level declaration")
             }
         }
     }
@@ -486,32 +485,23 @@ class AppleFrameworkIT : KGPBaseTest() {
                 ":iosApp:dependencyInsight", "--configuration", configuration, "--dependency", "iosLib"
             )
 
-            fun variant(variantName: String) =
-                if (gradleVersion >= GradleVersion.version(TestVersions.Gradle.G_7_5)) {
-                    "Variant $variantName"
-                } else {
-                    "variant \"$variantName\""
-                }
-
-            fun BuildResult.assertContainsVariant(variantName: String) = assertOutputContains(variant(variantName))
-
             subProject("iosApp").buildGradleKts.replaceText("<applePluginTestVersion>", "\"${TestVersions.AppleGradlePlugin.V222_0_21}\"")
 
             build(*dependencyInsight("iosAppIosX64DebugImplementation")) {
-                assertContainsVariant("mainDynamicDebugFrameworkIos")
+                assertOutputContainsNativeFrameworkVariant("mainDynamicDebugFrameworkIos", gradleVersion)
             }
 
             build(*dependencyInsight("iosAppIosX64ReleaseImplementation")) {
-                assertContainsVariant("mainDynamicReleaseFrameworkIos")
+                assertOutputContainsNativeFrameworkVariant("mainDynamicReleaseFrameworkIos", gradleVersion)
             }
 
             // NB: '0' is required at the end since dependency is added with custom attribute, and it creates new configuration
             build(*dependencyInsight("iosAppIosX64DebugImplementation0"), "-PmultipleFrameworks") {
-                assertContainsVariant("mainStaticDebugFrameworkIos")
+                assertOutputContainsNativeFrameworkVariant("mainStaticDebugFrameworkIos", gradleVersion)
             }
 
             build(*dependencyInsight("iosAppIosX64ReleaseImplementation0"), "-PmultipleFrameworks") {
-                assertOutputDoesNotContain(variant("mainStaticReleaseFrameworkIos"))
+                assertOutputDoesNotContain("mainStaticReleaseFrameworkIos")
             }
         }
     }

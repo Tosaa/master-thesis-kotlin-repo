@@ -277,7 +277,7 @@ private fun BodyResolveComponents.createExplicitReceiverForInvoke(
     candidate: Candidate,
     info: CallInfo,
     invokeBuiltinExtensionMode: Boolean,
-    extensionReceiverExpression: FirExpression
+    extensionReceiverExpression: FirExpression?
 ): FirExpression? {
     return when (val symbol = candidate.symbol) {
         is FirCallableSymbol<*> -> createExplicitReceiverForInvokeByCallable(
@@ -300,17 +300,18 @@ private fun BodyResolveComponents.createExplicitReceiverForInvokeByCallable(
     candidate: Candidate,
     info: CallInfo,
     invokeBuiltinExtensionMode: Boolean,
-    extensionReceiverExpression: FirExpression,
+    extensionReceiverExpression: FirExpression?,
     symbol: FirCallableSymbol<*>
 ): FirExpression {
     return FirPropertyAccessExpressionBuilder().apply {
+        val fakeSource = info.fakeSourceForImplicitInvokeCallReceiver
         calleeReference = FirNamedReferenceWithCandidate(
-            null,
+            fakeSource,
             symbol.callableId.callableName,
             candidate
         )
         dispatchReceiver = candidate.dispatchReceiverExpression()
-        this.typeRef = returnTypeCalculator.tryCalculateReturnType(symbol.fir)
+        coneTypeOrNull = returnTypeCalculator.tryCalculateReturnType(symbol.fir).type
 
         if (!invokeBuiltinExtensionMode) {
             extensionReceiver = extensionReceiverExpression
@@ -321,7 +322,7 @@ private fun BodyResolveComponents.createExplicitReceiverForInvokeByCallable(
         if (candidate.currentApplicability == CandidateApplicability.K2_PROPERTY_AS_OPERATOR) {
             nonFatalDiagnostics.add(ConePropertyAsOperator(candidate.symbol as FirPropertySymbol))
         }
-        source = info.fakeSourceForImplicitInvokeCallReceiver
+        source = fakeSource
     }.build().let {
         callCompleter.completeCall(it, ResolutionMode.ReceiverResolution)
     }.let {
@@ -441,6 +442,22 @@ private class InvokeFunctionResolveTask(
                 info.withReceiverAsArgument(implicitReceiverValue.receiverExpression), towerGroup,
                 ExplicitReceiverKind.DISPATCH_RECEIVER
             )
+        }
+        for ((depth, contextReceiverGroup) in towerDataElementsForName.contextReceiverGroups) {
+            val towerGroup =
+                TowerGroup
+                    .ContextReceiverGroup(depth)
+                    .InvokeExtensionWithImplicitReceiver
+                    .withGivenInvokeReceiverGroup(InvokeResolvePriority.INVOKE_EXTENSION)
+            val towerLevel = invokeReceiverValue.toMemberScopeTowerLevel()
+            // TODO: resolve for all receivers in the group, but implement the ambiguity diagnostics first. See KT-62712 and KT-69709
+            contextReceiverGroup.singleOrNull()?.let { contextReceiverValue ->
+                processLevel(
+                    towerLevel,
+                    info.withReceiverAsArgument(contextReceiverValue.receiverExpression), towerGroup,
+                    ExplicitReceiverKind.EXTENSION_RECEIVER
+                )
+            }
         }
     }
 

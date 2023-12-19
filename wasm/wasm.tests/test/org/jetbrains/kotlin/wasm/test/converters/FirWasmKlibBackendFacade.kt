@@ -62,11 +62,11 @@ class FirWasmKlibBackendFacade(
                 configuration[CommonConfigurationKeys.MODULE_NAME]!!,
                 configuration,
                 configuration.get(IrMessageLogger.IR_MESSAGE_LOGGER) ?: IrMessageLogger.None,
+                inputArtifact.diagnosticReporter,
                 inputArtifact.sourceFiles,
                 klibPath = outputFile,
                 libraries.map { it.library },
                 inputArtifact.irModuleFragment,
-                inputArtifact.expectDescriptorToSymbol,
                 cleanFiles = inputArtifact.icData,
                 nopack = true,
                 perFile = false,
@@ -74,7 +74,7 @@ class FirWasmKlibBackendFacade(
                 abiVersion = KotlinAbiVersion.CURRENT, // TODO get from test file data
                 jsOutputName = null
             ) {
-                inputArtifact.serializeSingleFile(it, inputArtifact.irActualizerResult)
+                inputArtifact.serializeSingleFile(it)
             }
         }
 
@@ -100,6 +100,6 @@ class FirWasmKlibBackendFacade(
         testServices.moduleDescriptorProvider.replaceModuleDescriptorForModule(module, moduleDescriptor)
         testServices.libraryProvider.setDescriptorAndLibraryByName(outputFile, moduleDescriptor, lib)
 
-        return BinaryArtifacts.KLib(File(outputFile))
+        return BinaryArtifacts.KLib(File(outputFile), inputArtifact.diagnosticReporter)
     }
 }

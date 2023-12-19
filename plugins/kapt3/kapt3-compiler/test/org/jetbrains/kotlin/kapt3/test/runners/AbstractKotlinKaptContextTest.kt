@@ -5,7 +5,7 @@
 
 package org.jetbrains.kotlin.kapt3.test.runners
 
-import org.jetbrains.kotlin.kapt3.util.doOpenInternalPackagesIfRequired
+import org.jetbrains.kotlin.kapt3.base.util.doOpenInternalPackagesIfRequired
 import org.jetbrains.kotlin.kapt3.test.*
 import org.jetbrains.kotlin.kapt3.test.KaptTestDirectives.MAP_DIAGNOSTIC_LOCATIONS
 import org.jetbrains.kotlin.kapt3.test.handlers.KaptContextHandler

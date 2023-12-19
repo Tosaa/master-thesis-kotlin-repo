@@ -77,7 +77,6 @@ val distMavenContents by configurations.creating {
 val distCommonContents by configurations.creating
 val distStdlibMinimalForTests by configurations.creating
 val buildNumber by configurations.creating
-val distJSContents by configurations.creating
 
 val compilerBaseName = name
 
@@ -136,7 +135,6 @@ val distCompilerPluginProjectsCompat = listOf(
 val distSourcesProjects = listOfNotNull(
     ":kotlin-annotations-jvm",
     ":kotlin-script-runtime",
-    ":kotlin-test:kotlin-test-js".takeIf { !kotlinBuildProperties.isInJpsBuildIdeaSync },
     ":kotlin-test:kotlin-test-junit",
     ":kotlin-test:kotlin-test-junit5",
     ":kotlin-test:kotlin-test-testng"
@@ -169,7 +167,7 @@ dependencies {
     if (!kotlinBuildProperties.isInJpsBuildIdeaSync) {
         libraries(kotlinStdlib(classifier = "distJsJar"))
         libraries(kotlinStdlib(classifier = "distJsKlib"))
-        libraries(project(":kotlin-test:kotlin-test-js", configuration = "distLibrary"))
+        libraries(project(":kotlin-test:kotlin-test-js-ir", configuration = "jsRuntimeElements"))
     }
 
     librariesStripVersion(commonDependency("org.jetbrains.kotlinx", "kotlinx-coroutines-core")) { isTransitive = false }
@@ -210,11 +208,9 @@ dependencies {
         sources(project(":kotlin-stdlib", configuration = "distJsSourcesJar"))
         sources(project(":kotlin-reflect", configuration = "sources"))
         sources(project(":kotlin-test", "combinedJvmSourcesJar"))
+        sources(project(":kotlin-test:kotlin-test-js-ir", configuration = "jsSourcesElements"))
 
         distStdlibMinimalForTests(project(":kotlin-stdlib-jvm-minimal-for-test"))
-
-        distJSContents(project(":kotlin-stdlib", configuration = "distJsContent"))
-        distJSContents(project(":kotlin-test:kotlin-test-js", configuration = "distJs"))
 
         distCommonContents(project(":kotlin-stdlib", configuration = "commonMainMetadataElements"))
         distCommonContents(project(":kotlin-stdlib", configuration = "metadataSourcesElements"))
@@ -239,7 +235,7 @@ dependencies {
     fatJarContents(commonDependency("org.jetbrains.intellij.deps.fastutil:intellij-deps-fastutil")) { isTransitive = false }
     fatJarContents(commonDependency("org.lz4:lz4-java")) { isTransitive = false }
     fatJarContents(commonDependency("org.jetbrains.intellij.deps:asm-all")) { isTransitive = false }
-    fatJarContents(commonDependency("com.google.guava:guava")) { isTransitive = false }
+    fatJarContents(libs.guava) { isTransitive = false }
     //Gson is needed for kotlin-build-statistics. Build statistics could be enabled for JPS and Gradle builds. Gson will come from inteliij or KGP.
     proguardLibraries(commonDependency("com.google.code.gson:gson")) { isTransitive = false}
 
@@ -442,18 +438,12 @@ val distMaven = distTask<Sync>("distMaven") {
     from(distMavenContents)
 }
 
-val distJs = distTask<Sync>("distJs") {
-    destinationDir = File("$distDir/js")
-    from(distJSContents)
-}
-
 distTask<Copy>("dist") {
     destinationDir = File(distDir)
 
     dependsOn(distKotlinc)
     dependsOn(distCommon)
     dependsOn(distMaven)
-    dependsOn(distJs)
     dependsOn(distSbomTask)
 
     from(buildNumber)

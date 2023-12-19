@@ -15,6 +15,8 @@ dependencies {
     compileOnly(intellijCore())
 }
 
+optInToUnsafeDuringIrConstructionAPI()
+
 sourceSets {
     "main" { projectDefault() }
 }

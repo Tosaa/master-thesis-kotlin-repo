@@ -17,7 +17,7 @@ abstract class ConeAttribute<out T : ConeAttribute<T>> : AnnotationMarker {
     abstract fun union(other: @UnsafeVariance T?): T?
     abstract fun intersect(other: @UnsafeVariance T?): T?
 
-    /*
+    /**
      * This function is used to decide how multiple attributes should be united in presence of typealiases:
      * typealias B = @SomeAttribute(1) A
      * typealias C = @SomeAttribute(2) B
@@ -30,8 +30,33 @@ abstract class ConeAttribute<out T : ConeAttribute<T>> : AnnotationMarker {
     abstract fun isSubtypeOf(other: @UnsafeVariance T?): Boolean
 
     abstract override fun toString(): String
+    open fun renderForReadability(): String = toString()
 
     abstract val key: KClass<out T>
+
+    /**
+     * This property indicates whether this attribute should be kept when inferring declaration return type.
+     */
+    abstract val keepInInferredDeclarationType: Boolean
+}
+
+/**
+ * An attribute that contains a [ConeKotlinType].
+ * It is assumed that the [coneType] in this attribute is somehow related to the type it is attached to.
+ * Therefore, when the type is transformed (e.g., substitution, making not-null), the same transformation is applied to the attribute.
+ */
+abstract class ConeAttributeWithConeType<out T : ConeAttributeWithConeType<T>> : ConeAttribute<T>() {
+    abstract val coneType: ConeKotlinType
+
+    abstract fun copyWith(newType: ConeKotlinType): T
+}
+
+inline fun <T : ConeAttributeWithConeType<T>> ConeAttributeWithConeType<T>.transformOrNull(
+    transform: (ConeKotlinType) -> ConeKotlinType?,
+): ConeAttributeWithConeType<T>? {
+    val transformedType = transform(coneType) ?: return null
+    if (transformedType == coneType) return this
+    return copyWith(transformedType)
 }
 
 typealias ConeAttributeKey = KClass<out ConeAttribute<*>>
@@ -110,6 +135,11 @@ class ConeAttributes private constructor(attributes: List<ConeAttribute<*>>) : A
         return create(attributes)
     }
 
+    fun filterNecessaryToKeep(): ConeAttributes {
+        return if (all { it.keepInInferredDeclarationType }) this
+        else create(filter { it.keepInInferredDeclarationType })
+    }
+
     private inline fun perform(other: ConeAttributes, op: ConeAttribute<*>.(ConeAttribute<*>?) -> ConeAttribute<*>?): ConeAttributes {
         if (this.isEmpty() && other.isEmpty()) return this
         val attributes = mutableListOf<ConeAttribute<*>>()
@@ -120,6 +150,34 @@ class ConeAttributes private constructor(attributes: List<ConeAttribute<*>>) : A
             attributes.addIfNotNull(res)
         }
         return create(attributes)
+    }
+
+    /**
+     * Applies the [transform] to all attributes that are subtypes of [ConeAttributeWithConeType] and returns a [ConeAttributes]
+     * with the results of transforms that were not-`null` or `null` if no attributes were transformed.
+     */
+    inline fun transformTypesWith(transform: (ConeKotlinType) -> ConeKotlinType?): ConeAttributes? {
+        if (isEmpty()) return null
+
+        // List will be allocated on demand
+        var newList: MutableList<ConeAttribute<*>>? = null
+        var hasDifference = false
+
+        for ((i, attr) in this.withIndex()) {
+            if (attr !is ConeAttributeWithConeType) continue
+            val substitutedAttribute = attr.transformOrNull(transform) ?: continue
+            if (newList == null) {
+                newList = this.toMutableList()
+            }
+            newList[i] = substitutedAttribute
+            hasDifference = hasDifference || substitutedAttribute != attr
+        }
+
+        if (newList != null && !hasDifference) {
+            return this
+        }
+
+        return newList?.let(Companion::create)
     }
 
     override val typeRegistry: TypeRegistry<ConeAttribute<*>, ConeAttribute<*>>

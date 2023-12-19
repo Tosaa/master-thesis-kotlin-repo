@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2020 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Copyright 2010-2023 JetBrains s.r.o. and Kotlin Programming Language contributors.
  * Use of this source code is governed by the Apache 2.0 license that can be found in the license/LICENSE.txt file.
  */
 
@@ -15,14 +15,15 @@ import org.jetbrains.kotlin.analysis.api.fir.utils.asKtInitializerValue
 import org.jetbrains.kotlin.analysis.api.impl.base.KtContextReceiverImpl
 import org.jetbrains.kotlin.analysis.api.symbols.KtValueParameterSymbol
 import org.jetbrains.kotlin.analysis.api.types.KtType
-import org.jetbrains.kotlin.analysis.low.level.api.fir.api.LLFirResolveSession
 import org.jetbrains.kotlin.descriptors.ClassKind
 import org.jetbrains.kotlin.fir.declarations.*
 import org.jetbrains.kotlin.fir.expressions.FirPropertyAccessExpression
 import org.jetbrains.kotlin.fir.references.impl.FirPropertyFromParameterResolvedNamedReference
 import org.jetbrains.kotlin.fir.symbols.FirBasedSymbol
-import org.jetbrains.kotlin.fir.symbols.lazyResolveToPhase
 import org.jetbrains.kotlin.fir.symbols.impl.*
+import org.jetbrains.kotlin.fir.symbols.lazyResolveToPhase
+import org.jetbrains.kotlin.fir.types.ConeDynamicType
+import org.jetbrains.kotlin.fir.types.create
 import org.jetbrains.kotlin.fir.types.toRegularClassSymbol
 import org.jetbrains.kotlin.fir.utils.exceptions.withFirEntry
 import org.jetbrains.kotlin.name.CallableId
@@ -79,8 +80,13 @@ private fun createContextReceiver(
     builder.token
 )
 
-internal fun FirCallableSymbol<*>.getCallableIdIfNonLocal(): CallableId? =
-    callableId.takeUnless { it.isLocal }
+internal fun FirCallableSymbol<*>.getCallableIdIfNonLocal(): CallableId? {
+    return when {
+        origin == FirDeclarationOrigin.DynamicScope -> null
+        callableId.isLocal -> null
+        else -> callableId
+    }
+}
 
 internal fun FirClassLikeSymbol<*>.getClassIdIfNonLocal(): ClassId? =
     classId.takeUnless { it.isLocal }
@@ -88,10 +94,18 @@ internal fun FirClassLikeSymbol<*>.getClassIdIfNonLocal(): ClassId? =
 internal fun FirCallableSymbol<*>.dispatchReceiverType(
     builder: KtSymbolByFirBuilder,
 ): KtType? {
-    return dispatchReceiverType?.let { builder.typeBuilder.buildKtType(it) }
+    val type = if (
+        origin == FirDeclarationOrigin.DynamicScope
+        && (this is FirPropertySymbol || this is FirFunctionSymbol)
+    ) {
+        ConeDynamicType.create(builder.rootSession)
+    } else {
+        dispatchReceiverType
+    }
+    return type?.let { builder.typeBuilder.buildKtType(it) }
 }
 
-internal fun FirVariableSymbol<*>.getKtConstantInitializer(resolveSession: LLFirResolveSession): KtInitializerValue? {
+internal fun FirVariableSymbol<*>.getKtConstantInitializer(builder: KtSymbolByFirBuilder): KtInitializerValue? {
     // to avoid lazy resolve
     if (fir.initializer == null) return null
 
@@ -107,8 +121,10 @@ internal fun FirVariableSymbol<*>.getKtConstantInitializer(resolveSession: LLFir
             }
         }
     }
+
     val parentIsAnnotation = dispatchReceiverType
-        ?.toRegularClassSymbol(resolveSession.useSiteFirSession)
+        ?.toRegularClassSymbol(builder.rootSession)
         ?.classKind == ClassKind.ANNOTATION_CLASS
-    return firInitializer.asKtInitializerValue(moduleData.session, parentIsAnnotation)
+
+    return firInitializer.asKtInitializerValue(builder, parentIsAnnotation)
 }

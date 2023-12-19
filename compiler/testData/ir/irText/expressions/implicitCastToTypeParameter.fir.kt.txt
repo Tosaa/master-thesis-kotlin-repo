@@ -6,13 +6,12 @@ inline fun <reified T : Any> Any.test1(): T? {
 }
 
 interface Foo<T : Any?> {
-
 }
 
 val <reified T : Any> Foo<T>.asT: T?
   inline get(): T? {
     return when {
-      <this> is T -> <this> /*as T */
+      <this> is T -> <this>
       else -> null
     }
   }
@@ -33,3 +32,4 @@ class Bar<T : Any?> {
   }
 
 }
+

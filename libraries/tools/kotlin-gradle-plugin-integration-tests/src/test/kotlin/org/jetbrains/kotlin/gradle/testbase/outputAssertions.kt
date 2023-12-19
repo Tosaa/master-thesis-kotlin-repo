@@ -5,8 +5,11 @@
 
 package org.jetbrains.kotlin.gradle.testbase
 
+import org.gradle.api.logging.LogLevel
 import org.gradle.api.logging.configuration.WarningMode
 import org.gradle.testkit.runner.BuildResult
+import org.gradle.util.GradleVersion
+import java.util.*
 
 /**
  * Asserts Gradle output contains [expectedSubString] string.
@@ -155,9 +158,12 @@ fun BuildResult.assertOutputContainsExactlyTimes(
  * Assert build contains no warnings.
  */
 fun BuildResult.assertNoBuildWarnings(
-    expectedWarnings: Set<String> = emptySet(),
+    additionalExpectedWarnings: Set<String> = emptySet(),
 ) {
-    val cleanedOutput = expectedWarnings.fold(output) { acc, s ->
+    val expectedWarnings = setOf(
+        "w: [InternalKotlinGradlePluginPropertiesUsed | WARNING] ATTENTION! This build uses the following Kotlin Gradle Plugin properties:"
+    )
+    val cleanedOutput = (expectedWarnings + additionalExpectedWarnings).fold(output) { acc, s ->
         acc.replace(s, "")
     }
     val warnings = cleanedOutput
@@ -171,6 +177,10 @@ fun BuildResult.assertNoBuildWarnings(
         "Build contains following warnings:\n ${warnings.joinToString(separator = "\n")}"
     }
 }
+
+val expectedK2KaptWarnings = setOf(
+    "w: Kapt currently doesn't support language version 2.0+. Falling back to 1.9."
+)
 
 /**
  * Asserts compilation is running via Kotlin daemon with given jvm arguments.
@@ -241,8 +251,9 @@ fun findParameterInOutput(name: String, output: String): String? =
 fun BuildResult.assertCompilerArgument(
     taskPath: String,
     expectedArgument: String,
+    logLevel: LogLevel = LogLevel.DEBUG
 ) {
-    val taskOutput = getOutputForTask(taskPath)
+    val taskOutput = getOutputForTask(taskPath, logLevel)
     val compilerArguments = taskOutput.lines().first {
         it.contains("Kotlin compiler args:")
     }.substringAfter("Kotlin compiler args:")
@@ -254,11 +265,27 @@ fun BuildResult.assertCompilerArgument(
     }
 }
 
+/**
+ * Asserts classpath of the given K/N compiler tool for given tasks' paths.
+ *
+ * Note: Log level of output must be set to [LogLevel.INFO].
+ *
+ * @param tasksPaths tasks' paths, for which classpath should be checked with give assertions
+ * @param toolName name of build tool
+ * @param assertions assertions, with will be applied to each classpath of each given task
+ */
+fun BuildResult.assertNativeTasksClasspath(
+    vararg tasksPaths: String,
+    toolName: NativeToolKind = NativeToolKind.KONANC,
+    assertions: (List<String>) -> Unit,
+) = tasksPaths.forEach { taskPath -> assertions(extractNativeCompilerClasspath(getOutputForTask(taskPath, LogLevel.INFO), toolName)) }
+
 fun BuildResult.assertCompilerArguments(
     taskPath: String,
     vararg expectedArguments: String,
+    logLevel: LogLevel = LogLevel.DEBUG,
 ) {
-    val taskOutput = getOutputForTask(taskPath)
+    val taskOutput = getOutputForTask(taskPath, logLevel)
     val compilerArguments = taskOutput.lines().first {
         it.contains("Kotlin compiler args:")
     }.substringAfter("Kotlin compiler args:")
@@ -278,8 +305,9 @@ fun BuildResult.assertCompilerArguments(
 fun BuildResult.assertNoCompilerArgument(
     taskPath: String,
     notExpectedArgument: String,
+    logLevel: LogLevel = LogLevel.DEBUG,
 ) {
-    val taskOutput = getOutputForTask(taskPath)
+    val taskOutput = getOutputForTask(taskPath, logLevel)
     val compilerArguments = taskOutput.lines().first {
         it.contains("Kotlin compiler args:")
     }.substringAfter("Kotlin compiler args:")
@@ -290,6 +318,21 @@ fun BuildResult.assertNoCompilerArgument(
         "$taskPath task compiler arguments contains $notExpectedArgument. Actual content: $compilerArguments"
     }
 }
+
+/**
+ * Asserts environment variables of the given K/N compiler for given tasks' paths
+ *
+ * Note: Log level of output must be set to [LogLevel.INFO].
+ *
+ * @param tasksPaths tasks' paths, for which command line arguments should be checked with give assertions.
+ * @param toolName name of build tool
+ * @param assertions assertions, with will be applied to each command line arguments of each given task
+ */
+fun BuildResult.assertNativeTasksCustomEnvironment(
+    vararg tasksPaths: String,
+    toolName: NativeToolKind = NativeToolKind.KONANC,
+    assertions: (Map<String, String>) -> Unit,
+) = tasksPaths.forEach { taskPath -> assertions(extractNativeCustomEnvironment(taskPath, toolName)) }
 
 /**
  * Asserts that the given list of command line arguments does not contain any of the expected arguments.
@@ -326,6 +369,56 @@ fun CommandLineArguments.assertCommandLineArgumentsContain(
 }
 
 /**
+ * Asserts that the given list of command line arguments contains sequentially all the expected arguments.
+ *
+ * @param expectedArgs the list of expected arguments
+ * @throws AssertionError if any of the expected arguments are missing from the actual arguments list
+ */
+fun CommandLineArguments.assertCommandLineArgumentsContainSequentially(
+    vararg expectedArgs: String,
+) {
+    expectedArgs.forEach {
+        assert(expectedArgs.isNotEmpty() && Collections.indexOfSubList(args, expectedArgs.toList()) != -1) {
+            this.buildResult.printBuildOutput()
+            "There is no sequential arguments ${it} in actual command line arguments are: ${args}"
+        }
+    }
+}
+
+/**
+ * Asserts that the output of a Gradle build contains a variant with the given name.
+ *
+ * @param variantName The name of the variant to look for in the output.
+ * @param gradleVersion The version of Gradle used to build the variant.
+ * @throws AssertionError if no variant with the given name and Gradle version is found in the output.
+ */
+
+fun BuildResult.assertOutputContainsNativeFrameworkVariant(variantName: String, gradleVersion: GradleVersion) {
+    val isAtLeastGradle75 = gradleVersion >= GradleVersion.version(TestVersions.Gradle.G_7_5)
+    try {
+        assertOutputContains(
+            if (isAtLeastGradle75)
+                "Variant $variantName"
+            else "variant \"$variantName\" ["
+        )
+    } catch (originalError: AssertionError) {
+        val regexPattern = if (isAtLeastGradle75) {
+            "Variant (.*?):"
+        } else {
+            "variant \"(.*?)\" \\["
+        }
+        val matchedVariants = Regex(regexPattern).findAll(output).toList()
+        throw AssertionError(
+            "Expected variant $variantName. " +
+                    if (matchedVariants.isNotEmpty())
+                        "Found instead: " + matchedVariants.joinToString { it.groupValues[1] }
+                    else "No match.",
+            originalError
+        )
+    }
+}
+
+/**
  * Asserts that the command line arguments do not contain any duplicates.
  */
 fun CommandLineArguments.assertNoDuplicates() {
@@ -334,3 +427,11 @@ fun CommandLineArguments.assertNoDuplicates() {
         "Link task has duplicated arguments: ${args.joinToString()}"
     }
 }
+
+
+private fun BuildResult.extractNativeCustomEnvironment(taskPath: String, toolName: NativeToolKind): Map<String, String> =
+    extractNativeToolSettings(getOutputForTask(taskPath, LogLevel.INFO), toolName, NativeToolSettingsKind.CUSTOM_ENV_VARIABLES).map {
+        val (key, value) = it.split("=")
+        key.trim() to value.trim()
+    }.toMap()
+

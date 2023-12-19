@@ -13,6 +13,7 @@ import org.jetbrains.kotlin.fir.declarations.*
 import org.jetbrains.kotlin.fir.expressions.FirAnnotation
 import org.jetbrains.kotlin.fir.serialization.constant.toConstantValue
 import org.jetbrains.kotlin.metadata.ProtoBuf
+import org.jetbrains.kotlin.metadata.ProtoBuf.Class.Builder
 import org.jetbrains.kotlin.metadata.deserialization.Flags
 import org.jetbrains.kotlin.metadata.serialization.MutableVersionRequirementTable
 import org.jetbrains.kotlin.name.FqName
@@ -36,6 +37,13 @@ abstract class FirSerializerExtensionBase(
     ) {
         klass.serializeAnnotations(proto, protocol.classAnnotation)
     }
+
+    override fun serializeScript(
+        script: FirScript,
+        proto: Builder,
+        versionRequirementTable: MutableVersionRequirementTable,
+        childSerializer: FirElementSerializer,
+    ) {}
 
     override fun serializeConstructor(
         constructor: FirConstructor,
@@ -144,7 +152,7 @@ abstract class FirSerializerExtensionBase(
 
     private fun FirAnnotationContainer.allRequiredAnnotations(session: FirSession): List<FirAnnotation> {
         val nonSourceAnnotations = nonSourceAnnotations(session)
-        val additionalMetadataAnnotationsProvider = additionalAnnotationsProvider
+        val additionalMetadataAnnotationsProvider = additionalMetadataProvider
         return if (this is FirDeclaration && additionalMetadataAnnotationsProvider != null) {
             nonSourceAnnotations + additionalMetadataAnnotationsProvider.findGeneratedAnnotationsFor(this)
         } else {

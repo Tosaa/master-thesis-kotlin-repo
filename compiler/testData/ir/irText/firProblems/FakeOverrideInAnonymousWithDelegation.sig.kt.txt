@@ -7,33 +7,6 @@ class Wrapper {
   //   Public signature: /Wrapper.dummy|-4015397354973262001[0]
   //   Public signature debug description: {}dummy
   private val dummy: <no name provided>
-    field
-      // CHECK JVM_IR:
-      //   Mangled name (compatible mode: false): Wrapper{}dummy.<no name provided>
-      //   Mangled name (compatible mode: true):  Wrapper.dummy.<no name provided>
-      // CHECK JS_IR NATIVE:
-      //   Mangled name (compatible mode: false): Wrapper{}dummy.<no name provided>
-      //   Mangled name (compatible mode: true):  Wrapper.dummy.<no name provided>
-      local class <no name provided> : Bar {
-        // CHECK:
-        //   Mangled name (compatible mode: false): Wrapper{}dummy.<no name provided>#<init>(){}
-        //   Mangled name (compatible mode: true):  Wrapper.dummy.<no name provided>#<init>(){}
-        constructor() /* primary */
-
-        // CHECK:
-        //   Mangled name (compatible mode: false): Wrapper{}dummy.<no name provided>{}foo
-        //   Mangled name (compatible mode: true):  Wrapper.dummy.<no name provided>{}foo
-        /* fake */ override val foo: String
-          // CHECK JVM_IR:
-          //   Mangled name (compatible mode: false): Wrapper{}dummy.<no name provided>#<get-foo>(){}kotlin.String
-          //   Mangled name (compatible mode: true):  Wrapper.dummy.<no name provided>#<get-foo>(){}kotlin.String
-          // CHECK JS_IR NATIVE:
-          //   Mangled name (compatible mode: false): Wrapper{}dummy.<no name provided>#<get-foo>(){}
-          //   Mangled name (compatible mode: true):  Wrapper.dummy.<no name provided>#<get-foo>(){}
-          /* fake */ override get(): String
-
-      }
-
     // CHECK JVM_IR:
     //   Mangled name (compatible mode: false): Wrapper#<get-dummy>(){}Wrapper{}dummy.<no name provided>
     //   Mangled name (compatible mode: true):  Wrapper#<get-dummy>(){}Wrapper.dummy.<no name provided>
@@ -50,37 +23,6 @@ class Wrapper {
   //   Public signature: /Wrapper.bar|-7864284097863469857[0]
   //   Public signature debug description: {}bar
   private val bar: <no name provided>
-    field
-      // CHECK JVM_IR:
-      //   Mangled name (compatible mode: false): Wrapper{}bar.<no name provided>
-      //   Mangled name (compatible mode: true):  Wrapper.bar.<no name provided>
-      // CHECK JS_IR NATIVE:
-      //   Mangled name (compatible mode: false): Wrapper{}bar.<no name provided>
-      //   Mangled name (compatible mode: true):  Wrapper.bar.<no name provided>
-      local class <no name provided> : Bar {
-        // CHECK:
-        //   Mangled name (compatible mode: false): Wrapper{}bar.<no name provided>#<init>(){}
-        //   Mangled name (compatible mode: true):  Wrapper.bar.<no name provided>#<init>(){}
-        constructor() /* primary */
-        // CHECK:
-        //   Mangled name (compatible mode: false): Wrapper{}bar.<no name provided>.$$delegate_0
-        //   Mangled name (compatible mode: true):  Wrapper.bar.<no name provided>.$$delegate_0
-        private /* final field */ val $$delegate_0: <no name provided>
-
-        // CHECK:
-        //   Mangled name (compatible mode: false): Wrapper{}bar.<no name provided>{}foo
-        //   Mangled name (compatible mode: true):  Wrapper.bar.<no name provided>{}foo
-        override val foo: String
-          // CHECK JVM_IR:
-          //   Mangled name (compatible mode: false): Wrapper{}bar.<no name provided>#<get-foo>(){}kotlin.String
-          //   Mangled name (compatible mode: true):  Wrapper.bar.<no name provided>#<get-foo>(){}kotlin.String
-          // CHECK JS_IR NATIVE:
-          //   Mangled name (compatible mode: false): Wrapper{}bar.<no name provided>#<get-foo>(){}
-          //   Mangled name (compatible mode: true):  Wrapper.bar.<no name provided>#<get-foo>(){}
-          override get(): String
-
-      }
-
     // CHECK JVM_IR:
     //   Mangled name (compatible mode: false): Wrapper#<get-bar>(){}Wrapper{}bar.<no name provided>
     //   Mangled name (compatible mode: true):  Wrapper#<get-bar>(){}Wrapper.bar.<no name provided>
@@ -104,7 +46,6 @@ class Wrapper {
 //   Mangled name: Bar
 //   Public signature: /Bar|null[0]
 interface Bar {
-
   // CHECK:
   //   Mangled name: Bar{}foo
   //   Public signature: /Bar.foo|1688079488202778848[0]

@@ -14,15 +14,9 @@ import org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinJsCompilation
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinTargetWithBinaries
 import org.jetbrains.kotlin.gradle.plugin.mpp.isMain
-import org.jetbrains.kotlin.gradle.targets.js.KotlinJsTarget
-import org.jetbrains.kotlin.gradle.targets.js.binaryen.BinaryenExec
-import org.jetbrains.kotlin.gradle.targets.js.dsl.Distribution
 import org.jetbrains.kotlin.gradle.targets.js.dsl.KotlinJsBinaryMode
 import org.jetbrains.kotlin.gradle.targets.js.dsl.KotlinJsBinaryMode.DEVELOPMENT
 import org.jetbrains.kotlin.gradle.targets.js.dsl.KotlinJsBinaryMode.PRODUCTION
-import org.jetbrains.kotlin.gradle.targets.js.subtargets.DefaultDistribution
-import org.jetbrains.kotlin.gradle.targets.js.subtargets.KotlinJsSubTarget
-import org.jetbrains.kotlin.gradle.targets.js.subtargets.createDefaultDistribution
 import org.jetbrains.kotlin.gradle.utils.lowerCamelCaseName
 import org.jetbrains.kotlin.util.capitalizeDecapitalize.toLowerCaseAsciiOnly
 import javax.inject.Inject
@@ -30,41 +24,26 @@ import javax.inject.Inject
 open class KotlinJsBinaryContainer
 @Inject
 constructor(
-    val target: KotlinTargetWithBinaries<KotlinJsCompilation, KotlinJsBinaryContainer>,
-    backingContainer: DomainObjectSet<JsBinary>
+    val target: KotlinTargetWithBinaries<KotlinJsIrCompilation, KotlinJsBinaryContainer>,
+    backingContainer: DomainObjectSet<JsBinary>,
 ) : DomainObjectSet<JsBinary> by backingContainer {
     val project: Project
         get() = target.project
 
     private val binaryNames = mutableSetOf<String>()
 
-    private val defaultCompilation: KotlinJsCompilation
+    private val defaultCompilation: KotlinJsIrCompilation
         get() = target.compilations.getByName(KotlinCompilation.MAIN_COMPILATION_NAME)
 
-    private fun configureBinaryen(binary: JsIrBinary, binaryenDsl: BinaryenExec.() -> Unit) {
-        val linkTask = binary.linkTask
-
-        val compiledWasmFile = linkTask.map { link ->
-            link.destinationDirectory.asFile.get().resolve(link.compilerOptions.moduleName.get() + ".wasm")
-        }
-
-        //TODO This is temporary solution that overrides compiled files that triggers recompile and reoptimize wasm every time (when binaryen is enabled)
-        val binaryenTask = BinaryenExec.create(binary.compilation, "${linkTask.name}Optimize") {
-            dependsOn(linkTask)
-            inputFileProperty.fileProvider(compiledWasmFile)
-            outputFileProperty.fileProvider(compiledWasmFile)
-            binaryenDsl()
-        }
-
-        binary.linkSyncTask.configure {
-            it.dependsOn(binaryenTask)
-        }
+    fun executable(
+        compilation: KotlinJsIrCompilation,
+    ): List<JsBinary> {
+        return executable(compilation as KotlinJsCompilation)
     }
 
-    // For Groovy DSL
     @JvmOverloads
     fun executable(
-        compilation: KotlinJsCompilation = defaultCompilation
+        compilation: KotlinJsCompilation = defaultCompilation,
     ): List<JsBinary> {
         if (target is KotlinJsIrTarget) {
             target.whenBrowserConfigured {
@@ -79,42 +58,20 @@ constructor(
                 (this as KotlinJsIrSubTarget).produceExecutable()
             }
 
-            return compilation.binaries.executableIrInternal(compilation)
+            return compilation.binaries.executableIrInternal(compilation as KotlinJsIrCompilation)
         }
 
-        if (target is KotlinJsTarget) {
-            target.irTarget
-                ?.let { throw IllegalStateException("Can't use `executable()` with 'both' compiler type") }
-
-            target.whenBrowserConfigured {
-                (this as KotlinJsSubTarget).produceExecutable()
-            }
-
-            target.whenNodejsConfigured {
-                (this as KotlinJsSubTarget).produceExecutable()
-            }
-
-            return compilation.binaries.executableLegacyInternal(compilation)
-        }
-
-        throw GradleException("Target should be either KotlinJsTarget or KotlinJsIrTarget, but found $target")
+        throw GradleException("Target should be KotlinJsIrTarget, but found $target")
     }
 
-    internal fun executableIrInternal(compilation: KotlinJsCompilation): List<JsBinary> = createBinaries(
+    internal fun executableIrInternal(compilation: KotlinJsIrCompilation): List<JsBinary> = createBinaries(
         compilation = compilation,
         jsBinaryType = KotlinJsBinaryType.EXECUTABLE,
-        create = ::Executable
-    )
-
-    private fun executableLegacyInternal(compilation: KotlinJsCompilation) = createBinaries(
-        compilation = compilation,
-        jsBinaryType = KotlinJsBinaryType.EXECUTABLE,
-        create = { jsCompilation, name, type ->
-            object : JsBinary {
-                override val compilation: KotlinJsCompilation = jsCompilation
-                override val name: String = name
-                override val mode: KotlinJsBinaryMode = type
-                override val distribution: Distribution = createDefaultDistribution(jsCompilation.target.project, jsCompilation.target.targetName)
+        create = { compilation, name, mode ->
+            if (target.platformType == KotlinPlatformType.wasm) {
+                ExecutableWasm(compilation, name, mode)
+            } else {
+                Executable(compilation, name, mode)
             }
         }
     )
@@ -122,7 +79,7 @@ constructor(
     // For Groovy DSL
     @JvmOverloads
     fun library(
-        compilation: KotlinJsCompilation = defaultCompilation
+        compilation: KotlinJsIrCompilation = defaultCompilation,
     ): List<JsBinary> {
         if (target is KotlinJsIrTarget) {
             target.whenBrowserConfigured {
@@ -153,16 +110,16 @@ constructor(
     }
 
     internal fun getIrBinaries(
-        mode: KotlinJsBinaryMode
+        mode: KotlinJsBinaryMode,
     ): DomainObjectSet<JsIrBinary> =
         withType(JsIrBinary::class.java)
             .matching { it.mode == mode }
 
     private fun <T : JsBinary> createBinaries(
-        compilation: KotlinJsCompilation,
+        compilation: KotlinJsIrCompilation,
         modes: Collection<KotlinJsBinaryMode> = listOf(PRODUCTION, DEVELOPMENT),
         jsBinaryType: KotlinJsBinaryType,
-        create: (compilation: KotlinJsCompilation, name: String, mode: KotlinJsBinaryMode) -> T
+        create: (compilation: KotlinJsIrCompilation, name: String, mode: KotlinJsBinaryMode) -> T,
     ) =
         modes.map {
             createBinary(
@@ -174,10 +131,10 @@ constructor(
         }
 
     private fun <T : JsBinary> createBinary(
-        compilation: KotlinJsCompilation,
+        compilation: KotlinJsIrCompilation,
         mode: KotlinJsBinaryMode,
         jsBinaryType: KotlinJsBinaryType,
-        create: (compilation: KotlinJsCompilation, name: String, mode: KotlinJsBinaryMode) -> T
+        create: (compilation: KotlinJsIrCompilation, name: String, mode: KotlinJsBinaryMode) -> T,
     ): JsBinary {
         val name = generateBinaryName(
             compilation,
@@ -198,12 +155,6 @@ constructor(
             extensions.add(binary.name, binary)
         }
 
-        if (compilation.platformType == KotlinPlatformType.wasm && target is KotlinJsIrTarget && binary is JsIrBinary) {
-            target.whenBinaryenApplied {
-                configureBinaryen(binary, it)
-            }
-        }
-
         return binary
     }
 
@@ -211,7 +162,7 @@ constructor(
         internal fun generateBinaryName(
             compilation: KotlinJsCompilation,
             mode: KotlinJsBinaryMode,
-            jsBinaryType: KotlinJsBinaryType?
+            jsBinaryType: KotlinJsBinaryType?,
         ) =
             lowerCamelCaseName(
                 if (compilation.isMain()) null else compilation.name,

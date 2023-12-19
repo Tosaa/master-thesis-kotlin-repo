@@ -18,6 +18,7 @@ import org.jetbrains.kotlin.fir.expressions.FirOperation
 import org.jetbrains.kotlin.fir.expressions.FirThisReceiverExpression
 import org.jetbrains.kotlin.fir.render
 import org.jetbrains.kotlin.fir.resolve.calls.AbstractCandidate
+import org.jetbrains.kotlin.fir.resolve.calls.ResolutionDiagnostic
 import org.jetbrains.kotlin.fir.symbols.FirBasedSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.*
 import org.jetbrains.kotlin.fir.types.ConeKotlinType
@@ -65,9 +66,18 @@ class ConeUnresolvedTypeQualifierError(val qualifiers: List<FirQualifierPart>, o
     override val reason: String get() = "Symbol not found for $qualifier${if (isNullable) "?" else ""}"
 }
 
-class ConeUnresolvedNameError(val name: Name) : ConeUnresolvedError {
+class ConeUnresolvedNameError(
+    val name: Name,
+    val operatorToken: String? = null,
+) : ConeUnresolvedError {
     override val qualifier: String get() = name.asString()
-    override val reason: String get() = "Unresolved name: $name"
+    override val reason: String get() = "Unresolved name: $prettyReference"
+
+    private val prettyReference: String
+        get() = when (val token = operatorToken) {
+            null -> name.toString()
+            else -> "$name ($token)"
+        }
 }
 
 class ConeFunctionCallExpectedError(
@@ -80,10 +90,6 @@ class ConeFunctionCallExpectedError(
 
 class ConeFunctionExpectedError(val expression: String, val type: ConeKotlinType) : ConeDiagnostic {
     override val reason: String get() = "Expression '$expression' of type '$type' cannot be invoked as a function"
-}
-
-object ConeNoConstructorError : ConeDiagnostic {
-    override val reason: String get() = "This type does not have a constructor"
 }
 
 class ConeResolutionToClassifierError(
@@ -99,17 +105,27 @@ class ConeHiddenCandidateError(
     override val reason: String get() = "HIDDEN: ${describeSymbol(candidateSymbol)} is deprecated with DeprecationLevel.HIDDEN"
 }
 
-class ConeVisibilityError(
+open class ConeVisibilityError(
     override val symbol: FirBasedSymbol<*>
 ) : ConeDiagnosticWithSymbol<FirBasedSymbol<*>> {
     override val reason: String get() = "HIDDEN: ${describeSymbol(symbol)} is invisible"
 }
+
+class ConeTypeVisibilityError(
+    symbol: FirBasedSymbol<*>,
+    val smallestUnresolvablePrefix: List<FirQualifierPart>,
+) : ConeVisibilityError(symbol)
 
 class ConeInapplicableWrongReceiver(override val candidates: Collection<AbstractCandidate>) : ConeDiagnosticWithCandidates {
     override val reason: String
         get() = "None of the following candidates is applicable because of receiver type mismatch: ${
             candidateSymbols.map { describeSymbol(it) }
         }"
+
+    val primaryDiagnostic: ResolutionDiagnostic?
+        get() = candidates.singleOrNull()
+            ?.diagnostics
+            ?.singleOrNull { it.applicability == CandidateApplicability.INAPPLICABLE_WRONG_RECEIVER }
 }
 
 class ConeInapplicableCandidateError(
@@ -254,6 +270,21 @@ class ConeWrongNumberOfTypeArgumentsError(
     override val reason: String get() = "Wrong number of type arguments"
 }
 
+class ConeTypeArgumentsNotAllowedOnPackageError(source: KtSourceElement) : ConeDiagnosticWithSource(source) {
+    override val reason: String get() = "Type arguments are not allowed for packages"
+}
+
+class ConeTypeArgumentsForOuterClassWhenNestedReferencedError(source: KtSourceElement) : ConeDiagnosticWithSource(source) {
+    override val reason: String get() = "Type arguments for outer class are redundant when nested class is referenced"
+}
+
+class ConeNestedClassAccessedViaInstanceReference(
+    source: KtSourceElement,
+    val symbol: FirClassLikeSymbol<*>,
+) : ConeDiagnosticWithSource(source) {
+    override val reason: String get() = "Nested ${symbol.classId} accessed via instance reference"
+}
+
 class ConeNoTypeArgumentsOnRhsError(
     override val desiredCount: Int,
     override val symbol: FirClassLikeSymbol<*>
@@ -360,4 +391,10 @@ class ConeAmbiguouslyResolvedAnnotationArgument(
               - compiler annotations: $symbolFromCompilerPhase
               - compiler arguments stage: $symbolFromAnnotationArgumentsPhase
         """
+}
+
+object ConeResolutionResultOverridesOtherToPreserveCompatibility : ConeDiagnostic {
+    override val reason: String
+        get() = "Resolution result overrides another result to preserve compatibility, result maybe changed in future versions"
+
 }

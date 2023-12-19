@@ -8,6 +8,7 @@ package org.jetbrains.kotlin.analysis.low.level.api.fir.transformers
 import org.jetbrains.kotlin.analysis.low.level.api.fir.api.targets.LLFirResolveTarget
 import org.jetbrains.kotlin.analysis.low.level.api.fir.api.throwUnexpectedFirElementError
 import org.jetbrains.kotlin.analysis.low.level.api.fir.file.builder.LLFirLockProvider
+import org.jetbrains.kotlin.analysis.low.level.api.fir.file.structure.LLFirDeclarationModificationService
 import org.jetbrains.kotlin.analysis.low.level.api.fir.util.checkReturnTypeRefIsResolved
 import org.jetbrains.kotlin.analysis.low.level.api.fir.util.isScriptDependentDeclaration
 import org.jetbrains.kotlin.fir.FirElementWithResolveState
@@ -18,7 +19,8 @@ import org.jetbrains.kotlin.fir.resolve.ScopeSession
 import org.jetbrains.kotlin.fir.resolve.transformers.body.resolve.FirImplicitAwareBodyResolveTransformer
 import org.jetbrains.kotlin.fir.resolve.transformers.body.resolve.FirResolveContextCollector
 import org.jetbrains.kotlin.fir.resolve.transformers.body.resolve.ImplicitBodyResolveComputationSession
-import org.jetbrains.kotlin.fir.scopes.fakeOverrideSubstitution
+import org.jetbrains.kotlin.fir.scopes.callableCopySubstitutionForTypeUpdater
+import org.jetbrains.kotlin.fir.types.FirImplicitTypeRef
 
 internal object LLFirImplicitTypesLazyResolver : LLFirLazyResolver(FirResolvePhase.IMPLICIT_TYPES_BODY_RESOLVE) {
     override fun resolve(
@@ -63,18 +65,35 @@ internal class LLFirImplicitBodyTargetResolver(
         returnTypeCalculator = createReturnTypeCalculator(firResolveContextCollector = firResolveContextCollector),
     ) {
         override val preserveCFGForClasses: Boolean get() = false
+        override val buildCfgForFiles: Boolean get() = false
     }
 
     override fun doLazyResolveUnderLock(target: FirElementWithResolveState) {
         when (target) {
-            is FirFunction -> resolve(target, BodyStateKeepers.FUNCTION)
-            is FirProperty -> resolve(target, BodyStateKeepers.PROPERTY)
-            is FirVariable -> resolve(target, BodyStateKeepers.VARIABLE)
+            is FirFunction -> {
+                if (target.returnTypeRef is FirImplicitTypeRef) {
+                    resolve(target, BodyStateKeepers.FUNCTION)
+                }
+            }
+
+            is FirProperty -> {
+                if (target.returnTypeRef is FirImplicitTypeRef || target.backingField?.returnTypeRef is FirImplicitTypeRef) {
+                    resolve(target, BodyStateKeepers.PROPERTY)
+                }
+            }
+
+            is FirField -> {
+                if (target.returnTypeRef is FirImplicitTypeRef) {
+                    resolve(target, BodyStateKeepers.FIELD)
+                }
+            }
+
             is FirScript -> {
                 if (target.statements.any { it.isScriptDependentDeclaration }) {
                     resolve(target, BodyStateKeepers.SCRIPT)
                 }
             }
+
             is FirRegularClass,
             is FirTypeAlias,
             is FirFile,
@@ -82,6 +101,8 @@ internal class LLFirImplicitBodyTargetResolver(
             is FirAnonymousInitializer,
             is FirDanglingModifierList,
             is FirFileAnnotationsContainer,
+            is FirEnumEntry,
+            is FirErrorProperty,
             -> {
                 // No implicit bodies here
             }
@@ -89,13 +110,17 @@ internal class LLFirImplicitBodyTargetResolver(
         }
     }
 
-    override fun rawResolve(target: FirElementWithResolveState): Unit = when {
-        target is FirScript -> resolveScript(target)
-        target is FirCallableDeclaration && target.attributes.fakeOverrideSubstitution != null -> {
-            transformer.returnTypeCalculator.fakeOverrideTypeCalculator.computeReturnType(target)
-            Unit
+    override fun rawResolve(target: FirElementWithResolveState) {
+        when {
+            target is FirScript -> resolveScript(target)
+            target is FirCallableDeclaration && target.attributes.callableCopySubstitutionForTypeUpdater != null -> {
+                transformer.returnTypeCalculator.callableCopyTypeCalculator.computeReturnType(target)
+                Unit
+            }
+
+            else -> super.rawResolve(target)
         }
 
-        else -> super.rawResolve(target)
+        LLFirDeclarationModificationService.bodyResolved(target, resolverPhase)
     }
 }

@@ -28,7 +28,6 @@ import org.jetbrains.kotlin.fir.symbols.impl.FirFieldSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirPropertySymbol
 import org.jetbrains.kotlin.fir.symbols.lazyResolveToPhase
 import org.jetbrains.kotlin.fir.types.*
-import org.jetbrains.kotlin.fir.types.impl.*
 import org.jetbrains.kotlin.name.CallableId
 import org.jetbrains.kotlin.name.StandardClassIds
 import org.jetbrains.kotlin.psi.KtElement
@@ -178,18 +177,18 @@ internal object FirCompileTimeConstantEvaluator {
 
         val opr1 = evaluate(functionCall.explicitReceiver, mode) ?: return null
         opr1.evaluate(function)?.let {
-            return it.adjustType(functionCall.typeRef)
+            return it.adjustType(functionCall.resolvedType)
         }
 
         val argument = functionCall.arguments.firstOrNull() ?: return null
         val opr2 = evaluate(argument, mode) ?: return null
         opr1.evaluate(function, opr2)?.let {
-            return it.adjustType(functionCall.typeRef)
+            return it.adjustType(functionCall.resolvedType)
         }
         return null
     }
 
-    private fun FirConstExpression<*>.adjustType(expectedType: FirTypeRef): FirConstExpression<*> {
+    private fun FirConstExpression<*>.adjustType(expectedType: ConeKotlinType): FirConstExpression<*> {
         val expectedKind = expectedType.toConstantValueKind()
         // Note that the resolved type for the const expression is not always matched with the const kind. For example,
         //   fun foo(x: Int) {
@@ -207,7 +206,7 @@ internal object FirCompileTimeConstantEvaluator {
             }
         // Lastly, we should preserve the resolved type of the original function call.
         return expression.apply {
-            replaceTypeRef(expectedType)
+            replaceConeTypeOrNull(expectedType)
         }
     }
 
@@ -304,25 +303,6 @@ internal object FirCompileTimeConstantEvaluator {
 
     ////// KINDS
 
-    private fun FirTypeRef.toConstantValueKind(): ConstantValueKind<*>? =
-        when (this) {
-            !is FirResolvedTypeRef -> null
-            !is FirImplicitBuiltinTypeRef -> type.toConstantValueKind()
-
-            is FirImplicitByteTypeRef -> ConstantValueKind.Byte
-            is FirImplicitDoubleTypeRef -> ConstantValueKind.Double
-            is FirImplicitFloatTypeRef -> ConstantValueKind.Float
-            is FirImplicitIntTypeRef -> ConstantValueKind.Int
-            is FirImplicitLongTypeRef -> ConstantValueKind.Long
-            is FirImplicitShortTypeRef -> ConstantValueKind.Short
-
-            is FirImplicitCharTypeRef -> ConstantValueKind.Char
-            is FirImplicitStringTypeRef -> ConstantValueKind.String
-            is FirImplicitBooleanTypeRef -> ConstantValueKind.Boolean
-
-            else -> null
-        }
-
     private fun ConeKotlinType.toConstantValueKind(): ConstantValueKind<*>? =
         when (this) {
             is ConeErrorType -> null
@@ -331,8 +311,7 @@ internal object FirCompileTimeConstantEvaluator {
             is ConeCapturedType -> lowerType?.toConstantValueKind() ?: constructor.supertypes!!.first().toConstantValueKind()
             is ConeDefinitelyNotNullType -> original.toConstantValueKind()
             is ConeIntersectionType -> intersectedTypes.first().toConstantValueKind()
-            is ConeStubType -> null
-            is ConeIntegerLiteralType -> null
+            is ConeStubType, is ConeIntegerLiteralType, is ConeTypeVariableType -> null
         }
 
     private fun String.toConstantValueKind(): ConstantValueKind<*>? =

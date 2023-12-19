@@ -32,7 +32,7 @@ dependencies {
     testApi(project(":compiler:cli-common"))
     testApi(project(":compiler:frontend.java"))
     testApi(projectTests(":compiler:tests-common"))
-    testApi(commonDependency("junit:junit"))
+    testImplementation(libs.junit4)
 
     testImplementation(intellijCore())
     testImplementation(commonDependency("org.jetbrains.kotlinx", "kotlinx-coroutines-core"))
@@ -63,14 +63,21 @@ testsJar()
 projectTest(parallel = true) {
     dependsOn(":dist")
     workingDir = rootDir
-    systemProperty("kotlin.test.script.classpath", testSourceSet.output.classesDirs.joinToString(File.pathSeparator))
+    val scriptClasspath = testSourceSet.output.classesDirs.joinToString(File.pathSeparator)
+    doFirst {
+        systemProperty("kotlin.test.script.classpath", scriptClasspath)
+    }
 }
 
-projectTest(taskName = "testWithK2", parallel = true) {
+projectTest(taskName = "testWithK1", parallel = true) {
     dependsOn(":dist")
     workingDir = rootDir
-    systemProperty("kotlin.test.script.classpath", testSourceSet.output.classesDirs.joinToString(File.pathSeparator))
-    systemProperty("kotlin.script.test.base.compiler.arguments", "-language-version 2.0")
-    systemProperty("kotlin.script.base.compiler.arguments", "-language-version 2.0")
+    val scriptClasspath = testSourceSet.output.classesDirs.joinToString(File.pathSeparator)
+
+    doFirst {
+        systemProperty("kotlin.test.script.classpath", scriptClasspath)
+        systemProperty("kotlin.script.test.base.compiler.arguments", "-language-version 1.9")
+        systemProperty("kotlin.script.base.compiler.arguments", "-language-version 1.9")
+    }
 }
 

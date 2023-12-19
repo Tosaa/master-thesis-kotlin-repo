@@ -18,6 +18,7 @@ import org.jetbrains.kotlin.ir.interpreter.IrInterpreter
 import org.jetbrains.kotlin.ir.interpreter.checker.EvaluationMode
 import org.jetbrains.kotlin.ir.interpreter.checker.IrInterpreterChecker
 import org.jetbrains.kotlin.ir.interpreter.createGetField
+import org.jetbrains.kotlin.ir.util.parentClassOrNull
 import kotlin.math.max
 import kotlin.math.min
 
@@ -35,21 +36,17 @@ internal abstract class IrConstExpressionTransformer(
     interpreter, irFile, mode, checker, evaluatedConstTracker, inlineConstTracker, onWarning, onError, suppressExceptions
 ) {
     override fun visitFunction(declaration: IrFunction, data: Data): IrStatement {
-        // It is useless to visit default accessor and if we do that we could render excess information for `IrGetField`
+        // It is useless to visit default accessor, and if we do that, we could render excess information for `IrGetField`
         if (declaration.origin == IrDeclarationOrigin.DEFAULT_PROPERTY_ACCESSOR) return declaration
-        return super.visitFunction(declaration, data)
-    }
 
-    override fun visitClass(declaration: IrClass, data: Data): IrStatement {
-        if (declaration.kind == ClassKind.ANNOTATION_CLASS) {
-            return super.visitClass(declaration, data.copy(inAnnotation = true))
-        }
-        return super.visitClass(declaration, data)
+        // We want to be able to evaluate default arguments of annotation's constructor
+        val isAnnotationConstructor = declaration is IrConstructor && declaration.parentClassOrNull?.kind == ClassKind.ANNOTATION_CLASS
+        return super.visitFunction(declaration, data.copy(inConstantExpression = isAnnotationConstructor))
     }
 
     override fun visitCall(expression: IrCall, data: Data): IrElement {
         if (expression.canBeInterpreted()) {
-            return expression.interpret(failAsError = data.inAnnotation)
+            return expression.interpret(failAsError = data.inConstantExpression)
         }
         return super.visitCall(expression, data)
     }
@@ -68,7 +65,7 @@ internal abstract class IrConstExpressionTransformer(
 
     override fun visitGetField(expression: IrGetField, data: Data): IrExpression {
         if (expression.canBeInterpreted()) {
-            return expression.interpret(failAsError = data.inAnnotation)
+            return expression.interpret(failAsError = data.inConstantExpression)
         }
         return super.visitGetField(expression, data)
     }
@@ -78,7 +75,7 @@ internal abstract class IrConstExpressionTransformer(
             this.startOffset, this.endOffset, expression.type, listOf(this@wrapInStringConcat)
         )
 
-        fun IrExpression.wrapInToStringConcatAndInterpret(): IrExpression = wrapInStringConcat().interpret(failAsError = data.inAnnotation)
+        fun IrExpression.wrapInToStringConcatAndInterpret(): IrExpression = wrapInStringConcat().interpret(failAsError = data.inConstantExpression)
         fun IrExpression.getConstStringOrEmpty(): String = if (this is IrConst<*>) value.toString() else ""
 
         // If we have some complex expression in arguments (like some `IrComposite`) we will skip it,

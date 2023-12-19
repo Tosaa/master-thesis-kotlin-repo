@@ -11,6 +11,8 @@ dependencies {
     compileOnly(commonDependency("org.jetbrains.intellij.deps:trove4j"))
 }
 
+optInToUnsafeDuringIrConstructionAPI()
+
 sourceSets {
     "main" {
         projectDefault()

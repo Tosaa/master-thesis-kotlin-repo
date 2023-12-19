@@ -12,10 +12,7 @@ import org.jetbrains.kotlin.fir.declarations.utils.hasExplicitBackingField
 import org.jetbrains.kotlin.fir.declarations.utils.isInner
 import org.jetbrains.kotlin.fir.declarations.utils.isInterface
 import org.jetbrains.kotlin.fir.declarations.utils.isReferredViaField
-import org.jetbrains.kotlin.fir.diagnostics.ConeDiagnostic
-import org.jetbrains.kotlin.fir.diagnostics.ConeSimpleDiagnostic
-import org.jetbrains.kotlin.fir.diagnostics.ConeStubDiagnostic
-import org.jetbrains.kotlin.fir.diagnostics.DiagnosticKind
+import org.jetbrains.kotlin.fir.diagnostics.*
 import org.jetbrains.kotlin.fir.expressions.*
 import org.jetbrains.kotlin.fir.expressions.builder.buildArgumentList
 import org.jetbrains.kotlin.fir.expressions.builder.buildResolvedReifiedParameterReference
@@ -36,6 +33,8 @@ import org.jetbrains.kotlin.fir.resolve.substitution.ConeSubstitutor
 import org.jetbrains.kotlin.fir.resolve.transformers.body.resolve.FirAbstractBodyResolveTransformer
 import org.jetbrains.kotlin.fir.resolve.transformers.body.resolve.FirExpressionsResolveTransformer
 import org.jetbrains.kotlin.fir.resolve.transformers.body.resolve.resultType
+import org.jetbrains.kotlin.fir.resolve.transformers.doesResolutionResultOverrideOtherToPreserveCompatibility
+import org.jetbrains.kotlin.fir.scopes.impl.originalConstructorIfTypeAlias
 import org.jetbrains.kotlin.fir.scopes.unsubstitutedScope
 import org.jetbrains.kotlin.fir.symbols.ConeClassLikeLookupTag
 import org.jetbrains.kotlin.fir.symbols.FirBasedSymbol
@@ -55,6 +54,9 @@ import org.jetbrains.kotlin.resolve.calls.tasks.ExplicitReceiverKind
 import org.jetbrains.kotlin.resolve.calls.tower.CandidateApplicability
 import org.jetbrains.kotlin.resolve.calls.tower.isSuccess
 import org.jetbrains.kotlin.types.Variance
+import org.jetbrains.kotlin.util.CodeFragmentAdjustment
+import org.jetbrains.kotlin.util.OperatorNameConventions
+import org.jetbrains.kotlin.utils.addToStdlib.runIf
 
 class FirCallResolver(
     private val components: FirAbstractBodyResolveTransformer.BodyResolveTransformerComponents,
@@ -120,9 +122,9 @@ class FirCallResolver(
             candidate?.updateSourcesOfReceivers()
             functionCall
         }
-        val typeRef = components.typeFromCallee(resultFunctionCall)
-        if (typeRef.type is ConeErrorType) {
-            resultFunctionCall.resultType = typeRef
+        val type = components.typeFromCallee(resultFunctionCall).type
+        if (type is ConeErrorType) {
+            resultFunctionCall.resultType = type
         }
 
         return resultFunctionCall
@@ -141,8 +143,10 @@ class FirCallResolver(
     ): List<OverloadCandidate> {
         val collector = AllCandidatesCollector(components, components.resolutionStageRunner)
         val origin = (qualifiedAccess as? FirFunctionCall)?.origin ?: FirFunctionCallOrigin.Regular
-        val result =
-            collectCandidates(qualifiedAccess, name, forceCallKind = null, origin, containingDeclarations, resolutionContext, collector)
+        val result = collectCandidates(
+            qualifiedAccess, name, forceCallKind = null, isUsedAsGetClassReceiver = false,
+            origin, containingDeclarations, resolutionContext, collector
+        )
         return collector.allCandidates.map { OverloadCandidate(it, isInBestCandidates = it in result.candidates) }
     }
 
@@ -150,6 +154,7 @@ class FirCallResolver(
         qualifiedAccess: FirQualifiedAccessExpression,
         name: Name,
         forceCallKind: CallKind? = null,
+        isUsedAsGetClassReceiver: Boolean = false,
         origin: FirFunctionCallOrigin = FirFunctionCallOrigin.Regular,
         containingDeclarations: List<FirDeclaration> = transformer.components.containingDeclarations,
         resolutionContext: ResolutionContext = transformer.resolutionContext,
@@ -167,6 +172,7 @@ class FirCallResolver(
             explicitReceiver,
             argumentList,
             isImplicitInvoke = qualifiedAccess is FirImplicitInvokeCall,
+            isUsedAsGetClassReceiver = isUsedAsGetClassReceiver,
             typeArguments,
             session,
             components.file,
@@ -220,25 +226,17 @@ class FirCallResolver(
     fun resolveVariableAccessAndSelectCandidate(
         qualifiedAccess: FirQualifiedAccessExpression,
         isUsedAsReceiver: Boolean,
+        isUsedAsGetClassReceiver: Boolean,
         callSite: FirElement,
     ): FirStatement {
-        return resolveVariableAccessAndSelectCandidateImpl(qualifiedAccess, isUsedAsReceiver, callSite) { true }
-    }
-
-    fun resolveOnlyEnumOrQualifierAccessAndSelectCandidate(
-        qualifiedAccess: FirQualifiedAccessExpression,
-        isUsedAsReceiver: Boolean,
-    ): FirStatement {
-        return resolveVariableAccessAndSelectCandidateImpl(qualifiedAccess, isUsedAsReceiver) accept@{ candidates ->
-            val symbol = candidates.singleOrNull()?.symbol ?: return@accept false
-            symbol is FirEnumEntrySymbol || symbol is FirRegularClassSymbol
-        }
+        return resolveVariableAccessAndSelectCandidateImpl(qualifiedAccess, isUsedAsReceiver, isUsedAsGetClassReceiver, callSite) { true }
     }
 
     private fun resolveVariableAccessAndSelectCandidateImpl(
         qualifiedAccess: FirQualifiedAccessExpression,
         isUsedAsReceiver: Boolean,
-        callSite: FirElement = qualifiedAccess,
+        isUsedAsGetClassReceiver: Boolean,
+        callSite: FirElement,
         acceptCandidates: (Collection<Candidate>) -> Boolean,
     ): FirStatement {
         val callee = qualifiedAccess.calleeReference as? FirSimpleNamedReference ?: return qualifiedAccess
@@ -248,7 +246,7 @@ class FirCallResolver(
         val nonFatalDiagnosticFromExpression = (qualifiedAccess as? FirPropertyAccessExpression)?.nonFatalDiagnostics
 
         val basicResult by lazy(LazyThreadSafetyMode.NONE) {
-            collectCandidates(qualifiedAccess, callee.name, callSite = callSite)
+            collectCandidates(qualifiedAccess, callee.name, isUsedAsGetClassReceiver = isUsedAsGetClassReceiver, callSite = callSite)
         }
 
         // Even if it's not receiver, it makes sense to continue qualifier if resolution is unsuccessful
@@ -257,8 +255,7 @@ class FirCallResolver(
             (qualifiedAccess.explicitReceiver as? FirResolvedQualifier)
                 ?.continueQualifier(
                     callee,
-                    qualifiedAccess.source,
-                    qualifiedAccess.typeArguments,
+                    qualifiedAccess,
                     nonFatalDiagnosticFromExpression,
                     session,
                     components
@@ -282,7 +279,7 @@ class FirCallResolver(
             // }
             if (!result.applicability.isSuccess || (isUsedAsReceiver && result.candidates.all { it.symbol is FirClassLikeSymbol })) {
                 components.resolveRootPartOfQualifier(
-                    callee, qualifiedAccess.source, qualifiedAccess.typeArguments, nonFatalDiagnosticFromExpression,
+                    callee, qualifiedAccess, nonFatalDiagnosticFromExpression,
                 )?.let { return it }
             }
         }
@@ -328,16 +325,25 @@ class FirCallResolver(
 
         when {
             referencedSymbol is FirClassLikeSymbol<*> -> {
+                val extraDiagnostic =
+                    runIf(reducedCandidates.singleOrNull()?.doesResolutionResultOverrideOtherToPreserveCompatibility() == true) {
+                        ConeResolutionResultOverridesOtherToPreserveCompatibility
+                    }
+                val nonFatalDiagnosticFromExpressionWithExtra = when {
+                    nonFatalDiagnosticFromExpression != null -> nonFatalDiagnosticFromExpression + listOfNotNull(extraDiagnostic)
+                    extraDiagnostic == null -> null
+                    else -> listOf(extraDiagnostic)
+                }
                 return components.buildResolvedQualifierForClass(
                     referencedSymbol,
                     qualifiedAccess.source,
                     qualifiedAccess.typeArguments,
-                    diagnostic,
+                    diagnostic ?: extractNestedClassAccessDiagnostic(nameReference.source, qualifiedAccess.explicitReceiver, referencedSymbol),
                     nonFatalDiagnostics = extractNonFatalDiagnostics(
                         nameReference.source,
                         qualifiedAccess.explicitReceiver,
                         referencedSymbol,
-                        nonFatalDiagnosticFromExpression,
+                        nonFatalDiagnosticFromExpressionWithExtra,
                         session
                     ),
                     annotations = qualifiedAccess.annotations
@@ -347,7 +353,7 @@ class FirCallResolver(
                 return buildResolvedReifiedParameterReference {
                     source = nameReference.source
                     symbol = referencedSymbol
-                    typeRef = typeForReifiedParameterReference(this)
+                    coneTypeOrNull = typeForReifiedParameterReference(this)
                 }
             }
         }
@@ -371,6 +377,7 @@ class FirCallResolver(
         resolvedCallableReferenceAtom: ResolvedCallableReferenceAtom,
     ): Pair<CandidateApplicability, Boolean> {
         val callableReferenceAccess = resolvedCallableReferenceAtom.reference
+        val calleeReference = callableReferenceAccess.calleeReference
         val lhs = resolvedCallableReferenceAtom.lhs
         val coneSubstitutor = constraintSystemBuilder.buildCurrentSubstitutor() as ConeSubstitutor
         val expectedType = resolvedCallableReferenceAtom.expectedType?.let(coneSubstitutor::substituteOrSelf)
@@ -390,8 +397,9 @@ class FirCallResolver(
                 manager = TowerResolveManager(localCollector),
             )
         }
-        val isSuccess = result.currentApplicability.isSuccess
+
         val (reducedCandidates, newApplicability) = reduceCandidates(result, callableReferenceAccess.explicitReceiver)
+        val nonEmptyAndAllSuccessful = reducedCandidates.isNotEmpty() && reducedCandidates.all { it.isSuccessful }
         val applicability = newApplicability ?: result.currentApplicability
 
         (callableReferenceAccess.explicitReceiver as? FirResolvedQualifier)?.replaceResolvedToCompanionObject(
@@ -401,16 +409,20 @@ class FirCallResolver(
         resolvedCallableReferenceAtom.hasBeenResolvedOnce = true
 
         when {
-            !isSuccess -> {
+            !nonEmptyAndAllSuccessful -> {
                 val errorReference = buildReferenceWithErrorCandidate(
                     info,
-                    if (applicability == CandidateApplicability.K2_UNSUPPORTED) {
-                        val unsupportedResolutionDiagnostic = reducedCandidates.firstOrNull()?.diagnostics?.firstOrNull() as? Unsupported
-                        ConeUnsupported(unsupportedResolutionDiagnostic?.message ?: "", unsupportedResolutionDiagnostic?.source)
-                    } else {
-                        ConeUnresolvedReferenceError(info.name)
+                    when {
+                        applicability == CandidateApplicability.K2_UNSUPPORTED -> {
+                            val unsupportedResolutionDiagnostic =
+                                reducedCandidates.firstOrNull()?.diagnostics?.firstOrNull() as? Unsupported
+                            ConeUnsupported(unsupportedResolutionDiagnostic?.message ?: "", unsupportedResolutionDiagnostic?.source)
+                        }
+                        reducedCandidates.size > 1 -> ConeAmbiguityError(info.name, applicability, reducedCandidates)
+                        reducedCandidates.size == 1 -> createConeDiagnosticForCandidateWithError(applicability, reducedCandidates.single())
+                        else -> ConeUnresolvedReferenceError(info.name)
                     },
-                    callableReferenceAccess.source
+                    calleeReference.source
                 )
                 resolvedCallableReferenceAtom.resultingReference = errorReference
                 return applicability to false
@@ -420,7 +432,7 @@ class FirCallResolver(
                     val errorReference = buildReferenceWithErrorCandidate(
                         info,
                         ConeAmbiguityError(info.name, applicability, reducedCandidates),
-                        callableReferenceAccess.source
+                        calleeReference.source
                     )
                     resolvedCallableReferenceAtom.resultingReference = errorReference
                     return applicability to false
@@ -439,7 +451,7 @@ class FirCallResolver(
         }
 
         val reference = createResolvedNamedReference(
-            callableReferenceAccess.calleeReference,
+            calleeReference,
             info.name,
             info,
             reducedCandidates,
@@ -471,6 +483,7 @@ class FirCallResolver(
             explicitReceiver = null,
             delegatedConstructorCall.argumentList,
             isImplicitInvoke = false,
+            isUsedAsGetClassReceiver = false,
             typeArguments = typeArguments,
             session,
             components.file,
@@ -588,7 +601,7 @@ class FirCallResolver(
                 //calleeReference and annotationTypeRef are both error nodes so we need to avoid doubling of the diagnostic report
                 else ConeStubDiagnostic(
                     //prefer diagnostic with symbol, e.g. to use the symbol during navigation in IDE
-                    (annotation.typeRef.coneType as? ConeErrorType)?.diagnostic as? ConeDiagnosticWithSymbol<*>
+                    (annotation.resolvedType as? ConeErrorType)?.diagnostic as? ConeDiagnosticWithSymbol<*>
                         ?: ConeUnresolvedNameError(reference.name)),
                 reference.source
             )
@@ -606,6 +619,7 @@ class FirCallResolver(
         explicitReceiver = null,
         annotation.argumentList,
         isImplicitInvoke = false,
+        isUsedAsGetClassReceiver = false,
         typeArguments = annotation.typeArguments,
         session,
         components.file,
@@ -679,6 +693,7 @@ class FirCallResolver(
             callableReferenceAccess.explicitReceiver,
             FirEmptyArgumentList,
             isImplicitInvoke = false,
+            isUsedAsGetClassReceiver = false,
             emptyList(),
             session,
             components.file,
@@ -703,6 +718,9 @@ class FirCallResolver(
         expectedCandidates: Collection<Candidate>? = null
     ): FirNamedReference {
         val source = reference.source
+        val operatorToken = runIf(callInfo.origin == FirFunctionCallOrigin.Operator) {
+            OperatorNameConventions.TOKENS_BY_OPERATOR_NAME[name]
+        }
 
         val diagnostic = when {
             expectedCallKind != null -> {
@@ -725,7 +743,7 @@ class FirCallResolver(
                                 ConeResolutionToClassifierError(singleExpectedCandidate!!, fir.symbol)
                             }
                             else -> {
-                                val coneType = explicitReceiver?.typeRef?.coneType
+                                val coneType = explicitReceiver?.resolvedType
                                 when {
                                     coneType != null && !coneType.isUnit -> {
                                         ConeFunctionExpectedError(
@@ -741,7 +759,7 @@ class FirCallResolver(
                                             singleExpectedCandidate
                                         )
                                     }
-                                    else -> ConeUnresolvedNameError(name)
+                                    else -> ConeUnresolvedNameError(name, operatorToken)
                                 }
                             }
                         }
@@ -754,21 +772,27 @@ class FirCallResolver(
                     name.asString() == "invoke" && explicitReceiver is FirConstExpression<*> ->
                         ConeFunctionExpectedError(
                             explicitReceiver.value?.toString() ?: "",
-                            explicitReceiver.typeRef.coneType,
+                            explicitReceiver.resolvedType,
                         )
                     reference is FirSuperReference && (reference.superTypeRef.firClassLike(session) as? FirClass)?.isInterface == true -> ConeNoConstructorError
-                    else -> ConeUnresolvedNameError(name)
+                    else -> ConeUnresolvedNameError(name, operatorToken)
                 }
             }
 
             candidates.size > 1 -> ConeAmbiguityError(name, applicability, candidates)
 
-            !applicability.isSuccess -> {
+            else -> {
                 val candidate = candidates.single()
-                createConeDiagnosticForCandidateWithError(applicability, candidate)
+                runIf(!candidate.isSuccessful) {
+                    if (needTreatErrorCandidateAsResolved(candidate)) {
+                        @OptIn(CodeFragmentAdjustment::class)
+                        candidate.resetToResolved()
+                        null
+                    } else {
+                        createConeDiagnosticForCandidateWithError(applicability, candidate)
+                    }
+                }
             }
-
-            else -> null
         }
 
         if (diagnostic != null) {
@@ -807,9 +831,10 @@ class FirCallResolver(
          */
         if (components.context.inferenceSession !is FirBuilderInferenceSession &&
             createResolvedReferenceWithoutCandidateForLocalVariables &&
-            explicitReceiver?.typeRef?.coneTypeSafe<ConeIntegerLiteralType>() == null &&
+            explicitReceiver?.resolvedType !is ConeIntegerLiteralType &&
             coneSymbol is FirVariableSymbol &&
-            (coneSymbol !is FirPropertySymbol || (coneSymbol.fir as FirMemberDeclaration).typeParameters.isEmpty())
+            (coneSymbol !is FirPropertySymbol || (coneSymbol.fir as FirMemberDeclaration).typeParameters.isEmpty()) &&
+            !candidate.doesResolutionResultOverrideOtherToPreserveCompatibility()
         ) {
             return buildResolvedNamedReference {
                 this.source = source
@@ -818,6 +843,13 @@ class FirCallResolver(
             }
         }
         return FirNamedReferenceWithCandidate(source, name, candidate)
+    }
+
+    private fun needTreatErrorCandidateAsResolved(candidate: Candidate): Boolean {
+        return if (candidate.isCodeFragmentVisibilityError) {
+            components.resolutionStageRunner.fullyProcessCandidate(candidate, transformer.resolutionContext)
+            candidate.diagnostics.all { it.applicability.isSuccess || it.applicability == CandidateApplicability.K2_VISIBILITY_ERROR }
+        } else false
     }
 
     private fun createErrorReferenceForSingleCandidate(

@@ -102,7 +102,7 @@ class CompilerArgumentsContentProspectorTest {
             CommonCompilerArguments::useFirExtendedCheckers,
             CommonCompilerArguments::disableUltraLightClasses,
             CommonCompilerArguments::useMixedNamedArguments,
-            CommonCompilerArguments::expectActualLinker,
+            CommonCompilerArguments::metadataKlib,
             CommonCompilerArguments::extendedCompilerChecks,
             CommonCompilerArguments::disableDefaultScriptingPlugin,
             CommonCompilerArguments::inferenceCompatibility,
@@ -237,7 +237,8 @@ class CompilerArgumentsContentProspectorTest {
             K2JSCompilerArguments::wasm
         )
         private val k2JSCompilerArgumentsStringProperties = commonCompilerArgumentsStringProperties + listOf(
-            K2JSCompilerArguments::outputFile,
+            K2JSCompilerArguments::outputDir,
+            K2JSCompilerArguments::moduleName,
             K2JSCompilerArguments::libraries,
             K2JSCompilerArguments::sourceMapPrefix,
             K2JSCompilerArguments::sourceMapBaseDirs,

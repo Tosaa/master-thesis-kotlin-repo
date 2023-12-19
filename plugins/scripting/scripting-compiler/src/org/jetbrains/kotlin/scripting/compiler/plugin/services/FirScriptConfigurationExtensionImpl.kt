@@ -1,12 +1,11 @@
 /*
- * Copyright 2010-2022 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Copyright 2010-2023 JetBrains s.r.o. and Kotlin Programming Language contributors.
  * Use of this source code is governed by the Apache 2.0 license that can be found in the license/LICENSE.txt file.
  */
 
 package org.jetbrains.kotlin.scripting.compiler.plugin.services
 
 import com.intellij.openapi.diagnostic.Logger
-import com.intellij.openapi.project.Project
 import org.jetbrains.kotlin.*
 import org.jetbrains.kotlin.descriptors.Modality
 import org.jetbrains.kotlin.descriptors.Visibilities
@@ -20,19 +19,21 @@ import org.jetbrains.kotlin.fir.declarations.impl.FirDefaultPropertyGetter
 import org.jetbrains.kotlin.fir.declarations.primaryConstructorIfAny
 import org.jetbrains.kotlin.fir.declarations.utils.SCRIPT_SPECIAL_NAME_STRING
 import org.jetbrains.kotlin.fir.expressions.FirExpression
+import org.jetbrains.kotlin.fir.expressions.UnresolvedExpressionTypeAccess
 import org.jetbrains.kotlin.fir.moduleData
 import org.jetbrains.kotlin.fir.resolve.providers.dependenciesSymbolProvider
 import org.jetbrains.kotlin.fir.symbols.SymbolInternals
 import org.jetbrains.kotlin.fir.symbols.impl.FirPropertySymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirRegularClassSymbol
 import org.jetbrains.kotlin.fir.types.builder.buildUserTypeRef
+import org.jetbrains.kotlin.fir.types.impl.FirImplicitTypeRefImplWithoutSource
 import org.jetbrains.kotlin.fir.types.impl.FirQualifierPartImpl
 import org.jetbrains.kotlin.fir.types.impl.FirTypeArgumentListImpl
+import org.jetbrains.kotlin.fir.types.toFirResolvedTypeRef
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.psi.KtFile
-import org.jetbrains.kotlin.psi.KtPsiFactory
 import org.jetbrains.kotlin.scripting.definitions.annotationsForSamWithReceivers
 import org.jetbrains.kotlin.scripting.resolve.KtFileScriptSource
 import org.jetbrains.kotlin.scripting.resolve.VirtualFileScriptSource
@@ -62,10 +63,7 @@ class FirScriptConfiguratorExtensionImpl(
             val stripped = if (endsWithStar) trimmed.substring(0, trimmed.length - 2) else trimmed
             val fqName = FqName.fromSegments(stripped.split("."))
             fileBuilder.imports += buildImport {
-                fileBuilder.sourceFile?.project()?.let {
-                    val dummyElement = KtPsiFactory(it, markGenerated = true).createColon()
-                    source = KtFakeSourceElement(dummyElement, KtFakeSourceElementKind.ImplicitImport)
-                }
+                source = fileBuilder.source?.fakeElement(KtFakeSourceElementKind.ImplicitImport)
                 importedFqName = fqName
                 isAllUnder = endsWithStar
             }
@@ -93,6 +91,7 @@ class FirScriptConfiguratorExtensionImpl(
                     parameters.add(
                         buildProperty {
                             moduleData = session.moduleData
+                            source = this@configure.source?.fakeElement(KtFakeSourceElementKind.ScriptParameter)
                             origin = FirDeclarationOrigin.ScriptCustomization.Default
                             // TODO: copy type parameters?
                             returnTypeRef = baseCtorParameter.returnTypeRef
@@ -121,6 +120,7 @@ class FirScriptConfiguratorExtensionImpl(
             parameters.add(
                 buildProperty {
                     moduleData = session.moduleData
+                    source = this@configure.source?.fakeElement(KtFakeSourceElementKind.ScriptParameter)
                     origin = FirDeclarationOrigin.ScriptCustomization.Default
                     returnTypeRef = typeRef
                     name = Name.identifier(propertyName)
@@ -141,6 +141,7 @@ class FirScriptConfiguratorExtensionImpl(
             if (lastExpression != null && lastExpression is FirExpression) {
                 statements.removeAt(statements.size - 1)
                 statements.add(
+                    @OptIn(UnresolvedExpressionTypeAccess::class)
                     buildProperty {
                         this.name = Name.identifier(resultFieldName)
                         this.symbol = FirPropertySymbol(this.name)
@@ -148,12 +149,12 @@ class FirScriptConfiguratorExtensionImpl(
                         moduleData = session.moduleData
                         origin = FirDeclarationOrigin.ScriptCustomization.ResultProperty
                         initializer = lastExpression
-                        returnTypeRef = lastExpression.typeRef
+                        returnTypeRef = lastExpression.coneTypeOrNull?.toFirResolvedTypeRef() ?: FirImplicitTypeRefImplWithoutSource
                         getter = FirDefaultPropertyGetter(
                             lastExpression.source,
                             session.moduleData,
                             FirDeclarationOrigin.ScriptCustomization.ResultProperty,
-                            lastExpression.typeRef,
+                            lastExpression.coneTypeOrNull?.toFirResolvedTypeRef() ?: FirImplicitTypeRefImplWithoutSource,
                             Visibilities.Public,
                             this.symbol,
                         )
@@ -210,8 +211,6 @@ class FirScriptConfiguratorExtensionImpl(
         }
     }
 }
-
-private fun KtSourceFile.project(): Project? = (toSourceCode() as? KtFileScriptSource)?.ktFile?.project
 
 private fun SourceCode.originalKtFile(): KtFile =
     (this as? KtFileScriptSource)?.ktFile?.originalFile as? KtFile

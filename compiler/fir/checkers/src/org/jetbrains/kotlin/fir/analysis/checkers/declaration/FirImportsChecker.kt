@@ -5,7 +5,10 @@
 
 package org.jetbrains.kotlin.fir.analysis.checkers.declaration
 
+import org.jetbrains.kotlin.KtFakeSourceElement
+import org.jetbrains.kotlin.KtFakeSourceElementKind
 import org.jetbrains.kotlin.descriptors.Visibilities
+import org.jetbrains.kotlin.descriptors.isObject
 import org.jetbrains.kotlin.diagnostics.DiagnosticReporter
 import org.jetbrains.kotlin.diagnostics.reportOn
 import org.jetbrains.kotlin.fir.analysis.checkers.context.CheckerContext
@@ -13,6 +16,7 @@ import org.jetbrains.kotlin.fir.analysis.checkers.expression.FirDeprecationCheck
 import org.jetbrains.kotlin.fir.analysis.checkers.unsubstitutedScope
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors
 import org.jetbrains.kotlin.fir.analysis.diagnostics.toInvisibleReferenceDiagnostic
+import org.jetbrains.kotlin.fir.analysis.getLastImportedFqNameSegmentSource
 import org.jetbrains.kotlin.fir.analysis.getSourceForImportSegment
 import org.jetbrains.kotlin.fir.declarations.*
 import org.jetbrains.kotlin.fir.declarations.utils.isEnumClass
@@ -23,6 +27,8 @@ import org.jetbrains.kotlin.fir.resolve.providers.firProvider
 import org.jetbrains.kotlin.fir.resolve.providers.getContainingFile
 import org.jetbrains.kotlin.fir.resolve.providers.symbolProvider
 import org.jetbrains.kotlin.fir.resolve.providers.toSymbol
+import org.jetbrains.kotlin.fir.resolve.transformers.PackageResolutionResult
+import org.jetbrains.kotlin.fir.resolve.transformers.resolveToPackageOrClass
 import org.jetbrains.kotlin.fir.scopes.FirContainingNamesAwareScope
 import org.jetbrains.kotlin.fir.scopes.impl.declaredMemberScope
 import org.jetbrains.kotlin.fir.symbols.SymbolInternals
@@ -37,9 +43,11 @@ import org.jetbrains.kotlin.utils.addToStdlib.filterIsInstanceWithChecker
 object FirImportsChecker : FirFileChecker() {
     override fun check(declaration: FirFile, context: CheckerContext, reporter: DiagnosticReporter) {
         declaration.imports.forEach { import ->
-            if (import is FirErrorImport) return@forEach
+            if (import.source?.kind?.shouldSkipErrorTypeReporting == true) return@forEach
             if (import.isAllUnder) {
-                if (import !is FirResolvedImport) {
+                if (import is FirResolvedImport) {
+                    checkAllUnderFromObject(import, context, reporter)
+                } else {
                     checkAllUnderFromEnumEntry(import, context, reporter)
                 }
             } else {
@@ -60,6 +68,24 @@ object FirImportsChecker : FirFileChecker() {
         val classSymbol = classId.resolveToClass(context) ?: return
         if (classSymbol.isEnumClass && classSymbol.collectEnumEntries().any { it.callableId.callableName == fqName.shortName() }) {
             reporter.reportOn(import.source, FirErrors.CANNOT_ALL_UNDER_IMPORT_FROM_SINGLETON, classSymbol.classId.shortClassName, context)
+        }
+    }
+
+    private fun checkAllUnderFromObject(import: FirImport, context: CheckerContext, reporter: DiagnosticReporter) {
+        val fqName = import.importedFqName ?: return
+        if (fqName.isRoot) return
+        val classLike = when (val resolutionResult = resolveToPackageOrClass(context.session.symbolProvider, fqName)) {
+            is PackageResolutionResult.PackageOrClass -> resolutionResult.classSymbol ?: return
+            // Already an error import, already reported
+            is PackageResolutionResult.Error -> return
+        }
+        val classSymbol = classLike.fullyExpandedClass(context.session)
+        if (classSymbol != null && classSymbol.classKind.isObject) {
+            reporter.reportOn(import.source, FirErrors.CANNOT_ALL_UNDER_IMPORT_FROM_SINGLETON, classSymbol.classId.shortClassName, context)
+        }
+        if (!classLike.fir.isVisible(context)) {
+            val source = import.getLastImportedFqNameSegmentSource() ?: error("`${import.source}` does not contain `$fqName`")
+            reporter.report(classLike.toInvisibleReferenceDiagnostic(source), context)
         }
     }
 
@@ -165,9 +191,10 @@ object FirImportsChecker : FirFileChecker() {
         val interestingImports = imports
             .filterIsInstanceWithChecker<FirResolvedImport> { import ->
                 !import.isAllUnder &&
+                        import.source?.kind?.shouldSkipErrorTypeReporting != true &&
                         import.importedName?.identifierOrNullIfSpecial?.isNotEmpty() == true &&
                         import.resolvesToClass(context)
-            }
+            }.filterNot { (it.source as? KtFakeSourceElement)?.kind == KtFakeSourceElementKind.ImplicitImport  }
         interestingImports
             .groupBy { it.aliasName ?: it.importedName!! }
             .values
@@ -203,7 +230,7 @@ object FirImportsChecker : FirFileChecker() {
             val parentClass = resolvedParentClassId!!
             val relativeClassName = this.relativeParentClassName ?: return false
             val importedName = this.importedName ?: return false
-            val innerClassId = ClassId(parentClass.packageFqName, relativeClassName.child(importedName), false)
+            val innerClassId = ClassId(parentClass.packageFqName, relativeClassName.child(importedName), isLocal = false)
             return innerClassId.resolveToClass(context) != null
         } else {
             val importedFqName = importedFqName ?: return false

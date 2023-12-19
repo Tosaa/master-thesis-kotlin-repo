@@ -23,6 +23,7 @@ import org.jetbrains.kotlin.psi2ir.descriptors.IrBuiltInsOverDescriptors
 @OptIn(ObsoleteDescriptorBasedAPI::class)
 class JsIrCompilerWithIC(
     private val mainModule: IrModuleFragment,
+    private val mainArguments: List<String>?,
     configuration: CompilerConfiguration,
     granularity: JsGenerationGranularity,
     private val phaseConfig: PhaseConfig,
@@ -42,15 +43,12 @@ class JsIrCompilerWithIC(
             keep = emptySet(),
             configuration = configuration,
             granularity = granularity,
-            incrementalCacheEnabled = true
+            incrementalCacheEnabled = true,
+            mainCallArguments = mainArguments
         )
     }
 
-    override fun compile(
-        allModules: Collection<IrModuleFragment>,
-        dirtyFiles: Collection<IrFile>,
-        mainArguments: List<String>?
-    ): List<() -> List<JsIrProgramFragment>> {
+    override fun compile(allModules: Collection<IrModuleFragment>, dirtyFiles: Collection<IrFile>): List<() -> JsIrProgramFragments> {
         val shouldGeneratePolyfills = context.configuration.getBoolean(JSConfigurationKeys.GENERATE_POLYFILLS)
 
         allModules.forEach {
@@ -64,7 +62,7 @@ class JsIrCompilerWithIC(
 
         lowerPreservingTags(allModules, context, phaseConfig, context.irFactory.stageController as WholeWorldStageController)
 
-        val transformer = IrModuleToJsTransformer(context, mainArguments)
+        val transformer = IrModuleToJsTransformer(context, shouldReferMainFunction = mainArguments != null)
         return transformer.makeIrFragmentsGenerators(dirtyFiles, allModules)
     }
 }
@@ -78,11 +76,13 @@ fun lowerPreservingTags(
     // Lower all the things
     controller.currentStage = 0
 
-    val phaserState = PhaserState<Iterable<IrModuleFragment>>()
+    val phaserState = PhaserState<IrModuleFragment>()
 
     loweringList.forEachIndexed { i, lowering ->
         controller.currentStage = i + 1
-        lowering.modulePhase.invoke(phaseConfig, phaserState, context, modules)
+        modules.forEach { module ->
+            lowering.invoke(phaseConfig, phaserState, context, module)
+        }
     }
 
     controller.currentStage = loweringList.size + 1

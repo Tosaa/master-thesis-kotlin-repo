@@ -9,17 +9,16 @@ import org.jetbrains.kotlin.KtFakeSourceElementKind
 import org.jetbrains.kotlin.diagnostics.DiagnosticReporter
 import org.jetbrains.kotlin.diagnostics.reportOn
 import org.jetbrains.kotlin.fir.FirNameConflictsTrackerComponent
-import org.jetbrains.kotlin.fir.analysis.checkers.FirDeclarationInspector
-import org.jetbrains.kotlin.fir.analysis.checkers.checkForLocalRedeclarations
+import org.jetbrains.kotlin.fir.analysis.checkers.*
 import org.jetbrains.kotlin.fir.analysis.checkers.context.CheckerContext
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors
 import org.jetbrains.kotlin.fir.declarations.*
 import org.jetbrains.kotlin.fir.packageFqName
-import org.jetbrains.kotlin.fir.resolve.getContainingDeclaration
 import org.jetbrains.kotlin.fir.scopes.impl.FirPackageMemberScope
 import org.jetbrains.kotlin.fir.scopes.impl.PACKAGE_MEMBER
+import org.jetbrains.kotlin.fir.scopes.impl.typeAliasForConstructor
 import org.jetbrains.kotlin.fir.symbols.FirBasedSymbol
-import org.jetbrains.kotlin.fir.symbols.impl.FirClassLikeSymbol
+import org.jetbrains.kotlin.fir.symbols.impl.*
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.utils.SmartSet
 
@@ -27,17 +26,17 @@ object FirConflictsDeclarationChecker : FirBasicDeclarationChecker() {
     override fun check(declaration: FirDeclaration, context: CheckerContext, reporter: DiagnosticReporter) {
         when (declaration) {
             is FirFile -> {
-                val inspector = FirDeclarationInspector(context)
+                val inspector = FirDeclarationCollector<FirBasedSymbol<*>>(context)
                 checkFile(declaration, inspector, context)
-                reportConflicts(reporter, context, inspector.declarationConflictingSymbols)
+                reportConflicts(reporter, context, inspector.declarationConflictingSymbols, declaration)
             }
             is FirRegularClass -> {
                 if (declaration.source?.kind !is KtFakeSourceElementKind) {
                     checkForLocalRedeclarations(declaration.typeParameters, context, reporter)
                 }
-                val inspector = FirDeclarationInspector(context)
-                inspector.collectClassMembers(declaration)
-                reportConflicts(reporter, context, inspector.declarationConflictingSymbols)
+                val inspector = FirDeclarationCollector<FirBasedSymbol<*>>(context)
+                inspector.collectClassMembers(declaration.symbol)
+                reportConflicts(reporter, context, inspector.declarationConflictingSymbols, declaration)
             }
             else -> {
                 if (declaration.source?.kind !is KtFakeSourceElementKind && declaration is FirTypeParameterRefsOwner) {
@@ -46,7 +45,6 @@ object FirConflictsDeclarationChecker : FirBasicDeclarationChecker() {
                     }
                     checkForLocalRedeclarations(declaration.typeParameters, context, reporter)
                 }
-                return
             }
         }
     }
@@ -54,17 +52,32 @@ object FirConflictsDeclarationChecker : FirBasicDeclarationChecker() {
     private fun reportConflicts(
         reporter: DiagnosticReporter,
         context: CheckerContext,
-        declarationConflictingSymbols: Map<FirDeclaration, SmartSet<FirBasedSymbol<*>>>,
+        declarationConflictingSymbols: Map<FirBasedSymbol<*>, SmartSet<FirBasedSymbol<*>>>,
+        container: FirDeclaration,
     ) {
         declarationConflictingSymbols.forEach { (conflictingDeclaration, symbols) ->
-            val source = conflictingDeclaration.source
-            if (symbols.isEmpty()) return@forEach
+            val typeAliasForConstructorSource = (conflictingDeclaration as? FirConstructorSymbol)?.typeAliasForConstructor?.source
+            val origin = conflictingDeclaration.origin
+            val source = when {
+                conflictingDeclaration !is FirCallableSymbol<*> -> conflictingDeclaration.source
+                origin == FirDeclarationOrigin.Source -> conflictingDeclaration.source
+                origin == FirDeclarationOrigin.Library -> return@forEach
+                origin == FirDeclarationOrigin.Synthetic.TypeAliasConstructor -> typeAliasForConstructorSource
+                else -> container.source
+            }
+            if (
+                symbols.isEmpty() ||
+                // For every primary constructor there is a parent,
+                // FirRegularClass declaration, and those clash too,
+                // resulting in REDECLARATION.
+                conflictingDeclaration.isPrimaryConstructor && symbols.all { it.isPrimaryConstructor }
+            ) return@forEach
 
             val factory =
-                if (conflictingDeclaration is FirSimpleFunction || conflictingDeclaration is FirConstructor) {
+                if (conflictingDeclaration is FirNamedFunctionSymbol || conflictingDeclaration is FirConstructorSymbol) {
                     FirErrors.CONFLICTING_OVERLOADS
-                } else if (conflictingDeclaration is FirClassLikeDeclaration &&
-                    conflictingDeclaration.getContainingDeclaration(context.session) == null &&
+                } else if (conflictingDeclaration is FirClassLikeSymbol<*> &&
+                    conflictingDeclaration.getContainingClassSymbol(context.session) == null &&
                     symbols.any { it is FirClassLikeSymbol<*> }
                 ) {
                     FirErrors.PACKAGE_OR_CLASSIFIER_REDECLARATION
@@ -76,15 +89,14 @@ object FirConflictsDeclarationChecker : FirBasicDeclarationChecker() {
         }
     }
 
-    private fun checkFile(file: FirFile, inspector: FirDeclarationInspector, context: CheckerContext) {
+    private val FirBasedSymbol<*>.isPrimaryConstructor: Boolean
+        get() = this is FirConstructorSymbol && isPrimary || origin == FirDeclarationOrigin.Synthetic.TypeAliasConstructor
+
+    private fun checkFile(file: FirFile, inspector: FirDeclarationCollector<FirBasedSymbol<*>>, context: CheckerContext) {
         val packageMemberScope: FirPackageMemberScope = context.sessionHolder.scopeSession.getOrBuild(file.packageFqName, PACKAGE_MEMBER) {
             FirPackageMemberScope(file.packageFqName, context.sessionHolder.session)
         }
         inspector.collectTopLevel(file, packageMemberScope)
-        for (topLevelDeclaration in file.declarations) {
-            if (topLevelDeclaration is FirErrorProperty || topLevelDeclaration is FirErrorFunction) continue
-
-        }
     }
 }
 

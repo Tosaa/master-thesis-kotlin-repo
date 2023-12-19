@@ -43,6 +43,12 @@ public class SymbolLightClassesParentingByFqNameForLibraryTestGenerated extends 
     }
 
     @Test
+    @TestMetadata("annotationBinaryRetention.kt")
+    public void testAnnotationBinaryRetention() throws Exception {
+        runTest("compiler/testData/asJava/lightClasses/lightClassByFqName/annotationBinaryRetention.kt");
+    }
+
+    @Test
     @TestMetadata("AnnotationClass.kt")
     public void testAnnotationClass() throws Exception {
         runTest("compiler/testData/asJava/lightClasses/lightClassByFqName/AnnotationClass.kt");
@@ -547,6 +553,12 @@ public class SymbolLightClassesParentingByFqNameForLibraryTestGenerated extends 
         @TestMetadata("Trait.kt")
         public void testTrait() throws Exception {
             runTest("compiler/testData/asJava/lightClasses/lightClassByFqName/nullabilityAnnotations/Trait.kt");
+        }
+
+        @Test
+        @TestMetadata("typeAlias.kt")
+        public void testTypeAlias() throws Exception {
+            runTest("compiler/testData/asJava/lightClasses/lightClassByFqName/nullabilityAnnotations/typeAlias.kt");
         }
 
         @Test

@@ -41,5 +41,9 @@ abstract class KotlinMetadataTarget @Inject constructor(
     @ExperimentalKotlinGradlePluginApi
     internal override val compilerOptions: KotlinCommonCompilerOptions = project.objects
         .newInstance<KotlinCommonCompilerOptionsDefault>()
+
+    companion object {
+        const val METADATA_TARGET_NAME = "metadata"
+    }
 }
 

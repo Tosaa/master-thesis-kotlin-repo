@@ -7,7 +7,7 @@ package org.jetbrains.kotlin.backend.konan.lower
 
 import org.jetbrains.kotlin.backend.common.AbstractValueUsageTransformer
 import org.jetbrains.kotlin.backend.common.FileLoweringPass
-import org.jetbrains.kotlin.backend.common.atMostOne
+import org.jetbrains.kotlin.utils.atMostOne
 import org.jetbrains.kotlin.backend.common.getOrPut
 import org.jetbrains.kotlin.backend.common.lower.*
 import org.jetbrains.kotlin.backend.konan.*
@@ -146,12 +146,12 @@ private class AutoboxingTransformer(val context: Context) : AbstractValueUsageTr
                 it.type = expectedType
                 return it
             }
-            val parameter = conversion.owner.explicitParameters.single()
+            val parameter = conversion.owner.valueParameters.single()
             val argument = this.uncheckedCast(parameter.type)
 
             IrCallImpl(startOffset, endOffset, conversion.owner.returnType, conversion,
                     conversion.owner.typeParameters.size, conversion.owner.valueParameters.size).apply {
-                addArguments(mapOf(parameter to argument))
+                this.putValueArgument(parameter.index, argument)
             }.uncheckedCast(this.type) // Try not to bring new type incompatibilities.
         }
     }

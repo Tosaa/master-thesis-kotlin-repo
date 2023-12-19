@@ -82,6 +82,9 @@ open class FirTypeResolveTransformer(
     @set:PrivateForInline
     var scopesBefore: PersistentList<FirScope>? = null
 
+    @set:PrivateForInline
+    var staticScopesBefore: PersistentList<FirScope>? = null
+
     private var currentDeclaration: FirDeclaration? = null
 
     private inline fun <T> withDeclaration(declaration: FirDeclaration, crossinline action: () -> T): T {
@@ -125,6 +128,10 @@ open class FirTypeResolveTransformer(
 
     fun transformClassTypeParameters(regularClass: FirRegularClass, data: Any?) {
         withScopeCleanup {
+            // Remove type parameter scopes for classes that are neither inner nor local
+            if (removeOuterTypeParameterScope(regularClass)) {
+                this.scopes = staticScopes
+            }
             addTypeParametersScope(regularClass)
             regularClass.typeParameters.forEach {
                 it.accept(this, data)
@@ -159,6 +166,15 @@ open class FirTypeResolveTransformer(
             result
         }
     }
+
+    override fun transformAnonymousInitializer(anonymousInitializer: FirAnonymousInitializer, data: Any?): FirAnonymousInitializer {
+        return withScopeCleanup {
+            transformDeclaration(anonymousInitializer, data) as FirAnonymousInitializer
+        }
+    }
+
+    override fun transformErrorPrimaryConstructor(errorPrimaryConstructor: FirErrorPrimaryConstructor, data: Any?) =
+        transformConstructor(errorPrimaryConstructor, data)
 
     override fun transformTypeAlias(typeAlias: FirTypeAlias, data: Any?): FirTypeAlias = whileAnalysing(session, typeAlias) {
         withScopeCleanup {
@@ -348,6 +364,7 @@ open class FirTypeResolveTransformer(
                         else -> shouldNotBeCalled()
                     }
                     FirAnnotationResolvePhase.CompilerRequiredAnnotations -> {
+                        annotationCall.transformTypeArguments(this, data)
                         annotationCall.replaceAnnotationResolvePhase(FirAnnotationResolvePhase.Types)
                         val alternativeResolvedTypeRef =
                             originalTypeRef.delegatedTypeRef?.transformSingle(this, data) ?: return annotationCall
@@ -357,6 +374,7 @@ open class FirTypeResolveTransformer(
                             val errorTypeRef = buildErrorTypeRef {
                                 source = originalTypeRef.source
                                 type = coneTypeFromCompilerRequiredPhase
+                                annotations += originalTypeRef.annotations
                                 delegatedTypeRef = originalTypeRef.delegatedTypeRef
                                 diagnostic = ConeAmbiguouslyResolvedAnnotationFromPlugin(
                                     coneTypeFromCompilerRequiredPhase,
@@ -371,6 +389,7 @@ open class FirTypeResolveTransformer(
             }
             else -> {
                 val transformedTypeRef = originalTypeRef.transformSingle(this, data)
+                annotationCall.transformTypeArguments(this, data)
                 annotationCall.replaceAnnotationResolvePhase(FirAnnotationResolvePhase.Types)
                 annotationCall.replaceAnnotationTypeRef(transformedTypeRef)
             }
@@ -381,16 +400,21 @@ open class FirTypeResolveTransformer(
 
     inline fun <T> withScopeCleanup(crossinline l: () -> T): T {
         val scopesBeforeSnapshot = scopes
+        val scopesBeforeBeforeSnapshot = scopesBefore
         scopesBefore = scopesBeforeSnapshot
 
-        val staticScopesBefore = staticScopes
+        val staticScopesBeforeSnapshot = staticScopes
+        val staticScopesBeforeBeforeSnapshot = staticScopesBefore
+        staticScopesBefore = staticScopesBeforeSnapshot
 
-        val result = l()
-
-        scopes = scopesBeforeSnapshot
-        staticScopes = staticScopesBefore
-
-        return result
+        return try {
+            l()
+        } finally {
+            scopes = scopesBeforeSnapshot
+            scopesBefore = scopesBeforeBeforeSnapshot
+            staticScopes = staticScopesBeforeSnapshot
+            staticScopesBefore = staticScopesBeforeBeforeSnapshot
+        }
     }
 
     private fun resolveClassContent(
@@ -407,8 +431,17 @@ open class FirTypeResolveTransformer(
                 }
 
                 // ConstructedTypeRef should be resolved only with type parameters, but not with nested classes and classes from supertypes
-                for (constructor in firClass.declarations.filterIsInstance<FirConstructor>()) {
-                    transformDelegatedConstructorCall(constructor)
+                for (declaration in firClass.declarations) {
+                    when (declaration) {
+                        is FirConstructor -> transformDelegatedConstructorCall(declaration)
+                        is FirField -> {
+                            if (declaration.origin == FirDeclarationOrigin.Synthetic.DelegateField) {
+                                transformDelegateField(declaration)
+                            }
+                        }
+
+                        else -> {}
+                    }
                 }
             }
         }
@@ -420,6 +453,10 @@ open class FirTypeResolveTransformer(
 
     fun transformDelegatedConstructorCall(constructor: FirConstructor) {
         constructor.delegatedConstructor?.let(this::resolveConstructedTypeRefForDelegatedConstructorCall)
+    }
+
+    fun transformDelegateField(field: FirField) {
+        field.transformReturnTypeRef(this, null)
     }
 
     fun removeOuterTypeParameterScope(firClass: FirClass): Boolean = !firClass.isInner && !firClass.isLocal

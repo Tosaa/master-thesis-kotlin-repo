@@ -55,6 +55,24 @@ public class CodeFragmentCapturingTestGenerated extends AbstractCodeFragmentCapt
     }
 
     @Test
+    @TestMetadata("extensionReceiverProperty.kt")
+    public void testExtensionReceiverProperty() throws Exception {
+        runTest("analysis/analysis-api/testData/components/compilerFacility/compilation/codeFragments/capturing/extensionReceiverProperty.kt");
+    }
+
+    @Test
+    @TestMetadata("extensionReceiverPropertyExplicit.kt")
+    public void testExtensionReceiverPropertyExplicit() throws Exception {
+        runTest("analysis/analysis-api/testData/components/compilerFacility/compilation/codeFragments/capturing/extensionReceiverPropertyExplicit.kt");
+    }
+
+    @Test
+    @TestMetadata("extensionReceiverPropertyLabeled.kt")
+    public void testExtensionReceiverPropertyLabeled() throws Exception {
+        runTest("analysis/analysis-api/testData/components/compilerFacility/compilation/codeFragments/capturing/extensionReceiverPropertyLabeled.kt");
+    }
+
+    @Test
     @TestMetadata("initializer.kt")
     public void testInitializer() throws Exception {
         runTest("analysis/analysis-api/testData/components/compilerFacility/compilation/codeFragments/capturing/initializer.kt");
@@ -64,6 +82,12 @@ public class CodeFragmentCapturingTestGenerated extends AbstractCodeFragmentCapt
     @TestMetadata("local.kt")
     public void testLocal() throws Exception {
         runTest("analysis/analysis-api/testData/components/compilerFacility/compilation/codeFragments/capturing/local.kt");
+    }
+
+    @Test
+    @TestMetadata("localDelegatedProperty.kt")
+    public void testLocalDelegatedProperty() throws Exception {
+        runTest("analysis/analysis-api/testData/components/compilerFacility/compilation/codeFragments/capturing/localDelegatedProperty.kt");
     }
 
     @Test
@@ -121,6 +145,30 @@ public class CodeFragmentCapturingTestGenerated extends AbstractCodeFragmentCapt
     }
 
     @Test
+    @TestMetadata("localVariable.kt")
+    public void testLocalVariable() throws Exception {
+        runTest("analysis/analysis-api/testData/components/compilerFacility/compilation/codeFragments/capturing/localVariable.kt");
+    }
+
+    @Test
+    @TestMetadata("multipleClassAndFunctionContextReceivers.kt")
+    public void testMultipleClassAndFunctionContextReceivers() throws Exception {
+        runTest("analysis/analysis-api/testData/components/compilerFacility/compilation/codeFragments/capturing/multipleClassAndFunctionContextReceivers.kt");
+    }
+
+    @Test
+    @TestMetadata("multipleClassContextReceivers.kt")
+    public void testMultipleClassContextReceivers() throws Exception {
+        runTest("analysis/analysis-api/testData/components/compilerFacility/compilation/codeFragments/capturing/multipleClassContextReceivers.kt");
+    }
+
+    @Test
+    @TestMetadata("multipleFunctionContextReceivers.kt")
+    public void testMultipleFunctionContextReceivers() throws Exception {
+        runTest("analysis/analysis-api/testData/components/compilerFacility/compilation/codeFragments/capturing/multipleFunctionContextReceivers.kt");
+    }
+
+    @Test
     @TestMetadata("nestedOuterClass.kt")
     public void testNestedOuterClass() throws Exception {
         runTest("analysis/analysis-api/testData/components/compilerFacility/compilation/codeFragments/capturing/nestedOuterClass.kt");
@@ -148,6 +196,42 @@ public class CodeFragmentCapturingTestGenerated extends AbstractCodeFragmentCapt
     @TestMetadata("outerClassMutatedPrivate.kt")
     public void testOuterClassMutatedPrivate() throws Exception {
         runTest("analysis/analysis-api/testData/components/compilerFacility/compilation/codeFragments/capturing/outerClassMutatedPrivate.kt");
+    }
+
+    @Test
+    @TestMetadata("preferCorrectResolve.kt")
+    public void testPreferCorrectResolve() throws Exception {
+        runTest("analysis/analysis-api/testData/components/compilerFacility/compilation/codeFragments/capturing/preferCorrectResolve.kt");
+    }
+
+    @Test
+    @TestMetadata("privateMemberCall.kt")
+    public void testPrivateMemberCall() throws Exception {
+        runTest("analysis/analysis-api/testData/components/compilerFacility/compilation/codeFragments/capturing/privateMemberCall.kt");
+    }
+
+    @Test
+    @TestMetadata("secondClassContextReceiver.kt")
+    public void testSecondClassContextReceiver() throws Exception {
+        runTest("analysis/analysis-api/testData/components/compilerFacility/compilation/codeFragments/capturing/secondClassContextReceiver.kt");
+    }
+
+    @Test
+    @TestMetadata("singleClassContextReceiver.kt")
+    public void testSingleClassContextReceiver() throws Exception {
+        runTest("analysis/analysis-api/testData/components/compilerFacility/compilation/codeFragments/capturing/singleClassContextReceiver.kt");
+    }
+
+    @Test
+    @TestMetadata("smartCastExtensionReceiver.kt")
+    public void testSmartCastExtensionReceiver() throws Exception {
+        runTest("analysis/analysis-api/testData/components/compilerFacility/compilation/codeFragments/capturing/smartCastExtensionReceiver.kt");
+    }
+
+    @Test
+    @TestMetadata("smartCastValueParameter.kt")
+    public void testSmartCastValueParameter() throws Exception {
+        runTest("analysis/analysis-api/testData/components/compilerFacility/compilation/codeFragments/capturing/smartCastValueParameter.kt");
     }
 
     @Test

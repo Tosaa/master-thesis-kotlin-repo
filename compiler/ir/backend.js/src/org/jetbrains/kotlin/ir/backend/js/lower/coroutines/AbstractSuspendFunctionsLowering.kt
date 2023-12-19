@@ -33,6 +33,7 @@ import org.jetbrains.kotlin.ir.visitors.IrElementVisitorVoid
 import org.jetbrains.kotlin.ir.visitors.acceptChildrenVoid
 import org.jetbrains.kotlin.ir.visitors.acceptVoid
 import org.jetbrains.kotlin.name.Name
+import org.jetbrains.kotlin.utils.atMostOne
 import org.jetbrains.kotlin.utils.memoryOptimizedMap
 import org.jetbrains.kotlin.utils.memoryOptimizedMapIndexed
 import org.jetbrains.kotlin.utils.memoryOptimizedPlus
@@ -41,7 +42,9 @@ abstract class AbstractSuspendFunctionsLowering<C : CommonBackendContext>(val co
 
     private var IrFunction.coroutineConstructor by context.mapping.suspendFunctionToCoroutineConstructor
 
-    protected object DECLARATION_ORIGIN_COROUTINE_IMPL : IrDeclarationOriginImpl("COROUTINE_IMPL")
+    companion object {
+        val DECLARATION_ORIGIN_COROUTINE_IMPL = IrDeclarationOriginImpl("COROUTINE_IMPL")
+    }
 
     protected abstract val stateMachineMethodName: Name
     protected abstract fun getCoroutineBaseClass(function: IrFunction): IrClassSymbol
@@ -100,7 +103,12 @@ abstract class AbstractSuspendFunctionsLowering<C : CommonBackendContext>(val co
         // This happens a lot in practice because of suspend functions with default arguments.
         // TODO: use TailRecursionCallsCollector.
         val lastCall = when (val lastStatement = (body as IrBlockBody).statements.lastOrNull()) {
-            is IrCall -> lastStatement
+            is IrCall ->
+                // Delegation to call without return can only be performed to Unit-returning function call from Unit-returning function
+                if (lastStatement.type == context.irBuiltIns.unitType && function.returnType == context.irBuiltIns.unitType)
+                    lastStatement
+                else
+                    null
             is IrReturn -> {
                 var value: IrElement = lastStatement
                 /*

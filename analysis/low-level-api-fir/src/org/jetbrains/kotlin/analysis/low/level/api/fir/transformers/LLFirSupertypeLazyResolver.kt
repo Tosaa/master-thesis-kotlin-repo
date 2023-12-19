@@ -119,8 +119,10 @@ private class LLFirSuperTypeTargetResolver(
                 resolver = { supertypeResolver.resolveTypeAliasSupertype(target, it, resolveRecursively = false) },
                 superTypeUpdater = { target.replaceExpandedTypeRef(it.single()) },
             )
-            else -> performCustomResolveUnderLock(target) {
-                // just update the phase
+            else -> {
+                performCustomResolveUnderLock(target) {
+                    // just update the phase
+                }
             }
         }
 

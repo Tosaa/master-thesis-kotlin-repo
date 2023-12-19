@@ -436,6 +436,18 @@ public class FirStandaloneNormalAnalysisSourceModuleResolveCandidatesTestGenerat
         }
 
         @Test
+        @TestMetadata("memberFunctionVsTopLevel.kt")
+        public void testMemberFunctionVsTopLevel() throws Exception {
+            runTest("analysis/analysis-api/testData/components/callResolver/resolveCandidates/singleCandidate/memberFunctionVsTopLevel.kt");
+        }
+
+        @Test
+        @TestMetadata("overloadWithReceiver.kt")
+        public void testOverloadWithReceiver() throws Exception {
+            runTest("analysis/analysis-api/testData/components/callResolver/resolveCandidates/singleCandidate/overloadWithReceiver.kt");
+        }
+
+        @Test
         @TestMetadata("privateMember.kt")
         public void testPrivateMember() throws Exception {
             runTest("analysis/analysis-api/testData/components/callResolver/resolveCandidates/singleCandidate/privateMember.kt");

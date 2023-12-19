@@ -17,7 +17,8 @@ import org.jetbrains.kotlin.gradle.plugin.diagnostics.KotlinToolingDiagnostics
 import org.jetbrains.kotlin.gradle.plugin.diagnostics.reportDiagnostic
 import org.jetbrains.kotlin.gradle.targets.android.internal.InternalKotlinTargetPreset
 import org.jetbrains.kotlin.gradle.tasks.KotlinTasksProvider
-import org.jetbrains.kotlin.gradle.utils.configureExperimentalTryK2
+import org.jetbrains.kotlin.gradle.utils.configureExperimentalTryNext
+import org.jetbrains.kotlin.gradle.utils.maybeCreateResolvable
 
 @DeprecatedTargetPresetApi
 class KotlinJvmWithJavaTargetPreset(
@@ -41,7 +42,7 @@ class KotlinJvmWithJavaTargetPreset(
                 object : HasCompilerOptions<KotlinJvmCompilerOptions> {
                     override val options: KotlinJvmCompilerOptions = project.objects
                         .newInstance(KotlinJvmCompilerOptionsDefault::class.java)
-                        .configureExperimentalTryK2(project)
+                        .configureExperimentalTryNext(project)
                 }
             },
             { compilerOptions: KotlinJvmCompilerOptions ->
@@ -71,12 +72,12 @@ class KotlinJvmWithJavaTargetPreset(
 
             compileDependencyFiles = project.files(
                 main.output.allOutputs,
-                project.configurations.maybeCreate(compileDependencyConfigurationName)
+                project.configurations.maybeCreateResolvable(compileDependencyConfigurationName)
             )
             runtimeDependencyFiles = project.files(
                 output.allOutputs,
                 main.output.allOutputs,
-                project.configurations.maybeCreate(runtimeDependencyConfigurationName)
+                project.configurations.maybeCreateResolvable(runtimeDependencyConfigurationName)
             )
         }
 

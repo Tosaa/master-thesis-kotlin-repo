@@ -100,7 +100,7 @@ internal class CompilerOptionsIT : KGPBaseTest() {
                 """.trimMargin()
             )
 
-            build("assemble", buildOptions = defaultBuildOptions.copy(logLevel = LogLevel.DEBUG)) {
+            build("assemble") {
                 assertOutputContainsExactlyTimes("-P plugin:blah-blah:", 3)
             }
         }
@@ -138,7 +138,7 @@ internal class CompilerOptionsIT : KGPBaseTest() {
                 "compileKotlinJs",
                 // we do not allow modifying free args for K/N at execution time
             )
-            build(*compileTasks.toTypedArray(), buildOptions = defaultBuildOptions.copy(logLevel = LogLevel.DEBUG)) {
+            build(*compileTasks.toTypedArray()) {
                 assertOutputContainsExactlyTimes("-P plugin:blah-blah:", 3 * compileTasks.size) // 3 times per task
             }
         }
@@ -151,7 +151,6 @@ internal class CompilerOptionsIT : KGPBaseTest() {
         project(
             projectName = "simpleProject",
             gradleVersion = gradleVersion,
-            buildOptions = defaultBuildOptions.copy(logLevel = LogLevel.DEBUG)
         ) {
             buildGradle.appendText(
                 """
@@ -163,18 +162,8 @@ internal class CompilerOptionsIT : KGPBaseTest() {
             )
 
             build("compileKotlin") {
-                val compilerArgs = output
-                    .lineSequence()
-                    .first {
-                        it.contains("Kotlin compiler args:")
-                    }
-                    .substringAfter("Kotlin compiler args:")
-
                 val expectedOptIn = "-opt-in kotlin.RequiresOptIn,my.CustomOptIn"
-                assert(compilerArgs.contains(expectedOptIn)) {
-                    printBuildOutput()
-                    "compiler arguments does not contain '$expectedOptIn' - actual value: $compilerArgs"
-                }
+                assertCompilerArgument(":compileKotlin", expectedOptIn, logLevel = LogLevel.INFO)
             }
         }
     }
@@ -186,7 +175,6 @@ internal class CompilerOptionsIT : KGPBaseTest() {
         project(
             projectName = "new-mpp-lib-and-app/sample-lib",
             gradleVersion = gradleVersion,
-            buildOptions = defaultBuildOptions.copy(logLevel = LogLevel.DEBUG)
         ) {
             buildGradle.appendText(
                 //language=Groovy
@@ -208,10 +196,11 @@ internal class CompilerOptionsIT : KGPBaseTest() {
 
             build("compileKotlinJvm6") {
                 assertTasksExecuted(":compileKotlinJvm6")
-                assert(output.contains("-opt-in my.custom.OptInAnnotation,another.custom.UnderOptIn")) {
-                    printBuildOutput()
-                    "Output does not contain '-opt-in my.custom.OptInAnnotation,another.custom.UnderOptIn'!"
-                }
+                assertCompilerArgument(
+                    ":compileKotlinJvm6",
+                    "-opt-in my.custom.OptInAnnotation,another.custom.UnderOptIn",
+                    logLevel = LogLevel.INFO
+                )
             }
         }
     }
@@ -223,9 +212,6 @@ internal class CompilerOptionsIT : KGPBaseTest() {
         project(
             projectName = "new-mpp-lib-and-app/sample-lib",
             gradleVersion = gradleVersion,
-            // We need to get specific task output as commonizer may run first producing
-            // arguments as well in output
-            buildOptions = defaultBuildOptions.copy(logLevel = LogLevel.DEBUG)
         ) {
             buildGradle.appendText(
                 //language=Groovy
@@ -256,7 +242,7 @@ internal class CompilerOptionsIT : KGPBaseTest() {
 
             build("compileNativeMainKotlinMetadata") {
                 assertTasksExecuted(":compileNativeMainKotlinMetadata")
-                val taskOutput = getOutputForTask(":compileNativeMainKotlinMetadata")
+                val taskOutput = getOutputForTask(":compileNativeMainKotlinMetadata", logLevel = LogLevel.INFO)
                 val arguments = parseCompilerArgumentsFromBuildOutput(K2NativeCompilerArguments::class, taskOutput)
                 assertEquals(
                     setOf("another.custom.UnderOptIn", "my.custom.OptInAnnotation"), arguments.optIn?.toSet(),
@@ -266,7 +252,7 @@ internal class CompilerOptionsIT : KGPBaseTest() {
 
             build("compileKotlinLinux64") {
                 assertTasksExecuted(":compileKotlinLinux64")
-                val taskOutput = getOutputForTask(":compileKotlinLinux64")
+                val taskOutput = getOutputForTask(":compileKotlinLinux64", logLevel = LogLevel.INFO)
                 val arguments = parseCompilerArgumentsFromBuildOutput(K2NativeCompilerArguments::class, taskOutput)
                 assertEquals(
                     setOf("another.custom.UnderOptIn", "my.custom.OptInAnnotation"), arguments.optIn?.toSet(),
@@ -293,7 +279,7 @@ internal class CompilerOptionsIT : KGPBaseTest() {
                 """.trimMargin()
             )
 
-            build("compileKotlinHost", forceOutput = true) {
+            build("compileKotlinHost") {
                 val expectedOptIn = listOf("kotlin.RequiresOptIn", "my.CustomOptIn")
                 val arguments = parseCompilerArguments<K2NativeCompilerArguments>()
                 if (arguments.optIn?.toList() != listOf("kotlin.RequiresOptIn", "my.CustomOptIn")) {
@@ -312,7 +298,6 @@ internal class CompilerOptionsIT : KGPBaseTest() {
         project(
             projectName = "simpleProject",
             gradleVersion = gradleVersion,
-            buildOptions = defaultBuildOptions.copy(logLevel = LogLevel.DEBUG)
         ) {
             buildGradle.appendText(
                 //language=Groovy
@@ -325,18 +310,7 @@ internal class CompilerOptionsIT : KGPBaseTest() {
             )
 
             build("compileKotlin") {
-                val compilerArgs = output
-                    .lineSequence()
-                    .first {
-                        it.contains("Kotlin compiler args:")
-                    }
-                    .substringAfter("Kotlin compiler args:")
-
-                val expectedArg = "-progressive"
-                assert(compilerArgs.contains(expectedArg)) {
-                    printBuildOutput()
-                    "compiler arguments does not contain '$expectedArg' - actual value: $compilerArgs"
-                }
+                assertCompilerArgument(":compileKotlin", "-progressive", logLevel = LogLevel.INFO)
             }
         }
     }
@@ -348,21 +322,9 @@ internal class CompilerOptionsIT : KGPBaseTest() {
         project(
             projectName = "simpleProject",
             gradleVersion = gradleVersion,
-            buildOptions = defaultBuildOptions.copy(logLevel = LogLevel.DEBUG)
         ) {
             build("compileKotlin") {
-                val compilerArgs = output
-                    .lineSequence()
-                    .first {
-                        it.contains("Kotlin compiler args:")
-                    }
-                    .substringAfter("Kotlin compiler args:")
-
-                val expectedArg = "-progressive"
-                assert(!compilerArgs.contains(expectedArg)) {
-                    printBuildOutput()
-                    "compiler arguments contains '$expectedArg' - actual value: $compilerArgs"
-                }
+                assertNoCompilerArgument(":compileKotlin", "-progressive", logLevel = LogLevel.INFO)
             }
         }
     }
@@ -374,7 +336,6 @@ internal class CompilerOptionsIT : KGPBaseTest() {
         project(
             projectName = "simpleProject",
             gradleVersion = gradleVersion,
-            buildOptions = defaultBuildOptions.copy(logLevel = LogLevel.DEBUG)
         ) {
             buildGradle.appendText(
                 //language=Groovy
@@ -389,18 +350,7 @@ internal class CompilerOptionsIT : KGPBaseTest() {
             )
 
             build("compileKotlin") {
-                val compilerArgs = output
-                    .lineSequence()
-                    .first {
-                        it.contains("Kotlin compiler args:")
-                    }
-                    .substringAfter("Kotlin compiler args:")
-
-                val expectedArg = "-progressive"
-                assert(compilerArgs.contains(expectedArg)) {
-                    printBuildOutput()
-                    "compiler arguments does not contain '$expectedArg' - actual value: $compilerArgs"
-                }
+                assertCompilerArgument(":compileKotlin", "-progressive", logLevel = LogLevel.INFO)
             }
         }
     }
@@ -446,9 +396,6 @@ internal class CompilerOptionsIT : KGPBaseTest() {
         project(
             projectName = "new-mpp-lib-and-app/sample-lib",
             gradleVersion = gradleVersion,
-            // We need to get specific task output as commonizer may run first producing
-            // arguments as well in output
-            buildOptions = defaultBuildOptions.copy(logLevel = LogLevel.DEBUG)
         ) {
             buildGradle.appendText(
                 //language=Groovy
@@ -492,9 +439,6 @@ internal class CompilerOptionsIT : KGPBaseTest() {
         project(
             projectName = "new-mpp-lib-and-app/sample-lib",
             gradleVersion = gradleVersion,
-            // We need to get specific task output as commonizer may run first producing
-            // arguments as well in output
-            buildOptions = defaultBuildOptions.copy(logLevel = LogLevel.DEBUG)
         ) {
             buildGradle.modify {
                 val buildScript = """

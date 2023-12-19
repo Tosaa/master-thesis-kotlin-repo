@@ -8,8 +8,12 @@ package org.jetbrains.kotlin.fir.java
 import org.jetbrains.kotlin.descriptors.ClassKind
 import org.jetbrains.kotlin.descriptors.Modality
 import org.jetbrains.kotlin.fir.FirSession
+import org.jetbrains.kotlin.fir.declarations.FirDeclaration
+import org.jetbrains.kotlin.fir.declarations.FirProperty
+import org.jetbrains.kotlin.fir.declarations.toAnnotationClassId
 import org.jetbrains.kotlin.fir.diagnostics.ConeSimpleDiagnostic
 import org.jetbrains.kotlin.fir.diagnostics.DiagnosticKind
+import org.jetbrains.kotlin.fir.expressions.FirAnnotation
 import org.jetbrains.kotlin.fir.expressions.FirArrayLiteral
 import org.jetbrains.kotlin.fir.expressions.FirExpression
 import org.jetbrains.kotlin.fir.expressions.builder.buildArgumentList
@@ -18,13 +22,13 @@ import org.jetbrains.kotlin.fir.expressions.builder.buildConstExpression
 import org.jetbrains.kotlin.fir.expressions.builder.buildErrorExpression
 import org.jetbrains.kotlin.fir.resolve.transformers.body.resolve.expectedConeType
 import org.jetbrains.kotlin.fir.types.*
-import org.jetbrains.kotlin.fir.types.builder.buildResolvedTypeRef
 import org.jetbrains.kotlin.load.java.JvmAnnotationNames
 import org.jetbrains.kotlin.load.java.RXJAVA3_ANNOTATIONS
 import org.jetbrains.kotlin.load.java.structure.JavaAnnotation
 import org.jetbrains.kotlin.load.java.structure.JavaClass
 import org.jetbrains.kotlin.load.java.structure.JavaModifierListOwner
 import org.jetbrains.kotlin.load.java.structure.JavaWildcardType
+import org.jetbrains.kotlin.name.JvmStandardClassIds
 import org.jetbrains.kotlin.types.ConstantValueKind
 
 internal val JavaModifierListOwner.modality: Modality
@@ -123,9 +127,7 @@ private fun <T> List<T>.createArrayLiteral(session: FirSession, kind: ConstantVa
                 arguments += element.createConstantOrError(session)
             }
         }
-        typeRef = buildResolvedTypeRef {
-            type = kind.expectedConeType(session).createArrayType()
-        }
+        coneTypeOrNull = kind.expectedConeType(session).createArrayType()
     }
 }
 
@@ -133,4 +135,19 @@ private fun <T> List<T>.createArrayLiteral(session: FirSession, kind: ConstantVa
 fun extractNullabilityAnnotationOnBoundedWildcard(wildcardType: JavaWildcardType): JavaAnnotation? {
     require(wildcardType.bound != null) { "Nullability annotations on unbounded wildcards aren't supported" }
     return wildcardType.annotations.find { annotation -> RXJAVA3_ANNOTATIONS.any { annotation.classId?.asSingleFqName() == it } }
+}
+
+fun FirProperty.hasJvmFieldAnnotation(session: FirSession): Boolean =
+    backingField?.annotations?.any { it.isJvmFieldAnnotation(session) } == true
+
+fun FirAnnotation.isJvmFieldAnnotation(session: FirSession): Boolean =
+    toAnnotationClassId(session) == JvmStandardClassIds.Annotations.JvmField
+
+fun FirDeclaration.findJvmNameAnnotation(): FirAnnotation? {
+    return annotations.firstOrNull {
+        // Access to type must be through `coneTypeOrNull`.
+        // Even if `JvmName` is in the list of annotations that must be resoled for compilation, we still could try to access some user
+        // annotations that could be not resolved.
+        it.annotationTypeRef.coneTypeOrNull?.classId == JvmStandardClassIds.Annotations.JvmName
+    }
 }

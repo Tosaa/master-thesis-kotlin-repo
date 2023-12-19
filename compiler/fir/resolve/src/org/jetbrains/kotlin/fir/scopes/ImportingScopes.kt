@@ -19,9 +19,11 @@ import org.jetbrains.kotlin.name.FqName
 
 private val ALL_IMPORTS = scopeSessionKey<FirFile, ListStorageFirScope>()
 private val DEFAULT_STAR_IMPORT = scopeSessionKey<DefaultStarImportKey, FirSingleLevelDefaultStarImportingScope>()
-private val DEFAULT_SIMPLE_IMPORT = scopeSessionKey<DefaultImportPriority, FirDefaultSimpleImportingScope>()
+private val DEFAULT_SIMPLE_IMPORT = scopeSessionKey<DefaultSimpleImportKey, FirDefaultSimpleImportingScope>()
 
 private data class DefaultStarImportKey(val priority: DefaultImportPriority, val excludedImportNames: Set<FqName>)
+
+private data class DefaultSimpleImportKey(val priority: DefaultImportPriority, val excludedImportNames: Set<FqName>)
 
 fun createImportingScopes(
     file: FirFile,
@@ -68,20 +70,16 @@ internal fun computeImportingScopes(
                     FirSingleLevelDefaultStarImportingScope(session, scopeSession, DefaultImportPriority.LOW, excludedImportNames)
                 },
             )
-
-            this += scopeSession.getOrBuild(DefaultImportPriority.KOTLIN_THROWS, DEFAULT_SIMPLE_IMPORT) {
-                FirDefaultSimpleImportingScope(session, scopeSession, priority = DefaultImportPriority.KOTLIN_THROWS)
-            }
         }
 
         this += FirExplicitStarImportingScope(file.imports, session, scopeSession, excludedImportNames)
 
         if (includeDefaultImports) {
-            this += scopeSession.getOrBuild(DefaultImportPriority.LOW, DEFAULT_SIMPLE_IMPORT) {
-                FirDefaultSimpleImportingScope(session, scopeSession, priority = DefaultImportPriority.LOW)
+            this += scopeSession.getOrBuild(DefaultSimpleImportKey(DefaultImportPriority.LOW, excludedImportNames), DEFAULT_SIMPLE_IMPORT) {
+                FirDefaultSimpleImportingScope(session, scopeSession, priority = DefaultImportPriority.LOW, excludedImportNames)
             }
-            this += scopeSession.getOrBuild(DefaultImportPriority.HIGH, DEFAULT_SIMPLE_IMPORT) {
-                FirDefaultSimpleImportingScope(session, scopeSession, priority = DefaultImportPriority.HIGH)
+            this += scopeSession.getOrBuild(DefaultSimpleImportKey(DefaultImportPriority.HIGH, excludedImportNames), DEFAULT_SIMPLE_IMPORT) {
+                FirDefaultSimpleImportingScope(session, scopeSession, priority = DefaultImportPriority.HIGH, excludedImportNames)
             }
         }
 

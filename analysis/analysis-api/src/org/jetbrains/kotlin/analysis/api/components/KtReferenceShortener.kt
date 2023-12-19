@@ -7,20 +7,39 @@ package org.jetbrains.kotlin.analysis.api.components
 
 import com.intellij.openapi.util.TextRange
 import com.intellij.psi.SmartPsiElementPointer
-import org.jetbrains.kotlin.analysis.api.components.ShortenOption.Companion.defaultCallableShortenOption
-import org.jetbrains.kotlin.analysis.api.components.ShortenOption.Companion.defaultClassShortenOption
+import org.jetbrains.kotlin.analysis.api.components.ShortenStrategy.Companion.defaultCallableShortenStrategy
+import org.jetbrains.kotlin.analysis.api.components.ShortenStrategy.Companion.defaultClassShortenStrategy
 import org.jetbrains.kotlin.analysis.api.lifetime.withValidityAssertion
 import org.jetbrains.kotlin.analysis.api.symbols.KtCallableSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KtClassLikeSymbol
+import org.jetbrains.kotlin.analysis.api.symbols.KtConstructorSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KtEnumEntrySymbol
 import org.jetbrains.kotlin.kdoc.psi.impl.KDocName
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.psi.KtDotQualifiedExpression
 import org.jetbrains.kotlin.psi.KtElement
 import org.jetbrains.kotlin.psi.KtFile
+import org.jetbrains.kotlin.psi.KtThisExpression
 import org.jetbrains.kotlin.psi.KtUserType
 
-public enum class ShortenOption {
+/**
+ * @property removeThis If set to `true`, reference shortener will detect redundant `this` qualifiers
+ * and will collect them to [ShortenCommand.listOfQualifierToShortenInfo].
+ * @property removeThisLabels If set to `true`, reference shortener will detect redundant labels on `this` expressions,
+ * and will collect them to [ShortenCommand.thisLabelsToShorten]
+ */
+public data class ShortenOptions(
+    public val removeThis: Boolean = false,
+    public val removeThisLabels: Boolean = false,
+) {
+    public companion object {
+        public val DEFAULT: ShortenOptions = ShortenOptions()
+
+        public val ALL_ENABLED: ShortenOptions = ShortenOptions(removeThis = true, removeThisLabels = true)
+    }
+}
+
+public enum class ShortenStrategy {
     /** Skip shortening references to this symbol. */
     DO_NOT_SHORTEN,
 
@@ -59,7 +78,7 @@ public enum class ShortenOption {
     SHORTEN_AND_STAR_IMPORT;
 
     public companion object {
-        public val defaultClassShortenOption: (KtClassLikeSymbol) -> ShortenOption = {
+        public val defaultClassShortenStrategy: (KtClassLikeSymbol) -> ShortenStrategy = {
             if (it.classIdIfNonLocal?.isNestedClass == true) {
                 SHORTEN_IF_ALREADY_IMPORTED
             } else {
@@ -67,9 +86,14 @@ public enum class ShortenOption {
             }
         }
 
-        public val defaultCallableShortenOption: (KtCallableSymbol) -> ShortenOption = { symbol ->
-            if (symbol is KtEnumEntrySymbol) DO_NOT_SHORTEN
-            else SHORTEN_AND_IMPORT
+        public val defaultCallableShortenStrategy: (KtCallableSymbol) -> ShortenStrategy = { symbol ->
+            if (symbol is KtEnumEntrySymbol) {
+                DO_NOT_SHORTEN
+            } else if (symbol is KtConstructorSymbol && symbol.containingClassIdIfNonLocal?.isNestedClass == true) {
+                SHORTEN_IF_ALREADY_IMPORTED
+            } else {
+                SHORTEN_AND_IMPORT
+            }
         }
     }
 }
@@ -78,8 +102,9 @@ public abstract class KtReferenceShortener : KtAnalysisSessionComponent() {
     public abstract fun collectShortenings(
         file: KtFile,
         selection: TextRange,
-        classShortenOption: (KtClassLikeSymbol) -> ShortenOption,
-        callableShortenOption: (KtCallableSymbol) -> ShortenOption
+        shortenOptions: ShortenOptions,
+        classShortenStrategy: (KtClassLikeSymbol) -> ShortenStrategy,
+        callableShortenStrategy: (KtCallableSymbol) -> ShortenStrategy
     ): ShortenCommand
 }
 
@@ -97,15 +122,17 @@ public interface KtReferenceShortenerMixIn : KtAnalysisSessionMixIn {
     public fun collectPossibleReferenceShortenings(
         file: KtFile,
         selection: TextRange = file.textRange,
-        classShortenOption: (KtClassLikeSymbol) -> ShortenOption = defaultClassShortenOption,
-        callableShortenOption: (KtCallableSymbol) -> ShortenOption = defaultCallableShortenOption
+        shortenOptions: ShortenOptions = ShortenOptions.DEFAULT,
+        classShortenStrategy: (KtClassLikeSymbol) -> ShortenStrategy = defaultClassShortenStrategy,
+        callableShortenStrategy: (KtCallableSymbol) -> ShortenStrategy = defaultCallableShortenStrategy
     ): ShortenCommand =
         withValidityAssertion {
             analysisSession.referenceShortener.collectShortenings(
                 file,
                 selection,
-                classShortenOption,
-                callableShortenOption
+                shortenOptions,
+                classShortenStrategy,
+                callableShortenStrategy
             )
         }
 
@@ -120,27 +147,68 @@ public interface KtReferenceShortenerMixIn : KtAnalysisSessionMixIn {
      */
     public fun collectPossibleReferenceShorteningsInElement(
         element: KtElement,
-        classShortenOption: (KtClassLikeSymbol) -> ShortenOption = defaultClassShortenOption,
-        callableShortenOption: (KtCallableSymbol) -> ShortenOption = defaultCallableShortenOption
+        shortenOptions: ShortenOptions = ShortenOptions.DEFAULT,
+        classShortenStrategy: (KtClassLikeSymbol) -> ShortenStrategy = defaultClassShortenStrategy,
+        callableShortenStrategy: (KtCallableSymbol) -> ShortenStrategy = defaultCallableShortenStrategy
     ): ShortenCommand =
         withValidityAssertion {
             analysisSession.referenceShortener.collectShortenings(
                 element.containingKtFile,
                 element.textRange,
-                classShortenOption,
-                callableShortenOption
+                shortenOptions,
+                classShortenStrategy,
+                callableShortenStrategy
             )
         }
 }
+
+/**
+ * A class to keep a [KtUserType] to shorten and what shape the shortened result has to be. [shortenedReference] is the expected result of
+ * shortening in a string form. If [shortenedReference] is null, it means the shortening will simply delete the qualifier. Note that
+ * currently the only usage of [shortenedReference] is the case we have the import-alias. For example, [shortenedReference] will be
+ * "AliasType" when we shorten:
+ * ```
+ * import my.package.NewType as AliasType
+ * ... my.package.Ne<caret>wType ... // -> we can replace this with `AliasType`.
+ * ```
+ */
+public data class TypeToShortenInfo(val typeToShorten: SmartPsiElementPointer<KtUserType>, val shortenedReference: String?)
+
+/**
+ * A class to keep a [KtDotQualifiedExpression] to shorten and what shape the shortened result has to be. [shortenedReference] is the
+ * expected result of shortening in a string form. If [shortenedReference] is null, it means the shortening will simply delete the
+ * qualifier. Note that currently the only usage of [shortenedReference] is the case we have the import-alias. For example,
+ * [shortenedReference] will be "bar" when we shorten:
+ * ```
+ * import my.package.foo as bar
+ * ... my.package.fo<caret>o ... // -> we can replace this with `bar`.
+ * ```
+ */
+public data class QualifierToShortenInfo(
+    val qualifierToShorten: SmartPsiElementPointer<KtDotQualifiedExpression>,
+    val shortenedReference: String?,
+)
+
+/**
+ * A class with a reference to [KtThisExpression] with a label qualifier ([KtThisExpression.labelQualifier]) that can be safely removed
+ * without changing the semantics of the code.
+ */
+public data class ThisLabelToShortenInfo(
+    val labelToShorten: SmartPsiElementPointer<KtThisExpression>,
+)
 
 public interface ShortenCommand {
     public val targetFile: SmartPsiElementPointer<KtFile>
     public val importsToAdd: Set<FqName>
     public val starImportsToAdd: Set<FqName>
-    public val typesToShorten: List<SmartPsiElementPointer<KtUserType>>
-    public val qualifiersToShorten: List<SmartPsiElementPointer<KtDotQualifiedExpression>>
+    public val listOfTypeToShortenInfo: List<TypeToShortenInfo>
+    public val listOfQualifierToShortenInfo: List<QualifierToShortenInfo>
+    public val thisLabelsToShorten: List<ThisLabelToShortenInfo>
     public val kDocQualifiersToShorten: List<SmartPsiElementPointer<KDocName>>
 
     public val isEmpty: Boolean
-        get() = typesToShorten.isEmpty() && qualifiersToShorten.isEmpty() && kDocQualifiersToShorten.isEmpty()
+        get() = listOfTypeToShortenInfo.isEmpty() &&
+                listOfQualifierToShortenInfo.isEmpty() &&
+                thisLabelsToShorten.isEmpty() &&
+                kDocQualifiersToShorten.isEmpty()
 }

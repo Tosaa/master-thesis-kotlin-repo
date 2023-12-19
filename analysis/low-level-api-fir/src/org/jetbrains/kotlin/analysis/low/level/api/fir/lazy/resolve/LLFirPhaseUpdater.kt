@@ -34,6 +34,7 @@ internal object LLFirPhaseUpdater {
                     target.backingField?.accept(PhaseUpdatingTransformer, newPhase)
                 }
 
+                is FirAnonymousInitializer -> target.body?.accept(PhaseUpdatingTransformer, newPhase)
                 is FirScript -> {
                     target.parameters.forEach { it.accept(PhaseUpdatingTransformer, newPhase) }
                     for (statement in target.statements) {
@@ -41,6 +42,8 @@ internal object LLFirPhaseUpdater {
                         statement.accept(PhaseUpdatingTransformer, newPhase)
                     }
                 }
+
+                is FirCodeFragment -> target.block.accept(PhaseUpdatingTransformer, newPhase)
             }
         }
     }

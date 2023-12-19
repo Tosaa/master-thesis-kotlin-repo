@@ -1,10 +1,6 @@
-// IGNORE_REVERSED_RESOLVE
 // MODULE: m1-common
 // FILE: common.kt
-<!NO_ACTUAL_FOR_EXPECT!>expect class Foo(
-        val constructorProperty: String,
-        constructorParameter: String
-) {
+<!NO_ACTUAL_FOR_EXPECT{JVM}!>expect class Foo {
     <!EXPECTED_DECLARATION_WITH_BODY!>init<!> {
         "no"
     }
@@ -18,8 +14,8 @@
     val prop: String = <!EXPECTED_PROPERTY_INITIALIZER!>"no"<!>
 
     var getSet: String
-        get() = "no"
-        set(value) {}
+        <!EXPECTED_DECLARATION_WITH_BODY!>get()<!> = "no"
+        <!EXPECTED_DECLARATION_WITH_BODY!>set(value)<!> {}
 
     <!EXPECTED_DECLARATION_WITH_BODY!>fun functionWithBody(x: Int): Int<!> {
         return x + 1

@@ -15,7 +15,7 @@ import org.jetbrains.kotlin.gradle.targets.js.npm.NpmProject
 import org.jetbrains.kotlin.gradle.targets.js.npm.npmProject
 
 internal open class KotlinJsIrLinkConfig(
-    private val binary: JsIrBinary
+    private val binary: JsIrBinary,
 ) : BaseKotlin2JsCompileConfig<KotlinJsIrLink>(KotlinCompilationInfo(binary.compilation)) {
 
     private val compilation
@@ -28,11 +28,16 @@ internal open class KotlinJsIrLinkConfig(
 
             task.dependsOn(compilation.compileTaskProvider)
             task.dependsOn(compilation.output.classesDirs)
+            // We still support Gradle 6.8 in tests
+            // Gradle 6.8 has a bug with verifying of not getting provider before Task execution
             task.entryModule.fileProvider(
-                compilation.output.classesDirs.elements.flatMap {
-                    task.project.providers.provider {
-                        it.single().asFile
-                    }
+                task.project.providers.provider {
+                    val elements = compilation.output.classesDirs.elements.get()
+                    elements.singleOrNull()?.asFile
+                        ?: throw IllegalStateException(
+                            "Only one output fo compilation expected," +
+                                    "but actual: ${elements.joinToString(prefix = "[", postfix = "]") { it.toString() }}"
+                        )
                 }
             ).disallowChanges()
             task.rootCacheDirectory.set(project.layout.buildDirectory.map { it.dir("klib/cache/js/${binary.name}") })
@@ -50,7 +55,7 @@ internal open class KotlinJsIrLinkConfig(
 
     override fun configureAdditionalFreeCompilerArguments(
         task: KotlinJsIrLink,
-        compilation: KotlinCompilationInfo
+        compilation: KotlinCompilationInfo,
     ) {
         task.enhancedFreeCompilerArgs.value(
             task.compilerOptions.freeCompilerArgs.zip(task.modeProperty) { freeArgs, mode ->
@@ -89,13 +94,11 @@ internal open class KotlinJsIrLinkConfig(
 
     private fun MutableList<String>.configureOptions(
         compilation: KotlinCompilationInfo,
-        vararg additionalCompilerArgs: String
+        vararg additionalCompilerArgs: String,
     ) {
         additionalCompilerArgs.forEach { arg ->
             if (none { it.startsWith(arg) }) add(arg)
         }
-
-        add(PRODUCE_JS)
 
         if (compilation.platformType == KotlinPlatformType.wasm) {
             add(WASM_BACKEND)

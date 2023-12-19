@@ -7,7 +7,7 @@ package org.jetbrains.kotlin.ir.backend.js
 
 import org.jetbrains.kotlin.backend.common.linkage.issues.checkNoUnboundSymbols
 import org.jetbrains.kotlin.backend.common.phaser.PhaseConfig
-import org.jetbrains.kotlin.backend.common.phaser.invokeToplevel
+import org.jetbrains.kotlin.backend.common.phaser.PhaserState
 import org.jetbrains.kotlin.config.CompilerConfiguration
 import org.jetbrains.kotlin.ir.IrBuiltIns
 import org.jetbrains.kotlin.ir.backend.js.lower.collectNativeImplementations
@@ -37,6 +37,7 @@ class LoweredIr(
 )
 
 fun compile(
+    mainCallArguments: List<String>?,
     depsDescriptors: ModulesStructure,
     phaseConfig: PhaseConfig,
     irFactory: IrFactory,
@@ -56,6 +57,7 @@ fun compile(
     return compileIr(
         moduleFragment,
         depsDescriptors.mainModule,
+        mainCallArguments,
         depsDescriptors.compilerConfiguration,
         dependencyModules,
         moduleToName,
@@ -75,6 +77,7 @@ fun compile(
 fun compileIr(
     moduleFragment: IrModuleFragment,
     mainModule: MainModule,
+    mainCallArguments: List<String>?,
     configuration: CompilerConfiguration,
     dependencyModules: List<IrModuleFragment>,
     moduleToName: Map<IrModuleFragment, String>,
@@ -109,7 +112,8 @@ fun compileIr(
         safeExternalBoolean = safeExternalBoolean,
         safeExternalBooleanDiagnostic = safeExternalBooleanDiagnostic,
         granularity = granularity,
-        incrementalCacheEnabled = false
+        incrementalCacheEnabled = false,
+        mainCallArguments = mainCallArguments
     )
 
     // Load declarations referenced during `context` initialization
@@ -133,7 +137,14 @@ fun compileIr(
 
     (irFactory.stageController as? WholeWorldStageController)?.let {
         lowerPreservingTags(allModules, context, phaseConfig, it)
-    } ?: jsPhases.invokeToplevel(phaseConfig, context, allModules)
+    } ?: run {
+        val phaserState = PhaserState<IrModuleFragment>()
+        loweringList.forEachIndexed { _, lowering ->
+            allModules.forEach { module ->
+                lowering.invoke(phaseConfig, phaserState, context, module)
+            }
+        }
+    }
 
     return LoweredIr(context, moduleFragment, allModules, moduleToName)
 }

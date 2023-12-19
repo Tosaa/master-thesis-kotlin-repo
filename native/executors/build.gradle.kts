@@ -26,8 +26,11 @@ dependencies {
     }
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.5.0")
-    if (kotlinBuildProperties.isKotlinNativeEnabled) {
-        implementation(project(":kotlin-native-shared"))
+
+    // KT-61897: Workaround for https://github.com/gradle/gradle/issues/26358
+    // (wrong conflict resolution, causing selection of not the latest version of `:kotlin-util-klib` module)
+    if (rootProject.name == "native-build-tools") {
+        implementation("org.jetbrains.kotlin:kotlin-native-utils:${project.bootstrapKotlinVersion}")
     } else {
         // KT-61897: Workaround for https://github.com/gradle/gradle/issues/26358
         // (wrong conflict resolution, causing selection of not the latest version of `:kotlin-util-klib` module)

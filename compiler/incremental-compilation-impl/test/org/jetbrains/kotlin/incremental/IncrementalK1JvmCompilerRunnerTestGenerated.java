@@ -217,6 +217,11 @@ public class IncrementalK1JvmCompilerRunnerTestGenerated extends AbstractIncreme
             runTest("jps/jps-plugin/testData/incremental/pureKotlin/dependencyClassReferenced/");
         }
 
+        @TestMetadata("entriesMappings")
+        public void testEntriesMappings() throws Exception {
+            runTest("jps/jps-plugin/testData/incremental/pureKotlin/entriesMappings/");
+        }
+
         @TestMetadata("fileWithConstantRemoved")
         public void testFileWithConstantRemoved() throws Exception {
             runTest("jps/jps-plugin/testData/incremental/pureKotlin/fileWithConstantRemoved/");
@@ -250,6 +255,11 @@ public class IncrementalK1JvmCompilerRunnerTestGenerated extends AbstractIncreme
         @TestMetadata("functionReferencingClass")
         public void testFunctionReferencingClass() throws Exception {
             runTest("jps/jps-plugin/testData/incremental/pureKotlin/functionReferencingClass/");
+        }
+
+        @TestMetadata("genericContextReceiver")
+        public void testGenericContextReceiver() throws Exception {
+            runTest("jps/jps-plugin/testData/incremental/pureKotlin/genericContextReceiver/");
         }
 
         @TestMetadata("independentClasses")

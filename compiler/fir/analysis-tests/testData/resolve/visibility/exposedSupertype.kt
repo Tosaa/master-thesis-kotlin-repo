@@ -46,7 +46,7 @@ class Test3 : C.CPublicI, <!EXPOSED_SUPER_CLASS, FINAL_SUPERTYPE, SUPERTYPE_NOT_
 
 }
 
-class Test4 : E, <!INVISIBLE_REFERENCE!>A.AProtectedI<!> {
+class Test4 : E, A.<!INVISIBLE_REFERENCE!>AProtectedI<!> {
 
 }
 
@@ -58,6 +58,6 @@ class Test6 : E, <!EXPOSED_SUPER_CLASS, FINAL_SUPERTYPE, SUPERTYPE_NOT_INITIALIZ
 
 }
 
-class Test7 : <!UNRESOLVED_REFERENCE!>D.PublicButProtected<!> {
+class Test7 : D.<!UNRESOLVED_REFERENCE!>PublicButProtected<!> {
 
 }

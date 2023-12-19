@@ -5,16 +5,21 @@
 
 package org.jetbrains.kotlin.fir.tree.generator
 
-import org.jetbrains.kotlin.fir.tree.generator.model.ArbitraryImportable
+import org.jetbrains.kotlin.fir.tree.generator.printer.VISITOR_PACKAGE
+import org.jetbrains.kotlin.generators.tree.ArbitraryImportable
 
 val phaseAsResolveStateExtentionImport = ArbitraryImportable("org.jetbrains.kotlin.fir.declarations", "asResolveState")
 val resolvePhaseExtensionImport = ArbitraryImportable("org.jetbrains.kotlin.fir.declarations", "resolvePhase")
-val resolveStateAccessImport = ArbitraryImportable("org.jetbrains.kotlin.fir.declarations", "ResolveStateAccess")
 val resolvedDeclarationStatusImport = ArbitraryImportable("org.jetbrains.kotlin.fir.declarations.impl", "FirResolvedDeclarationStatusImpl")
 
 val buildResolvedTypeRefImport = ArbitraryImportable("org.jetbrains.kotlin.fir.types.builder", "buildResolvedTypeRef")
 val constructClassTypeImport = ArbitraryImportable("org.jetbrains.kotlin.fir.types", "constructClassType")
+val constructClassLikeTypeImport = ArbitraryImportable("org.jetbrains.kotlin.fir.types", "constructClassLikeType")
 val toLookupTagImport = ArbitraryImportable("org.jetbrains.kotlin.fir.types", "toLookupTag")
+val coneTypeOrNullImport = ArbitraryImportable("org.jetbrains.kotlin.fir.types", "coneTypeOrNull")
 
 val fakeSourceElementKindImport = ArbitraryImportable("org.jetbrains.kotlin", "KtFakeSourceElementKind")
 val fakeElementImport = ArbitraryImportable("org.jetbrains.kotlin", "fakeElement")
+
+val transformInPlaceImport = ArbitraryImportable(VISITOR_PACKAGE, "transformInplace")
+val toMutableOrEmptyImport = ArbitraryImportable("org.jetbrains.kotlin.fir.builder", "toMutableOrEmpty")

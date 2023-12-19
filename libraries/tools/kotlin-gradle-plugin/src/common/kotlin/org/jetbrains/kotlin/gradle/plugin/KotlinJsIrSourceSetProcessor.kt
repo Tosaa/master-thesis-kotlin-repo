@@ -17,6 +17,7 @@ import org.jetbrains.kotlin.gradle.tasks.Kotlin2JsCompile
 import org.jetbrains.kotlin.gradle.tasks.KotlinTasksProvider
 import org.jetbrains.kotlin.gradle.tasks.configuration.Kotlin2JsCompileConfig
 import org.jetbrains.kotlin.gradle.tasks.configuration.KotlinJsIrLinkConfig
+import org.jetbrains.kotlin.gradle.utils.whenEvaluated
 import org.jetbrains.kotlin.gradle.utils.filesProvider
 
 internal class KotlinJsIrSourceSetProcessor(
@@ -42,7 +43,7 @@ internal class KotlinJsIrSourceSetProcessor(
             it.dependsOn(kotlinTask)
         }
 
-        val compilation = compilationInfo.tcsOrNull?.compilation as KotlinJsIrCompilation
+        val compilation = compilationInfo.tcs.compilation as KotlinJsIrCompilation
 
         compilation.binaries
             .withType(JsIrBinary::class.java)
@@ -74,7 +75,7 @@ internal class KotlinJsIrSourceSetProcessor(
         project.whenEvaluated {
             val subpluginEnvironment: SubpluginEnvironment = SubpluginEnvironment.loadSubplugins(project)
             /* Not supported in KPM, yet */
-            compilationInfo.tcsOrNull?.compilation?.let { compilation ->
+            compilationInfo.tcs.compilation.let { compilation ->
                 subpluginEnvironment.addSubpluginOptions(project, compilation)
 
             }

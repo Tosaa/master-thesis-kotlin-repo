@@ -3,6 +3,8 @@
  * Use of this source code is governed by the Apache 2.0 license that can be found in the license/LICENSE.txt file.
  */
 
+@file:Suppress("FunctionName")
+
 package org.jetbrains.kotlin.gradle.regressionTests
 
 import org.gradle.api.provider.Provider
@@ -16,7 +18,7 @@ import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinMetadataCompilation
 import org.jetbrains.kotlin.gradle.util.buildProject
 import org.jetbrains.kotlin.gradle.util.buildProjectWithMPP
 import org.jetbrains.kotlin.gradle.util.kotlin
-import org.junit.jupiter.api.assertDoesNotThrow
+import org.jetbrains.kotlin.util.assertDoesNotThrow
 import kotlin.test.Test
 
 class KT61652AddSourceSetInSubpluginAndEarlyTaskMaterialization {
@@ -60,6 +62,10 @@ class KT61652AddSourceSetInSubpluginAndEarlyTaskMaterialization {
         lib.plugins.apply(TestSubplugin::class.java)
         app.evaluate()
 
+        /**
+         * Create GranularMetadataTransformation.Params artificially to reproduce real-case scenario when
+         * either IDE dependencies resolvers create it or transform*DependenciesMetadata
+         */
         val gmtParams = GranularMetadataTransformation.Params(app, app.kotlinExtension.sourceSets.getByName("commonMain"))
         val allProjectsData = gmtParams.projectData
         lib.evaluate()

@@ -108,7 +108,7 @@ class FirTypeDeserializer(
         }
     }
 
-    fun typeRef(proto: ProtoBuf.Type): FirTypeRef {
+    fun typeRef(proto: ProtoBuf.Type): FirResolvedTypeRef {
         return buildResolvedTypeRef {
             annotations += annotationDeserializer.loadTypeAnnotations(proto, nameResolver)
             type = type(proto, annotations.computeTypeAttributes(moduleData.session, shouldExpandTypeAliases = false))
@@ -164,7 +164,7 @@ class FirTypeDeserializer(
     private fun simpleType(proto: ProtoBuf.Type, attributes: ConeAttributes): ConeSimpleKotlinType? {
         val constructor = typeSymbol(proto) ?: return null
         if (constructor is ConeTypeParameterLookupTag) {
-            return ConeTypeParameterTypeImpl(constructor, isNullable = proto.nullable).let {
+            return ConeTypeParameterTypeImpl(constructor, isNullable = proto.nullable, attributes).let {
                 if (Flags.DEFINITELY_NOT_NULL_TYPE.get(proto.flags))
                     ConeDefinitelyNotNullType.create(it, moduleData.session.typeContext, avoidComprehensiveCheck = true) ?: it
                 else
@@ -201,8 +201,10 @@ class FirTypeDeserializer(
             else -> ConeClassLikeTypeImpl(constructor, arguments, isNullable = proto.nullable, attributes)
         }
 
-        // TODO: Return abbreviated types for type aliases, see KT-58542
-        return simpleType
+        val abbreviatedType = proto.abbreviatedType(typeTable)?.let { simpleType(it, attributes) }
+            ?: return simpleType
+
+        return simpleType.withAttributes(simpleType.attributes.plus(AbbreviatedTypeAttribute(abbreviatedType)))
     }
 
     private fun createSuspendFunctionTypeForBasicCase(

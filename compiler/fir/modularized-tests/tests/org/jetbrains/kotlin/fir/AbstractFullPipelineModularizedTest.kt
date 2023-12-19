@@ -153,6 +153,7 @@ abstract class AbstractFullPipelineModularizedTest : AbstractModularizedTest() {
                 substituteCompilerPluginPathForKnownPlugins(it)?.absolutePath
             }?.toTypedArray()
             args.contextReceivers = originalArguments.contextReceivers
+            args.skipPrereleaseCheck = originalArguments.skipPrereleaseCheck
 
         } else {
             args.jvmTarget = JVM_TARGET

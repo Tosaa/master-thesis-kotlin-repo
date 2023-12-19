@@ -15,18 +15,17 @@ import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.Nested
 import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
-import org.jetbrains.kotlin.gradle.plugin.mpp.pm20.GradleKpmModule
-import org.jetbrains.kotlin.gradle.plugin.mpp.pm20.util.currentBuildId
+import org.jetbrains.kotlin.gradle.dsl.multiplatformExtension
+import org.jetbrains.kotlin.gradle.plugin.KotlinPluginLifecycle
+import org.jetbrains.kotlin.gradle.plugin.KotlinProjectSetupCoroutine
+import org.jetbrains.kotlin.gradle.plugin.await
 import org.jetbrains.kotlin.gradle.plugin.sources.KotlinDependencyScope
 import org.jetbrains.kotlin.gradle.plugin.sources.sourceSetDependencyConfigurationByScope
 import org.jetbrains.kotlin.gradle.targets.metadata.dependsOnClosureWithInterCompilationDependencies
 import org.jetbrains.kotlin.gradle.targets.metadata.getPublishedPlatformCompilations
 import org.jetbrains.kotlin.gradle.targets.metadata.isNativeSourceSet
 import org.jetbrains.kotlin.gradle.targets.native.internal.CInteropCommonizerCompositeMetadataJarBundling.cinteropMetadataDirectoryPath
-import org.jetbrains.kotlin.gradle.utils.buildPathCompat
-import org.jetbrains.kotlin.gradle.utils.compositeBuildRootProject
-import org.jetbrains.kotlin.gradle.utils.future
-import org.jetbrains.kotlin.gradle.utils.getOrPut
+import org.jetbrains.kotlin.gradle.utils.*
 import org.w3c.dom.Document
 import org.w3c.dom.Element
 import org.w3c.dom.Node
@@ -154,11 +153,9 @@ data class KotlinProjectStructureMetadata(
     }
 }
 
-
-internal val KotlinMultiplatformExtension.kotlinProjectStructureMetadata: KotlinProjectStructureMetadata
-    get() = project.extensions.extraProperties.getOrPut("org.jetbrains.kotlin.gradle.plugin.mpp.kotlinProjectStructureMetadata") {
-        buildKotlinProjectStructureMetadata(this)
-    }
+internal val KotlinMultiplatformExtension.kotlinProjectStructureMetadata: KotlinProjectStructureMetadata by extrasStoredProperty {
+    buildKotlinProjectStructureMetadata(this)
+}
 
 /**
  * Return the name of the variant, taking into account that external targets might pass `.*-published` whereas
@@ -176,7 +173,7 @@ private fun buildKotlinProjectStructureMetadata(extension: KotlinMultiplatformEx
     require(project.state.executed) { "Cannot build 'KotlinProjectStructureMetadata' during project configuration phase" }
 
     val sourceSetsWithMetadataCompilations = extension.targets
-        .getByName(KotlinMultiplatformPlugin.METADATA_TARGET_NAME)
+        .getByName(KotlinMetadataTarget.METADATA_TARGET_NAME)
         .compilations.associateBy { it.defaultSourceSet }
 
     val publishedVariantsNamesWithCompilation = project.future { getPublishedPlatformCompilations(project).mapKeys { it.key.variantName } }
@@ -222,40 +219,6 @@ private fun buildKotlinProjectStructureMetadata(extension: KotlinMultiplatformEx
         },
         isPublishedAsRoot = true,
         sourceSetNames = sourceSetsWithMetadataCompilations.keys.map { it.name }.toSet(),
-    )
-}
-
-internal fun buildProjectStructureMetadata(module: GradleKpmModule): KotlinProjectStructureMetadata {
-    val kotlinVariantToGradleVariantNames = module.variants.associate { it.name to it.gradleVariantNames }
-
-    fun <T> expandVariantKeys(map: Map<String, T>) =
-        map.entries.flatMap { (key, value) ->
-            kotlinVariantToGradleVariantNames[key].orEmpty().plus(key).map { it to value }
-        }.toMap()
-
-    val kotlinFragmentsPerKotlinVariant =
-        module.variants.associate { variant -> variant.name to variant.withRefinesClosure.map { it.name }.toSet() }
-    val fragmentRefinesRelation =
-        module.fragments.associate { it.name to it.declaredRefinesDependencies.map { it.fragmentName }.toSet() }
-
-    // FIXME: support native implementation-as-api-dependencies
-    // FIXME: support dependencies on auxiliary modules
-    val fragmentDependencies =
-        module.fragments.associate { fragment ->
-            fragment.name to fragment.declaredModuleDependencies.map {
-                ModuleIds.lossyFromModuleIdentifier(module.project, it.moduleIdentifier)
-            }.toSet()
-        }
-
-    return KotlinProjectStructureMetadata(
-        sourceSetNamesByVariantName = expandVariantKeys(kotlinFragmentsPerKotlinVariant),
-        sourceSetsDependsOnRelation = fragmentRefinesRelation,
-        sourceSetBinaryLayout = module.fragments.associate { it.name to SourceSetMetadataLayout.KLIB },
-        sourceSetModuleDependencies = fragmentDependencies,
-        sourceSetCInteropMetadataDirectory = emptyMap(), // Not supported yet
-        hostSpecificSourceSets = module.project.future { getHostSpecificFragments(module).mapTo(mutableSetOf()) { it.name } }.getOrThrow(),
-        isPublishedAsRoot = true,
-        sourceSetNames = module.fragments.map { it.name }.toSet()
     )
 }
 
@@ -423,6 +386,18 @@ internal fun <ParsingContext> parseKotlinSourceSetMetadata(
         sourceSetNames = sourceSetNames,
         formatVersion = formatVersion
     )
+}
+
+internal val GlobalProjectStructureMetadataStorageSetupAction = KotlinProjectSetupCoroutine {
+    // Run in AfterEvaluate stage to avoid issues with Precompiled Script Plugins
+    // When Gradle runs `:generatePrecompiledScriptPluginAccessors` it creates dummy project and
+    // applies plugins from *.gradle.kts file to and generates accessors from it.
+    // These dummy projects never gets evaluated and should not expose any Project Structure Metadata.
+    // Putting registerProjectStructureMetadata in AfterEvaluate stage prevents PSM registration in dummy projects.
+    KotlinPluginLifecycle.Stage.AfterEvaluateBuildscript.await()
+    GlobalProjectStructureMetadataStorage.registerProjectStructureMetadata(project) {
+        multiplatformExtension.kotlinProjectStructureMetadata
+    }
 }
 
 internal object GlobalProjectStructureMetadataStorage {

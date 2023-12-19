@@ -24,6 +24,7 @@ fun copyCommonCompilerArguments(from: CommonCompilerArguments, to: CommonCompile
     to.disableDefaultScriptingPlugin = from.disableDefaultScriptingPlugin
     to.disablePhases = from.disablePhases?.copyOf()
     to.disableUltraLightClasses = from.disableUltraLightClasses
+    to.dontWarnOnErrorSuppression = from.dontWarnOnErrorSuppression
     to.dumpDirectory = from.dumpDirectory
     to.dumpOnlyFqName = from.dumpOnlyFqName
     to.dumpPerf = from.dumpPerf
@@ -31,7 +32,6 @@ fun copyCommonCompilerArguments(from: CommonCompilerArguments, to: CommonCompile
     to.enableBuilderInference = from.enableBuilderInference
     to.enableSignatureClashChecks = from.enableSignatureClashChecks
     to.expectActualClasses = from.expectActualClasses
-    to.expectActualLinker = from.expectActualLinker
     to.experimental = from.experimental?.copyOf()
     to.explicitApi = from.explicitApi
     to.extendedCompilerChecks = from.extendedCompilerChecks
@@ -47,6 +47,7 @@ fun copyCommonCompilerArguments(from: CommonCompilerArguments, to: CommonCompile
     to.languageVersion = from.languageVersion
     to.legacySmartCastAfterTry = from.legacySmartCastAfterTry
     to.listPhases = from.listPhases
+    to.metadataKlib = from.metadataKlib
     to.metadataVersion = from.metadataVersion
     to.multiPlatform = from.multiPlatform
     to.newInference = from.newInference
@@ -81,6 +82,7 @@ fun copyCommonCompilerArguments(from: CommonCompilerArguments, to: CommonCompile
     to.useFirExtendedCheckers = from.useFirExtendedCheckers
     to.useFirIC = from.useFirIC
     to.useFirLT = from.useFirLT
+    to.useIrFakeOverrideBuilder = from.useIrFakeOverrideBuilder
     to.useK2 = from.useK2
     to.useMixedNamedArguments = from.useMixedNamedArguments
     to.verbosePhases = from.verbosePhases?.copyOf()

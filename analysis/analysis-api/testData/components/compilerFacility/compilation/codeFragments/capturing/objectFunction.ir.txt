@@ -1,5 +1,5 @@
-MODULE_FRAGMENT name:<Sources of main>
-  FILE fqName:<root> fileName:/fragment.kt
+MODULE_FRAGMENT
+  FILE fqName:<root> fileName:fragment.kt
     CLASS CLASS name:CodeFragment modality:FINAL visibility:public superTypes:[kotlin.Any]
       $this: VALUE_PARAMETER INSTANCE_RECEIVER name:<this> type:<root>.CodeFragment
       CONSTRUCTOR visibility:public <> () returnType:<root>.CodeFragment [primary]
@@ -9,4 +9,4 @@ MODULE_FRAGMENT name:<Sources of main>
         EXPRESSION_BODY
           BLOCK type=kotlin.Unit origin=null
             CALL 'public final fun call (): kotlin.Unit declared in <root>.Foo' type=kotlin.Unit origin=null
-              $this: GET_OBJECT 'CLASS OBJECT name:Foo modality:FINAL visibility:public superTypes:[kotlin.Any]' type=<root>.Foo
+              $this: GET_OBJECT 'CLASS IR_EXTERNAL_DECLARATION_STUB OBJECT name:Foo modality:FINAL visibility:public superTypes:[kotlin.Any]' type=<root>.Foo

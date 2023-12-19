@@ -39,9 +39,7 @@ internal class KtFirSymbolProviderByJavaPsi(
         val containingClass = callable.containingClass ?: return null
         val classSymbol = getNamedClassSymbol(containingClass) ?: return null
         return with(analysisSession) {
-            classSymbol.getDeclaredMemberScope()
-                .getCallableSymbols(name)
-                .firstOrNull { it.psi == callable }
+            classSymbol.getCombinedDeclaredMemberScope().getCallableSymbols(name).firstOrNull { it.psi == callable }
         }
     }
 }

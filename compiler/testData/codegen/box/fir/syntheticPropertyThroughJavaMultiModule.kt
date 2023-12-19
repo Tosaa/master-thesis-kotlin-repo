@@ -1,6 +1,5 @@
 // TARGET_BACKEND: JVM_IR
 // ISSUE: KT-59550 (related)
-
 // MODULE: m1
 // FILE: Base.kt
 abstract class Base(internal val foo: String) {

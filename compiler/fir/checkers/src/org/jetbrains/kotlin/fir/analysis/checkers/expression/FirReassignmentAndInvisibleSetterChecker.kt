@@ -12,7 +12,7 @@ import org.jetbrains.kotlin.fir.analysis.cfa.evaluatedInPlace
 import org.jetbrains.kotlin.fir.analysis.cfa.requiresInitialization
 import org.jetbrains.kotlin.fir.analysis.checkers.context.CheckerContext
 import org.jetbrains.kotlin.fir.analysis.checkers.context.findClosest
-import org.jetbrains.kotlin.fir.analysis.checkers.toRegularClassSymbol
+import org.jetbrains.kotlin.fir.analysis.checkers.getContainingSymbol
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors
 import org.jetbrains.kotlin.fir.declarations.*
 import org.jetbrains.kotlin.fir.declarations.utils.visibility
@@ -21,10 +21,13 @@ import org.jetbrains.kotlin.fir.diagnostics.DiagnosticKind
 import org.jetbrains.kotlin.fir.expressions.*
 import org.jetbrains.kotlin.fir.originalForSubstitutionOverride
 import org.jetbrains.kotlin.fir.references.*
+import org.jetbrains.kotlin.fir.resolve.dfa.controlFlowGraph
 import org.jetbrains.kotlin.fir.resolve.diagnostics.ConeDiagnosticWithCandidates
 import org.jetbrains.kotlin.fir.resolve.diagnostics.ConeUnresolvedNameError
 import org.jetbrains.kotlin.fir.symbols.SymbolInternals
 import org.jetbrains.kotlin.fir.symbols.impl.FirPropertySymbol
+import org.jetbrains.kotlin.fir.types.resolvedType
+import org.jetbrains.kotlin.fir.types.toRegularClassSymbol
 import org.jetbrains.kotlin.fir.visibilityChecker
 
 object FirReassignmentAndInvisibleSetterChecker : FirVariableAssignmentChecker() {
@@ -62,7 +65,7 @@ object FirReassignmentAndInvisibleSetterChecker : FirVariableAssignmentChecker()
             val explicitReceiver = expression.explicitReceiver
             // Try to get type from smartcast
             if (explicitReceiver is FirSmartCastExpression) {
-                val symbol = explicitReceiver.originalExpression.typeRef.toRegularClassSymbol(context.session)
+                val symbol = explicitReceiver.originalExpression.resolvedType.toRegularClassSymbol(context.session)
                 if (symbol != null) {
                     for (declarationSymbol in symbol.declarationSymbols) {
                         if (declarationSymbol is FirPropertySymbol && declarationSymbol.name == callableSymbol.name) {
@@ -136,30 +139,59 @@ object FirReassignmentAndInvisibleSetterChecker : FirVariableAssignmentChecker()
         val property = expression.calleeReference?.toResolvedPropertySymbol() ?: return
         if (property.isVar) return
         // Assignments of uninitialized `val`s must be checked via CFG, since the first one is OK.
-        // See `FirPropertyInitializationAnalyzer` for locals and `FirMemberPropertiesChecker` for backing fields in initializers.
-        if (property.isLocal && property.requiresInitialization(isForClassInitialization = false)) return
+        // See `FirPropertyInitializationAnalyzer` for locals, `FirMemberPropertiesChecker` for backing fields in initializers,
+        // and `FirTopLevelPropertiesChecker` for top-level properties.
         if (
-            isInOwnersInitializer(expression.dispatchReceiver.unwrapSmartcastExpression(), context)
-            && property.requiresInitialization(isForClassInitialization = true)
+            (property.isLocal || isInFileGraph(property, context))
+            && property.requiresInitialization(isForInitialization = false)
+        ) return
+        if (
+            isInOwnersInitializer(expression.dispatchReceiver?.unwrapSmartcastExpression(), context)
+            && property.requiresInitialization(isForInitialization = true)
         ) return
 
         reporter.reportOn(expression.lValue.source, FirErrors.VAL_REASSIGNMENT, property, context)
     }
 
-    private fun isInOwnersInitializer(receiver: FirExpression, context: CheckerContext): Boolean {
+    private fun isInFileGraph(property: FirPropertySymbol, context: CheckerContext): Boolean {
+        val declarations = context.containingDeclarations.dropWhile { it !is FirFile }
+        val file = declarations.firstOrNull() as? FirFile ?: return false
+        if (file.symbol != property.getContainingSymbol(context.session)) return false
+
+        // Starting with the CFG for the containing FirFile, check if all following declarations are contained as sub-CFGs.
+        // If there is a break in the chain, then the variable assignment is not part of the file CFG, and VAL_REASSIGNMENT should be
+        // reported by this checker.
+        val containingGraph = declarations
+            .map { (it as? FirControlFlowGraphOwner)?.controlFlowGraphReference?.controlFlowGraph }
+            .reduceOrNull { acc, graph -> graph?.takeIf { acc != null && it in acc.subGraphs } }
+        return containingGraph != null
+    }
+
+    private fun isInOwnersInitializer(receiver: FirExpression?, context: CheckerContext): Boolean {
         val uninitializedThisSymbol = (receiver as? FirThisReceiverExpression)?.calleeReference?.boundSymbol ?: return false
-        var foundInitializer = false
-        for ((i, declaration) in context.containingDeclarations.withIndex()) {
-            if (declaration is FirClass) {
-                foundInitializer = if (context.containingDeclarations.getOrNull(i + 1)?.evaluatedInPlace == false) {
-                    // In member function of a class, assume all outer classes are already initialized
-                    // by the time this function is called.
-                    false
-                } else {
-                    foundInitializer || declaration.symbol == uninitializedThisSymbol
+        val containingDeclarations = context.containingDeclarations
+
+        val index = containingDeclarations.indexOfFirst { it is FirClass && it.symbol == uninitializedThisSymbol }
+        if (index == -1) return false
+
+        for (i in index until containingDeclarations.size) {
+            if (containingDeclarations[i] is FirClass) {
+                // Properties need special consideration as some parts are evaluated in-place (initializers) and others are not (accessors).
+                // So it is not enough to just check the FirProperty - which is treated as in-place - but the following declaration needs to
+                // be checked if and only if it is a property accessor.
+                val container = when (val next = containingDeclarations.getOrNull(i + 1)) {
+                    is FirProperty -> containingDeclarations.getOrNull(i + 2)?.takeIf { it is FirPropertyAccessor } ?: next
+                    else -> next
+                }
+
+                // In member function of a class, assume all outer classes are already initialized
+                // by the time this function is called.
+                if (container?.evaluatedInPlace == false) {
+                    return false
                 }
             }
         }
-        return foundInitializer
+
+        return true
     }
 }

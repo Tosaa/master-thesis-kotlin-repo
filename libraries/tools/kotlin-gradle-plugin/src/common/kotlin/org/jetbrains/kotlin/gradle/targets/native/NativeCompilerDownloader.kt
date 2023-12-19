@@ -28,6 +28,7 @@ import org.jetbrains.kotlin.gradle.targets.native.internal.PlatformLibrariesGene
 import org.jetbrains.kotlin.konan.target.HostManager
 import org.jetbrains.kotlin.konan.target.KonanTarget
 import org.jetbrains.kotlin.konan.util.DependencyDirectories
+import org.jetbrains.kotlin.tooling.core.KotlinToolingVersion
 import java.io.File
 import java.nio.file.Files
 
@@ -113,12 +114,10 @@ class NativeCompilerDownloader(
     }
 
     private val repoUrl by lazy {
-        val versionPattern = "(\\d+)\\.(\\d+)(?:\\.(\\d+))?(?:-(\\p{Alpha}*\\p{Alnum}|[\\p{Alpha}-]*))?(?:-(\\d+))?".toRegex()
-        val (_, _, _, buildType, _) = versionPattern.matchEntire(compilerVersion)?.destructured
-            ?: error("Unable to parse version $compilerVersion")
+        val maturity = KotlinToolingVersion(compilerVersion).maturity
         buildString {
             append("${kotlinProperties.nativeBaseDownloadUrl}/")
-            append(if (buildType in listOf("RC", "RC2", "Beta", "Beta2") || buildType.isEmpty()) "releases/" else "dev/")
+            append(if (maturity == KotlinToolingVersion.Maturity.DEV) "dev/" else "releases/")
             append("$compilerVersion/")
             append(simpleOsName)
         }
@@ -134,7 +133,7 @@ class NativeCompilerDownloader(
                 mapOf(
                     "group" to KOTLIN_GROUP_ID,
                     "name" to dependencyName,
-                    "version" to compilerVersion.toString(),
+                    "version" to compilerVersion,
                     "classifier" to simpleOsName,
                     "ext" to archiveExtension
                 )
@@ -143,14 +142,13 @@ class NativeCompilerDownloader(
             project.dependencies.create(
                 mapOf(
                     "name" to "$dependencyName-$simpleOsName",
-                    "version" to compilerVersion.toString(),
+                    "version" to compilerVersion,
                     "ext" to archiveExtension
                 )
             )
         }
 
-        val configuration = project.configurations.detachedConfiguration(compilerDependency)
-            .markResolvable()
+        val configuration = project.configurations.detachedResolvable(compilerDependency)
         logger.lifecycle("\nPlease wait while Kotlin/Native compiler $compilerVersion is being installed.")
 
         if (!kotlinProperties.nativeDownloadFromMaven) {

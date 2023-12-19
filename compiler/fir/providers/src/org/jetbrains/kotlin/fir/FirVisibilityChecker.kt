@@ -12,7 +12,6 @@ import org.jetbrains.kotlin.descriptors.Visibility
 import org.jetbrains.kotlin.fir.declarations.*
 import org.jetbrains.kotlin.fir.declarations.synthetic.FirSyntheticPropertyAccessor
 import org.jetbrains.kotlin.fir.declarations.utils.*
-import org.jetbrains.kotlin.fir.declarations.utils.isStatic
 import org.jetbrains.kotlin.fir.expressions.FirExpression
 import org.jetbrains.kotlin.fir.expressions.FirPropertyAccessExpression
 import org.jetbrains.kotlin.fir.expressions.toReference
@@ -69,7 +68,7 @@ abstract class FirVisibilityChecker : FirSessionComponent {
         }
 
         override fun platformOverrideVisibilityCheck(
-            candidateInDerivedClass: FirBasedSymbol<*>,
+            packageNameOfDerivedClass: FqName,
             symbolInBaseClass: FirBasedSymbol<*>,
             visibilityInBaseClass: Visibility,
         ): Boolean {
@@ -152,12 +151,19 @@ abstract class FirVisibilityChecker : FirSessionComponent {
 
     fun isVisibleForOverriding(
         candidateInDerivedClass: FirMemberDeclaration,
-        candidateInBaseClass: FirMemberDeclaration
-    ): Boolean = isVisibleForOverriding(candidateInDerivedClass.moduleData, candidateInDerivedClass.symbol, candidateInBaseClass)
+        candidateInBaseClass: FirMemberDeclaration,
+    ): Boolean =
+        isVisibleForOverriding(candidateInDerivedClass.moduleData, candidateInDerivedClass.symbol.packageFqName(), candidateInBaseClass)
 
     fun isVisibleForOverriding(
         derivedClassModuleData: FirModuleData,
         symbolFromDerivedClass: FirBasedSymbol<*>,
+        candidateInBaseClass: FirMemberDeclaration,
+    ): Boolean = isVisibleForOverriding(derivedClassModuleData, symbolFromDerivedClass.packageFqName(), candidateInBaseClass)
+
+    fun isVisibleForOverriding(
+        derivedClassModuleData: FirModuleData,
+        packageNameOfDerivedClass: FqName,
         candidateInBaseClass: FirMemberDeclaration,
     ): Boolean = when (candidateInBaseClass.visibility) {
         Visibilities.Internal -> {
@@ -167,7 +173,14 @@ abstract class FirVisibilityChecker : FirSessionComponent {
 
         Visibilities.Private, Visibilities.PrivateToThis -> false
         Visibilities.Protected -> true
-        else -> platformOverrideVisibilityCheck(symbolFromDerivedClass, candidateInBaseClass.symbol, candidateInBaseClass.visibility)
+        else -> {
+
+            platformOverrideVisibilityCheck(
+                packageNameOfDerivedClass,
+                candidateInBaseClass.symbol,
+                candidateInBaseClass.visibility
+            )
+        }
     }
 
     private fun isSpecificDeclarationVisible(
@@ -250,7 +263,7 @@ abstract class FirVisibilityChecker : FirSessionComponent {
     ): Boolean
 
     protected abstract fun platformOverrideVisibilityCheck(
-        candidateInDerivedClass: FirBasedSymbol<*>,
+        packageNameOfDerivedClass: FqName,
         symbolInBaseClass: FirBasedSymbol<*>,
         visibilityInBaseClass: Visibility,
     ): Boolean
@@ -287,7 +300,7 @@ abstract class FirVisibilityChecker : FirSessionComponent {
 
             val dispatchReceiverParameterClassLookupTag = dispatchReceiverParameterClassSymbol.toLookupTag()
             val dispatchReceiverValueOwnerLookupTag =
-                dispatchReceiver.typeRef.coneType.findClassRepresentation(
+                dispatchReceiver.resolvedType.findClassRepresentation(
                     dispatchReceiverParameterClassLookupTag.constructClassType(
                         Array(dispatchReceiverParameterClassSymbol.fir.typeParameters.size) { ConeStarProjection },
                         isNullable = true
@@ -364,10 +377,10 @@ abstract class FirVisibilityChecker : FirSessionComponent {
         session: FirSession
     ): Boolean {
         if (dispatchReceiver == null) return true
-        var dispatchReceiverType = dispatchReceiver.typeRef.coneType
+        var dispatchReceiverType = dispatchReceiver.resolvedType
         if (dispatchReceiver is FirPropertyAccessExpression && dispatchReceiver.calleeReference is FirSuperReference) {
             // Special 'super' case: type of this, not of super, should be taken for the check below
-            dispatchReceiverType = dispatchReceiver.dispatchReceiver.typeRef.coneType
+            dispatchReceiverType = dispatchReceiver.dispatchReceiver!!.resolvedType
         }
         val typeCheckerState = session.typeContext.newTypeCheckerState(
             errorTypesEqualToAnything = false,
@@ -394,7 +407,7 @@ abstract class FirVisibilityChecker : FirSessionComponent {
 
     private fun FirExpression?.ownerIfCompanion(session: FirSession): ConeClassLikeLookupTag? =
         // TODO: what if there is an intersection type from smartcast?
-        (this?.typeRef?.coneType as? ConeClassLikeType)?.lookupTag?.ownerIfCompanion(session)
+        (this?.resolvedType as? ConeClassLikeType)?.lookupTag?.ownerIfCompanion(session)
 
     // monitorEnter/monitorExit are the only functions which are accessed "illegally" (see kotlin/util/Synchronized.kt).
     // Since they are intrinsified in the codegen, FIR should treat it as visible.
@@ -451,14 +464,6 @@ abstract class FirVisibilityChecker : FirSessionComponent {
 
         return false
     }
-
-    protected fun FirBasedSymbol<*>.packageFqName(): FqName {
-        return when (this) {
-            is FirClassLikeSymbol<*> -> classId.packageFqName
-            is FirCallableSymbol<*> -> callableId.packageName
-            else -> error("No package fq name for $this")
-        }
-    }
 }
 
 val FirSession.moduleVisibilityChecker: FirModuleVisibilityChecker? by FirSession.nullableSessionComponentAccessor()
@@ -508,7 +513,7 @@ private fun FirMemberDeclaration.containingNonLocalClass(
             if (dispatchReceiver != null) {
                 val baseReceiverType = dispatchReceiverClassTypeOrNull()
                 if (baseReceiverType != null) {
-                    dispatchReceiver.typeRef.coneType.findClassRepresentation(baseReceiverType, session)?.toSymbol(session)?.fir?.let {
+                    dispatchReceiver.resolvedType.findClassRepresentation(baseReceiverType, session)?.toSymbol(session)?.fir?.let {
                         return it
                     }
                 }

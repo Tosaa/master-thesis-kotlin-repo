@@ -11,6 +11,7 @@ import org.jetbrains.kotlin.cli.common.CLICompiler
 import org.jetbrains.kotlin.cli.common.ExitCode
 import org.jetbrains.kotlin.cli.js.K2JSCompiler
 import org.jetbrains.kotlin.cli.jvm.K2JVMCompiler
+import org.jetbrains.kotlin.cli.metadata.K2MetadataCompiler
 import org.jetbrains.kotlin.preloading.ClassPreloadingUtils
 import org.jetbrains.kotlin.preloading.Preloader
 import org.jetbrains.kotlin.test.KtAssert.assertTrue
@@ -145,17 +146,6 @@ object MockLibraryUtil {
     }
 
     @JvmStatic
-    fun compileJsLibraryToJar(sourcesPath: String, jarName: String, addSources: Boolean, extraOptions: List<String> = emptyList()): File {
-        val contentDir = KtTestUtil.tmpDirForReusableFolder("testLibrary-$jarName")
-
-        val outDir = File(contentDir, "out")
-        val outputFile = File(outDir, "$jarName.js")
-        compileKotlin2JS(sourcesPath, outputFile, extraOptions)
-
-        return createJarFile(contentDir, outDir, jarName, sourcesPath.takeIf { addSources })
-    }
-
-    @JvmStatic
     fun createJarFile(contentDir: File, dirToAdd: File, jarName: String, sourcesPath: String? = null): File {
         val jarFile = File(contentDir, "$jarName.jar")
 
@@ -173,8 +163,12 @@ object MockLibraryUtil {
         runCompiler(compiler2JVMClass, args)
     }
 
-    private fun runJsCompiler(args: List<String>) {
+    fun runJsCompiler(args: List<String>) {
         runCompiler(compiler2JSClass, args)
+    }
+
+    fun runMetadataCompiler(args: List<String>) {
+        runCompiler(compiler2MetadataClass, args)
     }
 
     // Runs compiler in custom class loader to avoid effects caused by replacing Application with another one created in compiler.
@@ -209,10 +203,6 @@ object MockLibraryUtil {
         runJvmCompiler(args)
     }
 
-    private fun compileKotlin2JS(sourcesPath: String, outputFile: File, extraOptions: List<String>) {
-        runJsCompiler(listOf("-meta-info", "-output", outputFile.absolutePath, sourcesPath, *extraOptions.toTypedArray()))
-    }
-
     fun compileKotlinModule(buildFilePath: String) {
         runJvmCompiler(listOf("-no-stdlib", "-Xbuild-file", buildFilePath))
     }
@@ -222,6 +212,9 @@ object MockLibraryUtil {
 
     private val compiler2JSClass: Class<*>
         @Synchronized get() = loadCompilerClass(K2JSCompiler::class)
+
+    private val compiler2MetadataClass: Class<*>
+        @Synchronized get() = loadCompilerClass(K2MetadataCompiler::class)
 
     @Synchronized
     private fun loadCompilerClass(compilerClass: KClass<out CLICompiler<*>>): Class<*> {

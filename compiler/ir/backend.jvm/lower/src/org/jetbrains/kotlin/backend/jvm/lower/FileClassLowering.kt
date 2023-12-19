@@ -41,9 +41,9 @@ import org.jetbrains.kotlin.ir.util.*
 import org.jetbrains.kotlin.load.java.JavaDescriptorVisibilities
 import org.jetbrains.kotlin.load.kotlin.PackagePartClassUtils
 import org.jetbrains.kotlin.name.FqName
-import org.jetbrains.kotlin.name.JvmNames.JVM_MULTIFILE_CLASS_SHORT
-import org.jetbrains.kotlin.name.JvmNames.JVM_NAME_SHORT
-import org.jetbrains.kotlin.name.JvmNames.JVM_PACKAGE_NAME_SHORT
+import org.jetbrains.kotlin.name.JvmStandardClassIds.JVM_MULTIFILE_CLASS_SHORT
+import org.jetbrains.kotlin.name.JvmStandardClassIds.JVM_NAME_SHORT
+import org.jetbrains.kotlin.name.JvmStandardClassIds.JVM_PACKAGE_NAME_SHORT
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.resolve.inline.INLINE_ONLY_ANNOTATION_FQ_NAME
@@ -54,14 +54,7 @@ internal val fileClassPhase = makeIrModulePhase(
     ::FileClassLowering,
     name = "FileClass",
     description = "Put file level function and property declaration into a class",
-    stickyPostconditions = setOf(::checkAllFileLevelDeclarationsAreClasses)
 )
-
-internal fun checkAllFileLevelDeclarationsAreClasses(irModuleFragment: IrModuleFragment) {
-    assert(irModuleFragment.files.all { irFile ->
-        irFile.declarations.all { it is IrClass }
-    })
-}
 
 private class FileClassLowering(val context: JvmBackendContext) : FileLoweringPass {
     override fun lower(irFile: IrFile) {
@@ -93,7 +86,7 @@ private class FileClassLowering(val context: JvmBackendContext) : FileLoweringPa
         val isMultifilePart = fileClassInfo.withJvmMultifileClass
 
         val onlyPrivateDeclarationsAndFeatureIsEnabled =
-            context.state.languageVersionSettings.supportsFeature(LanguageFeature.PackagePrivateFileClassesWithAllPrivateMembers) && fileClassMembers
+            context.config.languageVersionSettings.supportsFeature(LanguageFeature.PackagePrivateFileClassesWithAllPrivateMembers) && fileClassMembers
                 .all {
                     val isPrivate = it is IrDeclarationWithVisibility && DescriptorVisibilities.isPrivate(it.visibility)
                     val isInlineOnly = it.hasAnnotation(INLINE_ONLY_ANNOTATION_FQ_NAME)
@@ -101,7 +94,7 @@ private class FileClassLowering(val context: JvmBackendContext) : FileLoweringPa
                 }
 
         val fileClassOrigin =
-            if (!isMultifilePart || context.state.languageVersionSettings.getFlag(JvmAnalysisFlags.inheritMultifileParts))
+            if (!isMultifilePart || context.config.languageVersionSettings.getFlag(JvmAnalysisFlags.inheritMultifileParts))
                 IrDeclarationOrigin.FILE_CLASS
             else
                 IrDeclarationOrigin.SYNTHETIC_FILE_CLASS

@@ -72,13 +72,13 @@ KtConstructorSymbol:
         hasBackingField: true
         hasGetter: true
         hasSetter: false
-        initializer: null
+        initializer: KtNonConstantInitializerValue(val value: String)
         isActual: false
         isConst: false
         isDelegatedProperty: false
         isExpect: false
         isExtension: false
-        isFromPrimaryConstructor: false
+        isFromPrimaryConstructor: true
         isLateInit: false
         isOverride: false
         isStatic: false
@@ -217,6 +217,7 @@ KtEnumEntrySymbol:
   callableIdIfNonLocal: /Style.SHEET
   containingEnumClassIdIfNonLocal: Style
   contextReceivers: []
+  enumEntryInitializer: KtEnumEntrySymbol(/Style.SHEET)
   isExtension: false
   name: SHEET
   origin: SOURCE

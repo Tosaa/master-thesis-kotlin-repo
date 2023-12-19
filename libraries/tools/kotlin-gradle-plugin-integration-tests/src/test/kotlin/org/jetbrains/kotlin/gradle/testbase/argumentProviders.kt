@@ -82,7 +82,7 @@ open class GradleArgumentsProvider : ArgumentsProvider {
 @Target(AnnotationTarget.FUNCTION, AnnotationTarget.ANNOTATION_CLASS, AnnotationTarget.CLASS)
 @Retention(AnnotationRetention.RUNTIME)
 annotation class JdkVersions(
-    val versions: Array<JavaVersion> = [JavaVersion.VERSION_1_8, JavaVersion.VERSION_17],
+    val versions: Array<JavaVersion> = [JavaVersion.VERSION_1_8, JavaVersion.VERSION_21],
     val compatibleWithGradle: Boolean = true
 ) {
     class ProvidedJdk(
@@ -137,9 +137,9 @@ class GradleAndJdkArgumentsProvider : GradleArgumentsProvider() {
 
     companion object {
         private val jdkGradleCompatibilityMatrix = mapOf(
-            JavaVersion.VERSION_15 to GradleVersion.version(TestVersions.Gradle.G_6_8),
             JavaVersion.VERSION_16 to GradleVersion.version(TestVersions.Gradle.G_7_0),
-            JavaVersion.VERSION_17 to GradleVersion.version(TestVersions.Gradle.G_7_3)
+            JavaVersion.VERSION_17 to GradleVersion.version(TestVersions.Gradle.G_7_3),
+            JavaVersion.VERSION_21 to GradleVersion.version(TestVersions.Gradle.G_7_3),
         )
     }
 }
@@ -177,13 +177,12 @@ class GradleAndAgpArgumentsProvider : GradleArgumentsProvider() {
 
                 gradleVersions
                     .filter { it in agpVersion.minSupportedGradleVersion..agpVersion.maxSupportedGradleVersion }
+                    .ifEmpty {
+                        // Falling back to the minimal supported Gradle version for this AGP version
+                        listOf(agpVersion.minSupportedGradleVersion)
+                    }
                     .map {
                         AgpTestArguments(it, agpVersion.version, providedJdk)
-                    }
-                    .also {
-                        require(it.isNotEmpty()) {
-                            "Could not find suitable Gradle version for AGP $agpVersion version!"
-                        }
                     }
             }
             .asSequence()

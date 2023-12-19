@@ -7,6 +7,7 @@ package org.jetbrains.kotlin.gradle
 
 import org.gradle.api.logging.LogLevel
 import org.gradle.util.GradleVersion
+import org.jetbrains.kotlin.build.report.statistics.formatSize
 import org.jetbrains.kotlin.gradle.internal.build.metrics.GradleBuildMetricsData
 import org.jetbrains.kotlin.gradle.report.BuildReportType
 import org.jetbrains.kotlin.gradle.testbase.*
@@ -17,6 +18,9 @@ import kotlin.io.path.*
 import kotlin.test.assertTrue
 import org.jetbrains.kotlin.gradle.dsl.KotlinVersion
 import org.jetbrains.kotlin.gradle.testbase.TestVersions.ThirdPartyDependencies.GRADLE_ENTERPRISE_PLUGIN_VERSION
+import java.nio.file.Files
+import kotlin.streams.asSequence
+import kotlin.test.assertEquals
 
 @DisplayName("Build reports")
 @JvmGradlePluginTests
@@ -92,17 +96,25 @@ class BuildReportsIT : KGPBaseTest() {
     )
     @GradleTest
     fun testBuildMetricsForJsProject(gradleVersion: GradleVersion) {
-        testBuildReportInFile("kotlin-js-plugin-project", "compileKotlinJs", gradleVersion,
-                              languageVersion = KotlinVersion.KOTLIN_1_7.version)
+        testBuildReportInFile(
+            "kotlin-js-plugin-project",
+            "compileKotlinJs",
+            gradleVersion,
+            languageVersion = KotlinVersion.KOTLIN_1_7.version
+        )
     }
 
-    private fun testBuildReportInFile(project: String, task: String, gradleVersion: GradleVersion,
-                                      languageVersion: String = KotlinVersion.KOTLIN_2_0.version) {
+    private fun testBuildReportInFile(
+        project: String,
+        task: String,
+        gradleVersion: GradleVersion,
+        languageVersion: String = KotlinVersion.KOTLIN_2_0.version,
+    ) {
         project(project, gradleVersion) {
             build(task) {
                 assertBuildReportPathIsPrinted()
             }
-            //Should contains build metrics for all compile kotlin tasks
+            //Should contain build metrics for all compile kotlin tasks
             validateBuildReportFile(KotlinVersion.DEFAULT.version)
         }
 
@@ -110,13 +122,13 @@ class BuildReportsIT : KGPBaseTest() {
             build(task, buildOptions = buildOptions.copy(languageVersion = languageVersion)) {
                 assertBuildReportPathIsPrinted()
             }
-            //Should contains build metrics for all compile kotlin tasks
+            //Should contain build metrics for all compile kotlin tasks
             validateBuildReportFile(languageVersion)
         }
     }
 
     private fun TestProject.validateBuildReportFile(kotlinLanguageVersion: String) {
-        assertFileContains(
+        val fileContents = assertFileContains(
             reportFile,
             "Time metrics:",
             "Run compilation:",
@@ -135,6 +147,37 @@ class BuildReportsIT : KGPBaseTest() {
             "Task info:",
             "Kotlin language version: $kotlinLanguageVersion",
         )
+
+        fun validateTotalCachesSizeMetric() {
+            val cachesDirectories = Files.walk(projectPath).use { files ->
+                val knownCachesDirectories = setOf("caches-jvm", "caches-js")
+                files.asSequence().filter { Files.isDirectory(it) && it.name in knownCachesDirectories }.toList()
+            }
+            val actualCacheDirectoriesSize = cachesDirectories.sumOf { files ->
+                Files.walk(files).use { cacheFiles ->
+                    cacheFiles.filter { Files.isRegularFile(it) }.mapToLong { Files.size(it) }.sum()
+                }
+            }
+            // the first found line of the report should contain a sum of the metric per all the tasks
+            val reportedCacheDirectoriesSize = fileContents.lineSequence().find { "Total size of the cache directory:" in it }
+                ?.replace("Total size of the cache directory:", "")?.trim()
+            assertEquals(formatSize(actualCacheDirectoriesSize), reportedCacheDirectoriesSize)
+        }
+
+        fun validateSnapshotSizeMetric() {
+            // traverse only the `build` directory files, because Gradle also contains a file with the name `last-build.bin`
+            val actualSnapshotSize = Files.walk(projectPath.resolve("build")).use { files ->
+                val knownSnapshotFiles = setOf("last-build.bin", "build-history.bin", "abi-snapshot.bin")
+                files.asSequence().filter { Files.isRegularFile(it) && it.name in knownSnapshotFiles }.map { Files.size(it) }.sum()
+            }
+            // the first found line of the report should contain a sum of the metric per all the tasks
+            val reportedSnapshotSize = fileContents.lineSequence().find { "ABI snapshot size:" in it }
+                ?.replace("ABI snapshot size:", "")?.trim()
+            assertEquals(formatSize(actualSnapshotSize), reportedSnapshotSize)
+        }
+
+        validateTotalCachesSizeMetric()
+        validateSnapshotSizeMetric()
     }
 
     @DisplayName("Compiler build metrics report is produced")
@@ -263,17 +306,25 @@ class BuildReportsIT : KGPBaseTest() {
         }
     }
 
-    private val kotlinErrorPath = ".gradle/kotlin/errors"
-
     @DisplayName("Error file is created")
     @GradleTestVersions(
         additionalVersions = [TestVersions.Gradle.G_7_6, TestVersions.Gradle.G_8_0],
     )
     @GradleTest
-    fun testErrorsFileSmokeTest(gradleVersion: GradleVersion) {
-        project("simpleProject", gradleVersion) {
+    fun testErrorsFileSmokeTest(
+        gradleVersion: GradleVersion,
+    ) {
+        project(
+            projectName = "simpleProject",
+            gradleVersion = gradleVersion,
+        ) {
 
             val lookupsTab = projectPath.resolve("build/kotlin/compileKotlin/cacheable/caches-jvm/lookups/lookups.tab")
+            val kotlinErrorPaths = setOf(
+                projectPersistentCache.resolve("errors"),
+                projectPath.resolve(".gradle/kotlin/errors")
+            )
+
             buildGradle.appendText(
                 """
                     tasks.named("compileKotlin") {
@@ -283,26 +334,31 @@ class BuildReportsIT : KGPBaseTest() {
                     }
                 """.trimIndent()
             )
-            build("compileKotlin", buildOptions = defaultBuildOptions.copy(logLevel = LogLevel.DEBUG)) {
-                assertTrue { projectPath.resolve(kotlinErrorPath).listDirectoryEntries().isEmpty() }
+
+            build("compileKotlin") {
+                for (kotlinErrorPath in kotlinErrorPaths) {
+                    assertDirectoryDoesNotExist(kotlinErrorPath)
+                }
                 assertOutputDoesNotContain("errors were stored into file")
             }
             val kotlinFile = kotlinSourcesDir().resolve("helloWorld.kt")
             kotlinFile.modify { it.replace("ArrayList", "skjfghsjk") }
             buildAndFail("compileKotlin", buildOptions = defaultBuildOptions.copy(logLevel = LogLevel.DEBUG)) {
                 assertOutputContains("errors were stored into file")
-                val file = projectPath.getSingleFileInDir(kotlinErrorPath)
-                file.bufferedReader().use { reader ->
-                    val kotlinVersion = reader.readLine()
-                    assertTrue("kotlin version should be in the error file") {
-                        kotlinVersion != null && kotlinVersion.trim().equals("kotlin version: ${buildOptions.kotlinVersion}")
-                    }
-                    val errorMessage = reader.readLine()
-                    assertTrue("Error message should start with 'error message: ' to parse it on IDEA side") {
-                        errorMessage != null && errorMessage.trim().startsWith("error message:")
+                kotlinErrorPaths.forEach { kotlinErrorPath ->
+                    val files = kotlinErrorPath.listDirectoryEntries()
+                    assertFileExists(files.single())
+                    files.single().bufferedReader().use { reader ->
+                        val kotlinVersion = reader.readLine()
+                        assertTrue("kotlin version should be in the error file") {
+                            kotlinVersion != null && kotlinVersion.trim() == "kotlin version: ${buildOptions.kotlinVersion}"
+                        }
+                        val errorMessage = reader.readLine()
+                        assertTrue("Error message should start with 'error message: ' to parse it on IDEA side") {
+                            errorMessage != null && errorMessage.trim().startsWith("error message:")
+                        }
                     }
                 }
-
             }
         }
     }
@@ -312,17 +368,79 @@ class BuildReportsIT : KGPBaseTest() {
         additionalVersions = [TestVersions.Gradle.G_7_6, TestVersions.Gradle.G_8_0],
     )
     @GradleTest
-    fun testErrorsFileWithCompilationError(gradleVersion: GradleVersion) {
-        project("simpleProject", gradleVersion) {
+    fun testErrorsFileWithCompilationError(
+        gradleVersion: GradleVersion,
+    ) {
+        project(
+            projectName = "simpleProject",
+            gradleVersion = gradleVersion,
+        ) {
+            val kotlinErrorPaths = setOf(
+                projectPersistentCache.resolve("errors"),
+                projectPath.resolve(".gradle/kotlin/errors")
+            )
+
             build("compileKotlin", buildOptions = defaultBuildOptions.copy(logLevel = LogLevel.DEBUG)) {
-                assertTrue { projectPath.resolve(kotlinErrorPath).listDirectoryEntries().isEmpty() }
                 assertOutputDoesNotContain("errors were stored into file")
+                for (kotlinErrorPath in kotlinErrorPaths) {
+                    assertDirectoryDoesNotExist(kotlinErrorPath)
+                }
             }
             val kotlinFile = kotlinSourcesDir().resolve("helloWorld.kt")
             kotlinFile.modify { it.replace("ArrayList", "skjfghsjk") }
             buildAndFail("compileKotlin", buildOptions = defaultBuildOptions.copy(logLevel = LogLevel.DEBUG)) {
-                assertTrue { projectPath.resolve(kotlinErrorPath).listDirectoryEntries().isEmpty() }
                 assertOutputDoesNotContain("errors were stored into file")
+                for (kotlinErrorPath in kotlinErrorPaths) {
+                    assertDirectoryDoesNotExist(kotlinErrorPath)
+                }
+            }
+        }
+    }
+
+    @DisplayName("Error file is not written into .gradle/kotlin/errors")
+    @GradleTest
+    fun testDisableWritingErrorsIntoGradleProjectDir(
+        gradleVersion: GradleVersion,
+    ) {
+        project(
+            projectName = "simpleProject",
+            gradleVersion = gradleVersion,
+        ) {
+            val kotlinErrorPath = projectPersistentCache.resolve("errors")
+            val gradleErrorPath = projectPath.resolve(".gradle/kotlin/errors")
+            gradleProperties.appendText(
+                """
+                |
+                |kotlin.project.persistent.dir.gradle.disableWrite=true
+                """.trimMargin()
+            )
+
+            val lookupsTab = projectPath.resolve("build/kotlin/compileKotlin/cacheable/caches-jvm/lookups/lookups.tab")
+            buildGradle.appendText(
+                //language=groovy
+                """
+                |tasks.named("compileKotlin") {
+                |    doLast {
+                |       new File("${lookupsTab.toUri().path}").write("Invalid contents")
+                |   }
+                |}
+                """.trimMargin()
+            )
+
+            build("compileKotlin") {
+                assertDirectoryDoesNotExist(kotlinErrorPath.toAbsolutePath())
+                assertDirectoryDoesNotExist(gradleErrorPath.toAbsolutePath())
+            }
+
+            val kotlinFile = kotlinSourcesDir().resolve("helloWorld.kt")
+            kotlinFile.modify { it.replace("ArrayList", "skjfghsjk") }
+            buildAndFail("compileKotlin", buildOptions = defaultBuildOptions.copy(logLevel = LogLevel.DEBUG)) {
+                assertOutputContains("errors were stored into file")
+                assertDirectoryExists(kotlinErrorPath.toAbsolutePath())
+                val errorFiles = kotlinErrorPath.listDirectoryEntries()
+                assertFileExists(errorFiles.single())
+
+                assertDirectoryDoesNotExist(gradleErrorPath.toAbsolutePath())
             }
         }
     }

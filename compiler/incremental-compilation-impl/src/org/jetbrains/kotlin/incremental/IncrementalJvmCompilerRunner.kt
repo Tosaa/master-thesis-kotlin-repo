@@ -66,7 +66,7 @@ open class IncrementalJvmCompilerRunner(
     buildHistoryFile: File?,
     outputDirs: Collection<File>?,
     private val modulesApiHistory: ModulesApiHistory,
-    override val kotlinSourceFilesExtensions: List<String> = DEFAULT_KOTLIN_SOURCE_FILES_EXTENSIONS,
+    override val kotlinSourceFilesExtensions: Set<String> = DEFAULT_KOTLIN_SOURCE_FILES_EXTENSIONS,
     private val classpathChanges: ClasspathChanges,
     withAbiSnapshot: Boolean = false,
     preciseCompilationResultsBackup: Boolean = false,
@@ -239,11 +239,11 @@ open class IncrementalJvmCompilerRunner(
                 reporter.info { "Could not get classpath changes: ${changedAndImpactedSymbols.reason}" }
                 return CompilationMode.Rebuild(changedAndImpactedSymbols.reason)
             }
-            is ChangesEither.Known -> Unit
-        }.forceExhaustiveWhen()
-
-        dirtyFiles.addByDirtySymbols(changedAndImpactedSymbols.lookupSymbols)
-        dirtyFiles.addByDirtyClasses(changedAndImpactedSymbols.fqNames)
+            is ChangesEither.Known -> {
+                dirtyFiles.addByDirtySymbols(changedAndImpactedSymbols.lookupSymbols)
+                dirtyFiles.addByDirtyClasses(changedAndImpactedSymbols.fqNames)
+            }
+        }
 
         reporter.measure(GradleBuildTime.IC_ANALYZE_CHANGES_IN_JAVA_SOURCES) {
             if (!usePreciseJavaTracking) {
@@ -294,13 +294,6 @@ open class IncrementalJvmCompilerRunner(
             fqNames = dirtyClassesFqNames + dirtyClassesFqNamesForceRecompile
         )
     }
-
-    /**
-     * Helper function to force exhaustive when for statements (see https://youtrack.jetbrains.com/issue/KT-47709).
-     *
-     * If the current IDE/Kotlin compiler already supports exhaustive when for statements, consider removing this function and its usages.
-     */
-    private fun Any.forceExhaustiveWhen() = this
 
     private fun processChangedJava(changedFiles: ChangedFiles.Known, caches: IncrementalJvmCachesManager): BuildAttribute? {
         val javaFiles = (changedFiles.modified + changedFiles.removed).filter(File::isJavaFile)

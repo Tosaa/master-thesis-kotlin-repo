@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2022 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Copyright 2010-2023 JetBrains s.r.o. and Kotlin Programming Language contributors.
  * Use of this source code is governed by the Apache 2.0 license that can be found in the license/LICENSE.txt file.
  */
 
@@ -25,6 +25,7 @@ import org.jetbrains.kotlin.analysis.api.types.KtType
 import org.jetbrains.kotlin.descriptors.Modality
 import org.jetbrains.kotlin.descriptors.Visibility
 import org.jetbrains.kotlin.fir.containingClassLookupTag
+import org.jetbrains.kotlin.fir.declarations.FirDeclarationOrigin
 import org.jetbrains.kotlin.fir.declarations.FirResolvePhase
 import org.jetbrains.kotlin.fir.declarations.synthetic.FirSyntheticProperty
 import org.jetbrains.kotlin.fir.declarations.utils.*
@@ -59,25 +60,24 @@ internal class KtFirKotlinPropertySymbol(
     override val contextReceivers: List<KtContextReceiver> by cached { firSymbol.createContextReceivers(builder) }
 
     override val isExtension: Boolean get() = withValidityAssertion { firSymbol.isExtension }
-    override val initializer: KtInitializerValue? by cached { firSymbol.getKtConstantInitializer(analysisSession.firResolveSession) }
+    override val initializer: KtInitializerValue? by cached { firSymbol.getKtConstantInitializer(builder) }
 
     override val symbolKind: KtSymbolKind
         get() = withValidityAssertion {
+            if (firSymbol.origin == FirDeclarationOrigin.DynamicScope) {
+                return@withValidityAssertion KtSymbolKind.CLASS_MEMBER
+            }
             when (firSymbol.containingClassLookupTag()?.classId) {
                 null -> KtSymbolKind.TOP_LEVEL
                 else -> KtSymbolKind.CLASS_MEMBER
             }
         }
 
-    override val modality: Modality get() = withValidityAssertion { firSymbol.modalityOrFinal }
+    override val modality: Modality get() = withValidityAssertion { firSymbol.modality }
     override val visibility: Visibility get() = withValidityAssertion { firSymbol.visibility }
 
     override val annotationsList by cached {
-        KtFirAnnotationListForDeclaration.create(
-            firSymbol,
-            analysisSession.useSiteSession,
-            token
-        )
+        KtFirAnnotationListForDeclaration.create(firSymbol, builder)
     }
 
     override val callableIdIfNonLocal: CallableId? get() = withValidityAssertion { firSymbol.getCallableIdIfNonLocal() }
@@ -130,10 +130,16 @@ internal class KtFirKotlinPropertySymbol(
         }
 
         return when (val kind = symbolKind) {
-            KtSymbolKind.TOP_LEVEL -> KtFirTopLevelPropertySymbolPointer(
-                firSymbol.callableId,
-                FirCallableSignature.createSignature(firSymbol),
-            )
+            KtSymbolKind.TOP_LEVEL -> {
+                if (firSymbol.fir.origin is FirDeclarationOrigin.ScriptCustomization.ResultProperty) {
+                    KtFirResultPropertySymbolPointer(requireOwnerPointer())
+                } else {
+                    KtFirTopLevelPropertySymbolPointer(
+                        firSymbol.callableId,
+                        FirCallableSignature.createSignature(firSymbol),
+                    )
+                }
+            }
 
             KtSymbolKind.CLASS_MEMBER ->
                 KtFirMemberPropertySymbolPointer(

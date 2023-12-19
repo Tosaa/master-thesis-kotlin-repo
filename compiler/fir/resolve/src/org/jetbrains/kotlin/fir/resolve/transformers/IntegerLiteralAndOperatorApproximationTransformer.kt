@@ -13,6 +13,7 @@ import org.jetbrains.kotlin.fir.declarations.FirResolvePhase
 import org.jetbrains.kotlin.fir.expressions.FirConstExpression
 import org.jetbrains.kotlin.fir.expressions.FirIntegerLiteralOperatorCall
 import org.jetbrains.kotlin.fir.expressions.FirStatement
+import org.jetbrains.kotlin.fir.expressions.UnresolvedExpressionTypeAccess
 import org.jetbrains.kotlin.fir.expressions.builder.buildFunctionCall
 import org.jetbrains.kotlin.fir.references.FirResolvedErrorReference
 import org.jetbrains.kotlin.fir.references.FirResolvedNamedReference
@@ -22,8 +23,7 @@ import org.jetbrains.kotlin.fir.resolve.ScopeSession
 import org.jetbrains.kotlin.fir.resolve.fullyExpandedType
 import org.jetbrains.kotlin.fir.resolve.scope
 import org.jetbrains.kotlin.fir.resolve.transformers.body.resolve.resultType
-import org.jetbrains.kotlin.fir.resolvedTypeFromPrototype
-import org.jetbrains.kotlin.fir.scopes.FakeOverrideTypeCalculator
+import org.jetbrains.kotlin.fir.scopes.CallableCopyTypeCalculator
 import org.jetbrains.kotlin.fir.scopes.getFunctions
 import org.jetbrains.kotlin.fir.scopes.impl.originalForWrappedIntegerOperator
 import org.jetbrains.kotlin.fir.symbols.impl.FirNamedFunctionSymbol
@@ -49,7 +49,7 @@ class IntegerLiteralAndOperatorApproximationTransformer(
         return receiverType.type.scope(
             useSiteSession = session,
             scopeSession = scopeSession,
-            fakeOverrideTypeCalculator = FakeOverrideTypeCalculator.DoNothing,
+            callableCopyTypeCalculator = CallableCopyTypeCalculator.DoNothing,
             requiredMembersPhase = FirResolvePhase.STATUS,
         )!!.getFunctions(name).single()
     }
@@ -60,11 +60,11 @@ class IntegerLiteralAndOperatorApproximationTransformer(
 
     override fun <T> transformConstExpression(
         constExpression: FirConstExpression<T>,
-        data: ConeKotlinType?
+        data: ConeKotlinType?,
     ): FirStatement {
-        val type = constExpression.resultType.coneTypeSafe<ConeIntegerLiteralType>() ?: return constExpression
+        val type = constExpression.resolvedType as? ConeIntegerLiteralType ?: return constExpression
         val approximatedType = type.getApproximatedType(data?.fullyExpandedType(session))
-        constExpression.resultType = constExpression.resultType.resolvedTypeFromPrototype(approximatedType)
+        constExpression.resultType = approximatedType
         @Suppress("UNCHECKED_CAST")
         val kind = approximatedType.toConstKind() as ConstantValueKind<T>
         constExpression.replaceKind(kind)
@@ -73,17 +73,18 @@ class IntegerLiteralAndOperatorApproximationTransformer(
 
     override fun transformIntegerLiteralOperatorCall(
         integerLiteralOperatorCall: FirIntegerLiteralOperatorCall,
-        data: ConeKotlinType?
+        data: ConeKotlinType?,
     ): FirStatement {
         @Suppress("UnnecessaryVariable")
         val call = integerLiteralOperatorCall
-        val operatorType = call.resultType.coneTypeSafe<ConeIntegerLiteralType>() ?: return call
+
+        val operatorType = call.resolvedType as? ConeIntegerLiteralType ?: return call
         val approximatedType = operatorType.getApproximatedType(data?.fullyExpandedType(session))
         call.transformDispatchReceiver(this, null)
         call.transformExtensionReceiver(this, null)
         call.argumentList.transformArguments(this, null)
 
-        call.resultType = call.resultType.resolvedTypeFromPrototype(approximatedType)
+        call.resultType = approximatedType
 
         val calleeReference = call.calleeReference
         // callee reference may also be an error reference and it's ok if wrapped operator function leaks throw it
@@ -110,15 +111,15 @@ class IntegerLiteralAndOperatorApproximationTransformer(
 
         if (approximatedType.isInt || approximatedType.isUInt) return call
         val typeBeforeConversion = if (operatorType.isUnsigned) {
-            session.builtinTypes.uIntType
+            session.builtinTypes.uIntType.type
         } else {
-            session.builtinTypes.intType
+            session.builtinTypes.intType.type
         }
-        call.replaceTypeRef(typeBeforeConversion)
+        call.replaceConeTypeOrNull(typeBeforeConversion)
 
         return buildFunctionCall {
             source = call.source?.fakeElement(KtFakeSourceElementKind.IntToLongConversion)
-            typeRef = session.builtinTypes.longType
+            coneTypeOrNull = session.builtinTypes.longType.type
             explicitReceiver = call
             dispatchReceiver = call
             this.calleeReference = buildResolvedNamedReference {

@@ -14,6 +14,7 @@ import org.jetbrains.kotlin.ir.symbols.IrClassSymbol
 import org.jetbrains.kotlin.ir.symbols.IrClassifierSymbol
 import org.jetbrains.kotlin.ir.util.IdSignature
 import org.jetbrains.kotlin.ir.util.hasEqualFqName
+import org.jetbrains.kotlin.ir.util.hasTopLevelEqualFqName
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.FqNameUnsafe
 import org.jetbrains.kotlin.name.Name
@@ -74,11 +75,13 @@ private fun IrType.isClassType(signature: IdSignature.CommonSignature, nullable:
 }
 
 private fun IrClass.hasFqNameEqualToSignature(signature: IdSignature.CommonSignature): Boolean =
-    name.asString() == signature.shortName &&
-            hasEqualFqName(FqName("${signature.packageFqName}.${signature.declarationFqName}"))
+    name.asString() == signature.shortName && hasTopLevelEqualFqName(signature.packageFqName, signature.declarationFqName)
 
 fun IrClassifierSymbol.isClassWithFqName(fqName: FqNameUnsafe): Boolean =
     this is IrClassSymbol && classFqNameEquals(this, fqName)
+
+fun IrClass.isClassWithFqName(fqName: FqName): Boolean =
+    classFqNameEquals(this, fqName)
 
 private fun classFqNameEquals(symbol: IrClassSymbol, fqName: FqNameUnsafe): Boolean {
     assert(symbol.isBound)
@@ -107,7 +110,10 @@ val primitiveArrayTypesSignatures: Map<PrimitiveType, IdSignature.CommonSignatur
     }
 
 private fun classFqNameEquals(declaration: IrClass, fqName: FqNameUnsafe): Boolean =
-    declaration.hasEqualFqName(fqName.toSafe())
+    classFqNameEquals(declaration, fqName.toSafe())
+
+private fun classFqNameEquals(declaration: IrClass, fqName: FqName): Boolean =
+    declaration.hasEqualFqName(fqName)
 
 fun IrType.isAny(): Boolean = isNotNullClassType(IdSignatureValues.any)
 fun IrType.isNullableAny(): Boolean = isNullableClassType(IdSignatureValues.any)

@@ -6,8 +6,11 @@
 package org.jetbrains.kotlin.fir.analysis.checkers.expression
 
 import org.jetbrains.kotlin.KtFakeSourceElementKind
+import org.jetbrains.kotlin.config.LanguageFeature
 import org.jetbrains.kotlin.diagnostics.DiagnosticReporter
 import org.jetbrains.kotlin.diagnostics.reportOn
+import org.jetbrains.kotlin.fir.FirSession
+import org.jetbrains.kotlin.fir.FirSessionComponent
 import org.jetbrains.kotlin.fir.analysis.checkers.context.CheckerContext
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors
 import org.jetbrains.kotlin.fir.analysis.getChild
@@ -47,10 +50,11 @@ object FirClassLiteralChecker : FirGetClassCallChecker() {
         //
         // Only the 2nd example is valid, and we want to check if token type QUEST doesn't exist at the same level as COLONCOLON.
         val markedNullable = source.getChild(QUEST, depth = 1) != null
+        val resolvedFullyExpandedType = argument.resolvedType.fullyExpandedType(context.session)
         val isNullable = markedNullable ||
                 (argument as? FirResolvedQualifier)?.isNullableLHSForCallableReference == true ||
-                argument.typeRef.coneType.isMarkedNullable ||
-                argument.typeRef.coneType.isNullableTypeParameter(context.session.typeContext)
+                resolvedFullyExpandedType.isMarkedNullable ||
+                resolvedFullyExpandedType.isNullableTypeParameter(context.session.typeContext)
         if (isNullable) {
             if (argument.canBeDoubleColonLHSAsType) {
                 reporter.reportOn(source, FirErrors.NULLABLE_TYPE_IN_CLASS_LITERAL_LHS, context)
@@ -58,7 +62,7 @@ object FirClassLiteralChecker : FirGetClassCallChecker() {
                 reporter.reportOn(
                     argument.source,
                     FirErrors.EXPRESSION_OF_NULLABLE_TYPE_IN_CLASS_LITERAL_LHS,
-                    argument.typeRef.coneType,
+                    argument.resolvedType,
                     context
                 )
             }
@@ -74,7 +78,7 @@ object FirClassLiteralChecker : FirGetClassCallChecker() {
 
         if (argument !is FirResolvedQualifier) return
         // TODO, KT-59835: differentiate RESERVED_SYNTAX_IN_CALLABLE_REFERENCE_LHS
-        if (argument.typeArguments.isNotEmpty() && !argument.typeRef.coneType.fullyExpandedType(context.session).isAllowedInClassLiteral(context)) {
+        if (argument.typeArguments.isNotEmpty() && !resolvedFullyExpandedType.isAllowedInClassLiteral(context)) {
             val symbol = argument.symbol
             symbol?.lazyResolveToPhase(FirResolvePhase.TYPES)
             @OptIn(SymbolInternals::class)
@@ -116,7 +120,10 @@ object FirClassLiteralChecker : FirGetClassCallChecker() {
     private fun ConeKotlinType.isAllowedInClassLiteral(context: CheckerContext): Boolean =
         when (this) {
             is ConeClassLikeType -> {
-                if (isNonPrimitiveArray) {
+                val isPlatformThatAllowsNonPrimitiveArrays = context.session.firGenericArrayClassLiteralSupport.isEnabled
+                val isOldVersionThatAllowsNonPrimitiveArrays =
+                    !context.languageVersionSettings.supportsFeature(LanguageFeature.ProhibitGenericArrayClassLiteral)
+                if (isNonPrimitiveArray && (isPlatformThatAllowsNonPrimitiveArrays || isOldVersionThatAllowsNonPrimitiveArrays)) {
                     typeArguments.none { typeArgument ->
                         when (typeArgument) {
                             is ConeStarProjection -> true
@@ -130,3 +137,17 @@ object FirClassLiteralChecker : FirGetClassCallChecker() {
             else -> false
         }
 }
+
+interface FirGenericArrayClassLiteralSupport : FirSessionComponent {
+    val isEnabled: Boolean
+
+    object Enabled : FirGenericArrayClassLiteralSupport {
+        override val isEnabled: Boolean = true
+    }
+
+    object Disabled : FirGenericArrayClassLiteralSupport {
+        override val isEnabled: Boolean = false
+    }
+}
+
+val FirSession.firGenericArrayClassLiteralSupport: FirGenericArrayClassLiteralSupport by FirSession.sessionComponentAccessor()

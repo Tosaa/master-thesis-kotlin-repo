@@ -20,11 +20,16 @@ interface FirExpectActualMatchingContext : ExpectActualMatchingContext<FirBasedS
         session: FirSession = moduleData.session,
     ): Collection<FirConstructorSymbol>
 
+    val expectScopeSession: ScopeSession
     override fun RegularClassSymbolMarker.getMembersForExpectClass(name: Name): List<FirCallableSymbol<*>>
 }
 
 interface FirExpectActualMatchingContextFactory : FirSessionComponent {
-    fun create(session: FirSession, scopeSession: ScopeSession): FirExpectActualMatchingContext
+    fun create(
+        actualSession: FirSession,
+        actualScopeSession: ScopeSession,
+        allowedWritingMemberExpectForActualMapping: Boolean = false,
+    ): FirExpectActualMatchingContext
 }
 
 val FirSession.expectActualMatchingContextFactory: FirExpectActualMatchingContextFactory by FirSession.sessionComponentAccessor()

@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2021 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Copyright 2010-2023 JetBrains s.r.o. and Kotlin Programming Language contributors.
  * Use of this source code is governed by the Apache 2.0 license that can be found in the license/LICENSE.txt file.
  */
 
@@ -7,30 +7,32 @@ package org.jetbrains.kotlin.analysis.low.level.api.fir.stubBased.deserializatio
 
 import com.intellij.openapi.project.Project
 import com.intellij.psi.search.GlobalSearchScope
+import org.jetbrains.kotlin.analysis.low.level.api.fir.caches.getNotNullValueForNotNullContext
+import org.jetbrains.kotlin.analysis.low.level.api.fir.project.structure.llFirModuleData
 import org.jetbrains.kotlin.analysis.low.level.api.fir.providers.LLFirKotlinSymbolProvider
 import org.jetbrains.kotlin.analysis.low.level.api.fir.util.LLFirKotlinSymbolNamesProvider
-import org.jetbrains.kotlin.analysis.providers.KotlinDeclarationProvider
 import org.jetbrains.kotlin.analysis.providers.createDeclarationProvider
+import org.jetbrains.kotlin.analysis.providers.createPackageProvider
 import org.jetbrains.kotlin.fir.FirSession
 import org.jetbrains.kotlin.fir.caches.FirCache
 import org.jetbrains.kotlin.fir.caches.firCachesFactory
 import org.jetbrains.kotlin.fir.caches.getValue
 import org.jetbrains.kotlin.fir.declarations.FirDeclarationOrigin
 import org.jetbrains.kotlin.fir.deserialization.SingleModuleDataProvider
-import org.jetbrains.kotlin.fir.java.deserialization.JvmClassFileBasedSymbolProvider
 import org.jetbrains.kotlin.fir.java.deserialization.KotlinBuiltins
 import org.jetbrains.kotlin.fir.realPsi
 import org.jetbrains.kotlin.fir.resolve.providers.FirSymbolNamesProvider
 import org.jetbrains.kotlin.fir.resolve.providers.FirSymbolProviderInternals
 import org.jetbrains.kotlin.fir.scopes.FirKotlinScopeProvider
 import org.jetbrains.kotlin.fir.symbols.impl.*
+import org.jetbrains.kotlin.load.kotlin.FacadeClassSource
 import org.jetbrains.kotlin.name.*
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.stubs.impl.*
 import org.jetbrains.kotlin.resolve.jvm.JvmClassName
-import org.jetbrains.kotlin.serialization.deserialization.MetadataPackageFragment
+import org.jetbrains.kotlin.serialization.deserialization.builtins.BuiltInSerializerProtocol
+import org.jetbrains.kotlin.serialization.deserialization.descriptors.DeserializedContainerSource
 import org.jetbrains.kotlin.utils.addToStdlib.ifNotEmpty
-import java.util.ArrayList
 
 typealias DeserializedTypeAliasPostProcessor = (FirTypeAliasSymbol) -> Unit
 
@@ -52,13 +54,14 @@ internal open class StubBasedFirDeserializedSymbolProvider(
     private val kotlinScopeProvider: FirKotlinScopeProvider,
     project: Project,
     scope: GlobalSearchScope,
-    private val initialOrigin: FirDeclarationOrigin
 ) : LLFirKotlinSymbolProvider(session) {
     private val moduleData = moduleDataProvider.getModuleData(null)
 
-    final override val declarationProvider = project.createDeclarationProvider(scope, module = null)
+    final override val declarationProvider = project.createDeclarationProvider(scope, session.llFirModuleData.ktModule)
 
     override val symbolNamesProvider: FirSymbolNamesProvider = LLFirKotlinSymbolNamesProvider.cached(session, declarationProvider)
+
+    override val allowKotlinPackage: Boolean get() = true
 
     private val typeAliasCache: FirCache<ClassId, FirTypeAliasSymbol?, StubBasedFirDeserializationContext?> =
         session.firCachesFactory.createCacheWithPostCompute(
@@ -78,6 +81,26 @@ internal open class StubBasedFirDeserializedSymbolProvider(
     private val functionCache = session.firCachesFactory.createCache(::loadFunctionsByCallableId)
     private val propertyCache = session.firCachesFactory.createCache(::loadPropertiesByCallableId)
 
+    final override val packageProvider = project.createPackageProvider(scope)
+
+    /**
+     * Computes the origin for the declarations coming from [file].
+     *
+     * We assume that a stub Kotlin declaration might come only from Library or from BuiltIns.
+     * We do the decision based upon the extension of the [file].
+     *
+     * This method is left open so the inheritors can provide more optimal/strict implementations.
+     */
+    protected open fun getDeclarationOriginFor(file: KtFile): FirDeclarationOrigin {
+        val virtualFile = file.virtualFile
+
+        return if (virtualFile.extension == BuiltInSerializerProtocol.BUILTINS_FILE_EXTENSION) {
+            FirDeclarationOrigin.BuiltIns
+        } else {
+            FirDeclarationOrigin.Library
+        }
+    }
+
     private fun findAndDeserializeTypeAlias(
         classId: ClassId,
         context: StubBasedFirDeserializationContext?,
@@ -93,7 +116,8 @@ internal open class StubBasedFirDeserializedSymbolProvider(
                     classId.packageFqName,
                     classId.relativeClassName,
                     classLikeDeclaration,
-                    null, null, symbol, initialOrigin
+                    null, null, symbol,
+                    initialOrigin = getDeclarationOriginFor(classLikeDeclaration.containingKtFile)
                 )
                 rootContext.memberDeserializer.loadTypeAlias(classLikeDeclaration, symbol)
             }
@@ -124,9 +148,9 @@ internal open class StubBasedFirDeserializedSymbolProvider(
                 StubBasedAnnotationDeserializer(session),
                 kotlinScopeProvider,
                 parentContext = context,
-                containerSource = if (initialOrigin == FirDeclarationOrigin.BuiltIns) null else JvmStubDeserializedContainerSource(classId),
+                containerSource = JvmStubDeserializedContainerSource(classId),
                 deserializeNestedClass = this::getClass,
-                initialOrigin = initialOrigin
+                initialOrigin = getDeclarationOriginFor(classLikeDeclaration.containingKtFile)
             )
             return symbol
         }
@@ -142,15 +166,20 @@ internal open class StubBasedFirDeserializedSymbolProvider(
         return ArrayList<FirNamedFunctionSymbol>(topLevelFunctions.size).apply {
             for (function in topLevelFunctions) {
                 val functionStub = function.stub as? KotlinFunctionStubImpl ?: loadStubByElement(function)
-                val containerSource = getFacadeContainerSource(function.containingKtFile, functionStub?.origin)
+                val functionFile = function.containingKtFile
+                val containerSource = getContainerSource(functionFile, functionStub?.origin)
+                val functionOrigin = getDeclarationOriginFor(functionFile)
 
-                if (initialOrigin != FirDeclarationOrigin.BuiltIns && containerSource.className.internalName in KotlinBuiltins) {
+                if (functionOrigin != FirDeclarationOrigin.BuiltIns &&
+                    containerSource is FacadeClassSource &&
+                    containerSource.className.internalName in KotlinBuiltins
+                ) {
                     continue
                 }
 
                 val symbol = FirNamedFunctionSymbol(callableId)
                 val rootContext = StubBasedFirDeserializationContext
-                    .createRootContext(session, moduleData, callableId, function, symbol, initialOrigin, containerSource)
+                    .createRootContext(session, moduleData, callableId, function, symbol, functionOrigin, containerSource)
 
                 add(rootContext.memberDeserializer.loadFunction(function, null, session, symbol).symbol)
             }
@@ -163,18 +192,30 @@ internal open class StubBasedFirDeserializedSymbolProvider(
         return buildList {
             for (property in topLevelProperties) {
                 val propertyStub = property.stub as? KotlinPropertyStubImpl ?: loadStubByElement(property)
-                val containerSource = getFacadeContainerSource(property.containingKtFile, propertyStub?.origin)
+                val propertyFile = property.containingKtFile
+                val containerSource = getContainerSource(propertyFile, propertyStub?.origin)
+                val propertyOrigin = getDeclarationOriginFor(propertyFile)
 
                 val symbol = FirPropertySymbol(callableId)
                 val rootContext = StubBasedFirDeserializationContext
-                    .createRootContext(session, moduleData, callableId, property, symbol, initialOrigin, containerSource)
+                    .createRootContext(session, moduleData, callableId, property, symbol, propertyOrigin, containerSource)
 
                 add(rootContext.memberDeserializer.loadProperty(property, null, symbol).symbol)
             }
         }
     }
 
-    private fun getFacadeContainerSource(file: KtFile, origin: KotlinStubOrigin?): JvmStubDeserializedFacadeContainerSource {
+    private fun getContainerSource(file: KtFile, origin: KotlinStubOrigin?): DeserializedContainerSource {
+        if (getDeclarationOriginFor(file) == FirDeclarationOrigin.BuiltIns) {
+            require(origin is KotlinStubOrigin.Facade) {
+                "Expected builtins file to have Facade origin, got origin=$origin instead"
+            }
+
+            return JvmStubDeserializedBuiltInsContainerSource(
+                facadeClassName = JvmClassName.byInternalName(origin.className)
+            )
+        }
+
         return when (origin) {
             is KotlinStubOrigin.Facade -> {
                 val className = JvmClassName.byInternalName(origin.className)
@@ -182,7 +223,7 @@ internal open class StubBasedFirDeserializedSymbolProvider(
             }
             is KotlinStubOrigin.MultiFileFacade -> {
                 val className = JvmClassName.byInternalName(origin.className)
-                val facadeClassName = JvmClassName.byInternalName(origin.className)
+                val facadeClassName = JvmClassName.byInternalName(origin.facadeClassName)
                 JvmStubDeserializedFacadeContainerSource(className, facadeClassName)
             }
             else -> {
@@ -194,12 +235,12 @@ internal open class StubBasedFirDeserializedSymbolProvider(
         }
     }
 
-    private fun getClass(
-        classId: ClassId,
-        parentContext: StubBasedFirDeserializationContext? = null
-    ): FirRegularClassSymbol? {
-        return classCache.getValue(classId, parentContext)
-    }
+    private fun getClass(classId: ClassId, parentContext: StubBasedFirDeserializationContext? = null): FirRegularClassSymbol? =
+        if (parentContext?.classLikeDeclaration != null) {
+            classCache.getNotNullValueForNotNullContext(classId, parentContext)
+        } else {
+            classCache.getValue(classId, parentContext)
+        }
 
     private fun getTypeAlias(classId: ClassId, context: StubBasedFirDeserializationContext? = null): FirTypeAliasSymbol? {
         if (!classId.relativeClassName.isOneSegmentFQN()) return null
@@ -264,10 +305,7 @@ internal open class StubBasedFirDeserializedSymbolProvider(
     }
 
     override fun getPackage(fqName: FqName): FqName? =
-        fqName.takeIf {
-            symbolNamesProvider.getTopLevelClassifierNamesInPackage(fqName)?.isNotEmpty() == true ||
-                    symbolNamesProvider.getPackageNamesWithTopLevelCallables()?.contains(fqName.asString()) == true
-        }
+        fqName.takeIf { packageProvider.doesKotlinOnlyPackageExist(fqName) }
 
     override fun getClassLikeSymbolByClassId(classId: ClassId): FirClassLikeSymbol<*>? {
         if (!symbolNamesProvider.mayHaveTopLevelClassifier(classId)) return null
@@ -277,6 +315,7 @@ internal open class StubBasedFirDeserializedSymbolProvider(
     @FirSymbolProviderInternals
     override fun getClassLikeSymbolByClassId(classId: ClassId, classLikeDeclaration: KtClassLikeDeclaration): FirClassLikeSymbol<*>? {
         val annotationDeserializer = StubBasedAnnotationDeserializer(session)
+        val classOrigin = getDeclarationOriginFor(classLikeDeclaration.containingKtFile)
         val deserializationContext = StubBasedFirDeserializationContext(
             moduleData,
             classId.packageFqName,
@@ -287,22 +326,18 @@ internal open class StubBasedFirDeserializedSymbolProvider(
                 parent = null,
                 containingSymbol = null,
                 owner = null,
-                initialOrigin
+                classOrigin
             ),
             annotationDeserializer,
             containerSource = null,
             outerClassSymbol = null,
             outerTypeParameters = emptyList(),
-            initialOrigin,
-            classLikeDeclaration
+            classOrigin,
+            classLikeDeclaration,
         )
-        if (classLikeDeclaration is KtClassOrObject) {
-            return classCache.getValue(
-                classId,
-                deserializationContext
-            )
-        }
-        return typeAliasCache.getValue(classId, deserializationContext)
+
+        val cache = if (classLikeDeclaration is KtClassOrObject) classCache else typeAliasCache
+        return cache.getNotNullValueForNotNullContext(classId, deserializationContext)
     }
 
     fun getTopLevelCallableSymbol(

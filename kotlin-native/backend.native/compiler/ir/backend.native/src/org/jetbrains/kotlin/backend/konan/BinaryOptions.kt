@@ -33,6 +33,8 @@ object BinaryOptions : BinaryOptionRegistry() {
 
     val objcExportIgnoreInterfaceMethodCollisions by booleanOption()
 
+    val objcExportReportNameCollisions by booleanOption()
+
     val gc by option<GC>(shortcut = { it.shortcut })
 
     val gcSchedulerType by option<GCSchedulerType>(hideValue = { it.deprecatedWithReplacement != null })
@@ -66,6 +68,10 @@ object BinaryOptions : BinaryOptionRegistry() {
     val disableMmap by booleanOption()
 
     val disableAllocatorOverheadEstimate by booleanOption()
+
+    val enableSafepointSignposts by booleanOption()
+
+    val packFields by booleanOption()
 }
 
 open class BinaryOption<T : Any>(

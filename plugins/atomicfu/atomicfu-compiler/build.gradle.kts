@@ -83,7 +83,7 @@ dependencies {
     testImplementation(projectTests(":generators:test-generator"))
 
     testImplementation(projectTests(":js:js.tests"))
-    testApi(commonDependency("junit:junit"))
+    testImplementation(libs.junit4)
     testApi(project(":kotlin-test:kotlin-test-jvm"))
 
     // Dependencies for Kotlin/Native test infra:
@@ -102,7 +102,9 @@ dependencies {
     testImplementation(projectTests(":compiler:test-infrastructure"))
     testCompileOnly("org.jetbrains.kotlinx:atomicfu:0.21.0")
 
-    testApiJUnit5()
+    testApi(platform(libs.junit.bom))
+    testImplementation(libs.junit.jupiter.api)
+    testRuntimeOnly(libs.junit.jupiter.engine)
 
     testRuntimeOnly(kotlinStdlib())
     testRuntimeOnly(project(":kotlin-preloader")) // it's required for ant tests
@@ -147,17 +149,16 @@ dependencies {
 
     testImplementation("org.jetbrains.kotlinx:atomicfu:0.21.0")
 
-    testRuntimeOnly("org.junit.vintage:junit-vintage-engine:5.9.1")
+    testRuntimeOnly(libs.junit.vintage.engine)
 }
 
 optInToExperimentalCompilerApi()
+optInToUnsafeDuringIrConstructionAPI()
 
 sourceSets {
     "main" { projectDefault() }
     "test" { projectDefault() }
 }
-
-optInToExperimentalCompilerApi()
 
 testsJar()
 useD8Plugin()

@@ -7,15 +7,19 @@ package org.jetbrains.kotlin.analysis.low.level.api.fir
 
 import org.jetbrains.kotlin.analysis.low.level.api.fir.api.getFirResolveSession
 import org.jetbrains.kotlin.analysis.low.level.api.fir.api.getOrBuildFirFile
+import org.jetbrains.kotlin.analysis.low.level.api.fir.test.configurators.AnalysisApiFirScriptTestConfigurator
 import org.jetbrains.kotlin.analysis.low.level.api.fir.test.configurators.AnalysisApiFirSourceTestConfigurator
 import org.jetbrains.kotlin.analysis.low.level.api.fir.util.ContextCollector
 import org.jetbrains.kotlin.analysis.project.structure.ProjectStructureProvider
 import org.jetbrains.kotlin.analysis.test.framework.base.AbstractAnalysisApiBasedSingleModuleTest
 import org.jetbrains.kotlin.analysis.test.framework.services.expressionMarkerProvider
+import org.jetbrains.kotlin.analysis.test.framework.test.configurators.AnalysisApiTestConfigurator
 import org.jetbrains.kotlin.fir.declarations.FirResolvedImport
 import org.jetbrains.kotlin.fir.declarations.FirTowerDataContext
 import org.jetbrains.kotlin.fir.renderer.FirRenderer
 import org.jetbrains.kotlin.fir.resolve.SessionHolderImpl
+import org.jetbrains.kotlin.fir.resolve.dfa.Identifier
+import org.jetbrains.kotlin.fir.resolve.dfa.RealVariable
 import org.jetbrains.kotlin.fir.scopes.*
 import org.jetbrains.kotlin.fir.scopes.impl.*
 import org.jetbrains.kotlin.fir.symbols.FirBasedSymbol
@@ -31,8 +35,6 @@ import org.jetbrains.kotlin.test.services.assertions
 import java.lang.IllegalArgumentException
 
 abstract class AbstractContextCollectorTest : AbstractAnalysisApiBasedSingleModuleTest() {
-    override val configurator = AnalysisApiFirSourceTestConfigurator(analyseInDependentSession = false)
-
     override fun doTestByFileStructure(ktFiles: List<KtFile>, module: TestModule, testServices: TestServices) {
         val mainKtFile = ktFiles.singleOrNull() ?: ktFiles.single { it.name == "main.kt" }
 
@@ -63,7 +65,7 @@ abstract class AbstractContextCollectorTest : AbstractAnalysisApiBasedSingleModu
     }
 }
 
-private object ElementContextRenderer {
+internal object ElementContextRenderer {
     fun render(context: ContextCollector.Context, builder: StringBuilder) = with(builder) {
         renderTowerDataContext(context.towerDataContext)
         renderSmartCasts(context.smartCasts)
@@ -180,14 +182,14 @@ private object ElementContextRenderer {
         }
     }
 
-    private fun StringBuilder.renderSmartCasts(smartCasts: Map<FirBasedSymbol<*>, Set<ConeKotlinType>>) {
+    private fun StringBuilder.renderSmartCasts(smartCasts: Map<RealVariable, Set<ConeKotlinType>>) {
         if (smartCasts.isEmpty()) {
             return
         }
 
         appendBlock("Smart Casts:") {
-            for ((symbol, types) in smartCasts) {
-                appendSymbol(symbol).appendLine()
+            for ((realVariable, types) in smartCasts) {
+                appendSymbol(realVariable.identifier.symbol).appendLine()
 
                 appendBlock("Types:") {
                     for (type in types) {
@@ -244,4 +246,12 @@ private fun FirScope.flatten(): List<FirScope> {
         is FirNameAwareCompositeScope -> scopes.flatMap { it.flatten() }
         else -> listOf(this)
     }
+}
+
+abstract class AbstractContextCollectorSourceTest : AbstractContextCollectorTest() {
+    override val configurator: AnalysisApiTestConfigurator = AnalysisApiFirSourceTestConfigurator(analyseInDependentSession = false)
+}
+
+abstract class AbstractContextCollectorScriptTest : AbstractContextCollectorTest() {
+    override val configurator: AnalysisApiTestConfigurator = AnalysisApiFirScriptTestConfigurator(analyseInDependentSession = false)
 }

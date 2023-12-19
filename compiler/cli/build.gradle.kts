@@ -26,6 +26,7 @@ dependencies {
     api(project(":compiler:fir:checkers:checkers.jvm"))
     api(project(":compiler:fir:checkers:checkers.js"))
     api(project(":compiler:fir:checkers:checkers.native"))
+    api(project(":compiler:fir:checkers:checkers.wasm"))
     api(project(":compiler:fir:fir-serialization"))
     api(project(":kotlin-util-io"))
 
@@ -37,7 +38,7 @@ dependencies {
     testApi(project(":compiler:backend"))
     testApi(project(":compiler:cli"))
     testApi(projectTests(":compiler:tests-common"))
-    testApi(commonDependency("junit:junit"))
+    testImplementation(libs.junit4)
 }
 
 sourceSets {

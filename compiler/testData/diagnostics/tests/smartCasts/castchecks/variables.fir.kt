@@ -1,3 +1,4 @@
+// ISSUE: KT-56744
 // !LANGUAGE: +SafeCastCheckBoundSmartCasts
 interface SomeClass {
     val data: Any?
@@ -60,7 +61,7 @@ fun f(a: SomeClass?) {
         // 'c' can be cast to SomeSubClass
         aa.hashCode()
         aa.foo
-        (aa as? SomeSubClass)<!UNSAFE_CALL!>.<!>foo
+        (aa <!USELESS_CAST!>as? SomeSubClass<!>)<!UNSAFE_CALL!>.<!>foo
         c.hashCode()
         c.foo
     }

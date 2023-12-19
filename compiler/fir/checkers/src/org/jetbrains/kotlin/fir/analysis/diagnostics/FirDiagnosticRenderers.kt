@@ -12,6 +12,7 @@ import org.jetbrains.kotlin.diagnostics.WhenMissingCase
 import org.jetbrains.kotlin.diagnostics.rendering.ContextIndependentParameterRenderer
 import org.jetbrains.kotlin.diagnostics.rendering.Renderer
 import org.jetbrains.kotlin.fir.FirModuleData
+import org.jetbrains.kotlin.fir.containingClassLookupTag
 import org.jetbrains.kotlin.fir.declarations.utils.*
 import org.jetbrains.kotlin.fir.expressions.FirExpression
 import org.jetbrains.kotlin.fir.expressions.calleeReference
@@ -44,7 +45,8 @@ object FirDiagnosticRenderers {
                 callArgumentsRenderer = FirCallNoArgumentsRenderer(),
                 modifierRenderer = FirPartialModifierRenderer(),
                 valueParameterRenderer = FirValueParameterRendererNoDefaultValue(),
-                declarationRenderer = FirDeclarationRenderer("local ")
+                declarationRenderer = FirDeclarationRenderer("local "),
+                lineBreakAfterContextReceivers = false,
             ).renderElementAsString(symbol.fir, trim = true)
             is FirTypeParameterSymbol -> symbol.name.asString()
             else -> "???"
@@ -64,6 +66,13 @@ object FirDiagnosticRenderers {
                 }
             }
         }
+    }
+
+    val CALLABLES_FQ_NAMES = object : ContextIndependentParameterRenderer<Collection<FirCallableSymbol<*>>> {
+        override fun render(obj: Collection<FirCallableSymbol<*>>) = "\n" + obj.joinToString("\n") { symbol ->
+            val origin = symbol.containingClassLookupTag()?.classId?.asFqNameString()
+            INDENTATION_UNIT + SYMBOL.render(symbol) + origin?.let { ", defined in $it" }.orEmpty()
+        } + "\n"
     }
 
     val RENDER_COLLECTION_OF_TYPES = Renderer { types: Collection<ConeKotlinType> ->
@@ -94,17 +103,25 @@ object FirDiagnosticRenderers {
         name.asString()
     }
 
-    val RENDER_CLASS_OR_OBJECT = Renderer { classSymbol: FirClassSymbol<*> ->
+    val RENDER_CLASS_OR_OBJECT_QUOTED = Renderer { classSymbol: FirClassSymbol<*> ->
         val name = classSymbol.classId.relativeClassName.asString()
         val classOrObject = when (classSymbol.classKind) {
             ClassKind.OBJECT -> "Object"
             ClassKind.INTERFACE -> "Interface"
             else -> "Class"
         }
-        "$classOrObject $name"
+        "$classOrObject '$name'"
     }
 
-    val RENDER_CLASS_OR_OBJECT_NAME = Renderer { firClassLike: FirClassLikeSymbol<*> ->
+    val RENDER_ENUM_ENTRY_QUOTED = Renderer { enumEntry: FirEnumEntrySymbol ->
+        var name = enumEntry.callableId.callableName.asString()
+        enumEntry.callableId.classId?.let {
+            name = "${it.shortClassName.asString()}.$name"
+        }
+        "Enum entry '$name'"
+    }
+
+    val RENDER_CLASS_OR_OBJECT_NAME_QUOTED = Renderer { firClassLike: FirClassLikeSymbol<*> ->
         val name = firClassLike.classId.relativeClassName.shortName().asString()
         val prefix = when (firClassLike) {
             is FirTypeAliasSymbol -> "typealias"
@@ -138,7 +155,7 @@ object FirDiagnosticRenderers {
             annotationRenderer = null,
             bodyRenderer = null,
             idRenderer = idRendererCreator(),
-            typeRenderer = ConeTypeRendererWithJavaFlexibleTypes(idRendererCreator)
+            typeRenderer = ConeTypeRendererForReadability(idRendererCreator)
         ).renderElementAsString(symbol.fir, trim = true)
     }
 
@@ -161,7 +178,7 @@ object FirDiagnosticRenderers {
     }
 
     val MODULE_DATA = Renderer<FirModuleData> {
-        "Module ${it.name}"
+        "module ${it.name}"
     }
 
     val NAME_OF_CONTAINING_DECLARATION_OR_FILE = Renderer { symbol: CallableId ->
@@ -188,5 +205,9 @@ object FirDiagnosticRenderers {
 
     val OPTIONAL_SENTENCE = Renderer { it: String? ->
         if (!it.isNullOrBlank()) " $it." else ""
+    }
+
+    val FOR_OPTIONAL_OPERATOR = Renderer { it: String? ->
+        if (!it.isNullOrBlank()) " for operator '$it'" else ""
     }
 }

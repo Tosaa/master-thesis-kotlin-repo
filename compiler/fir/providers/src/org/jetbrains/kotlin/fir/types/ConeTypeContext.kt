@@ -34,7 +34,6 @@ import org.jetbrains.kotlin.types.TypeCheckerState.SupertypesPolicy.LowerIfFlexi
 import org.jetbrains.kotlin.types.TypeSystemCommonBackendContext
 import org.jetbrains.kotlin.types.model.*
 import org.jetbrains.kotlin.utils.exceptions.errorWithAttachment
-import org.jetbrains.kotlin.utils.exceptions.withPsiEntry
 
 class ErrorTypeConstructor(val reason: String) : TypeConstructorMarker {
     override fun toString(): String = reason
@@ -156,7 +155,7 @@ interface ConeTypeContext : TypeSystemContext, TypeSystemOptimizationContext, Ty
             is ConeClassLikeType -> lookupTag
             is ConeTypeParameterType -> lookupTag
             is ConeCapturedType -> constructor
-            is ConeTypeVariableType -> lookupTag
+            is ConeTypeVariableType -> typeConstructor
             is ConeIntersectionType -> this
             is ConeStubType -> constructor
             is ConeDefinitelyNotNullType -> original.typeConstructor()
@@ -384,7 +383,7 @@ interface ConeTypeContext : TypeSystemContext, TypeSystemOptimizationContext, Ty
                 fir.classKind != ClassKind.ANNOTATION_CLASS
     }
 
-    override fun captureFromExpression(type: KotlinTypeMarker): KotlinTypeMarker? {
+    override fun captureFromExpression(type: KotlinTypeMarker): ConeKotlinType? {
         require(type is ConeKotlinType)
         return captureFromExpressionInternal(type)
     }
@@ -411,6 +410,10 @@ interface ConeTypeContext : TypeSystemContext, TypeSystemOptimizationContext, Ty
 
     override fun TypeConstructorMarker.isNothingConstructor(): Boolean {
         return this is ConeClassLikeLookupTag && classId == StandardClassIds.Nothing
+    }
+
+    override fun TypeConstructorMarker.isArrayConstructor(): Boolean {
+        return this is ConeClassLikeLookupTag && classId == StandardClassIds.Array
     }
 
     override fun SimpleTypeMarker.isSingleClassifierType(): Boolean {
@@ -492,7 +495,7 @@ interface ConeTypeContext : TypeSystemContext, TypeSystemOptimizationContext, Ty
             // And while it seems reasonable to have similar semantics as for stub types, it would make some diagnostic test failing
             // Thus, we leave the same semantics only for stubs (similar to TypeUtils.isNullableType)
             is ConeStubType -> {
-                val symbol = (this.constructor.variable.defaultType.lookupTag.originalTypeParameter as? ConeTypeParameterLookupTag)?.symbol
+                val symbol = (this.constructor.variable.defaultType.typeConstructor.originalTypeParameter as? ConeTypeParameterLookupTag)?.symbol
                 symbol == null || symbol.allBoundsAreNullableOrUnresolved()
             }
             is ConeIntersectionType -> intersectedTypes.all { it.isNullableType() }
@@ -549,7 +552,7 @@ interface ConeTypeContext : TypeSystemContext, TypeSystemOptimizationContext, Ty
         }
         val customAnnotations = attributes.customAnnotations
         return customAnnotations.any {
-            it.typeRef.coneTypeSafe<ConeKotlinType>()?.fullyExpandedType(session)?.classId?.asSingleFqName() == fqName
+            it.resolvedType.fullyExpandedType(session).classId?.asSingleFqName() == fqName
         }
     }
 
@@ -558,7 +561,7 @@ interface ConeTypeContext : TypeSystemContext, TypeSystemOptimizationContext, Ty
         // We don't check for compiler attributes because all of them doesn't have parameters
         val customAnnotations = attributes.customAnnotations
         val annotationCall = customAnnotations.firstOrNull {
-            it.typeRef.coneTypeSafe<ConeKotlinType>()?.fullyExpandedType(session)?.classId?.asSingleFqName() == fqName
+            it.resolvedType.fullyExpandedType(session).classId?.asSingleFqName() == fqName
         } ?: return null
         val argument = when (val argument = annotationCall.argumentMapping.mapping.values.firstOrNull() ?: return null) {
             is FirVarargArgumentsExpression -> argument.arguments.firstOrNull()

@@ -17,6 +17,7 @@ import org.jetbrains.kotlin.analysis.api.fir.KtFirAnalysisSession
 import org.jetbrains.kotlin.analysis.low.level.api.fir.api.getOrBuildFirFile
 import org.jetbrains.kotlin.analysis.low.level.api.fir.api.getOrBuildFirOfType
 import org.jetbrains.kotlin.analysis.project.structure.KtSourceModule
+import org.jetbrains.kotlin.backend.jvm.JvmBackendExtension
 import org.jetbrains.kotlin.codegen.ClassBuilderMode
 import org.jetbrains.kotlin.codegen.generateLanguageVersionSettingsBasedMetadataFlags
 import org.jetbrains.kotlin.codegen.serialization.JvmSerializationBindings
@@ -24,7 +25,6 @@ import org.jetbrains.kotlin.config.JvmAbiStability
 import org.jetbrains.kotlin.config.JvmDefaultMode
 import org.jetbrains.kotlin.fir.FirSession
 import org.jetbrains.kotlin.fir.backend.FirMetadataSource
-import org.jetbrains.kotlin.fir.backend.jvm.FirJvmBackendExtension
 import org.jetbrains.kotlin.fir.backend.jvm.FirJvmSerializerExtension
 import org.jetbrains.kotlin.fir.backend.jvm.FirJvmSerializerExtension.Companion.FIELD_FOR_PROPERTY
 import org.jetbrains.kotlin.fir.backend.jvm.FirJvmSerializerExtension.Companion.METHOD_FOR_FIR_FUNCTION
@@ -93,7 +93,7 @@ internal class KtFirMetadataCalculator(override val analysisSession: KtFirAnalys
         for (fir in declarations) {
             if (fir !is FirFunction && fir !is FirProperty && fir !is FirTypeAlias) continue
 
-            fir.symbol.lazyResolveToPhase(FirResolvePhase.ANNOTATIONS_ARGUMENTS_MAPPING)
+            fir.symbol.lazyResolveToPhase(FirResolvePhase.ANNOTATION_ARGUMENTS)
 
             val psiElements = mapping[fir.psi as KtElement]
             val methods = psiElements.filterIsInstance<PsiMethod>()
@@ -175,7 +175,7 @@ internal class KtFirMetadataCalculator(override val analysisSession: KtFirAnalys
             metadataVersion = metadataVersion.toArray(),
             data1 = JvmProtoBufUtil.writeData(message, stringTable),
             data2 = stringTable.strings.toTypedArray(),
-            extraInt = FirJvmBackendExtension.generateMetadataExtraFlags(JvmAbiStability.STABLE) or
+            extraInt = JvmBackendExtension.Default.generateMetadataExtraFlags(JvmAbiStability.STABLE) or
                     generateLanguageVersionSettingsBasedMetadataFlags(firSession.languageVersionSettings)
         )
 }

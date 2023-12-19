@@ -30,23 +30,24 @@ import org.jetbrains.kotlin.gradle.utils.*
 import org.jetbrains.kotlin.gradle.utils.CompletableFuture
 import org.jetbrains.kotlin.gradle.utils.Future
 import org.jetbrains.kotlin.gradle.utils.projectStoredProperty
+import org.jetbrains.kotlin.gradle.utils.whenEvaluated
 
 private val Project.kotlinMultiplatformRootPublicationImpl: CompletableFuture<MavenPublication?>
         by projectStoredProperty { CompletableFuture() }
 internal val Project.kotlinMultiplatformRootPublication: Future<MavenPublication?>
     get() = kotlinMultiplatformRootPublicationImpl
 
-internal suspend fun Project.configurePublishingWithMavenPublish() {
+internal val MultiplatformPublishingSetupAction = KotlinProjectSetupCoroutine {
     if (isPluginApplied("maven-publish")) {
-        if (kotlinPropertiesProvider.createDefaultMultiplatformPublications) {
-            extensions.configure(PublishingExtension::class.java) { publishing ->
+        if (project.kotlinPropertiesProvider.createDefaultMultiplatformPublications) {
+            project.extensions.configure(PublishingExtension::class.java) { publishing ->
                 createRootPublication(project, publishing).also(kotlinMultiplatformRootPublicationImpl::complete)
                 createTargetPublications(project, publishing)
             }
         } else {
             kotlinMultiplatformRootPublicationImpl.complete(null)
         }
-        components.add(project.multiplatformExtension.rootSoftwareComponent)
+        project.components.add(project.multiplatformExtension.rootSoftwareComponent)
     } else {
         kotlinMultiplatformRootPublicationImpl.complete(null)
     }

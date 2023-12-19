@@ -17,12 +17,21 @@ import org.jetbrains.kotlin.fir.declarations.utils.isEnumClass
 import org.jetbrains.kotlin.fir.declarations.utils.isStatic
 import org.jetbrains.kotlin.fir.expressions.FirBlock
 import org.jetbrains.kotlin.fir.expressions.FirExpression
+import org.jetbrains.kotlin.fir.expressions.FirFunctionCall
+import org.jetbrains.kotlin.fir.expressions.FirFunctionCallOrigin
 import org.jetbrains.kotlin.fir.renderer.FirRenderer
+import org.jetbrains.kotlin.fir.symbols.FirBasedSymbol
+import org.jetbrains.kotlin.fir.symbols.impl.FirCallableSymbol
+import org.jetbrains.kotlin.fir.symbols.impl.FirClassLikeSymbol
+import org.jetbrains.kotlin.fir.symbols.impl.FirClassSymbol
+import org.jetbrains.kotlin.fir.symbols.impl.FirPropertyAccessorSymbol
 import org.jetbrains.kotlin.fir.types.*
 import org.jetbrains.kotlin.fir.types.builder.*
 import org.jetbrains.kotlin.fir.types.impl.*
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.Name
+import org.jetbrains.kotlin.util.OperatorNameConventions
+import org.jetbrains.kotlin.util.OperatorNameConventions.STATEMENT_LIKE_OPERATORS
 import org.jetbrains.kotlin.util.wrapIntoFileAnalysisExceptionIfNeeded
 import org.jetbrains.kotlin.util.wrapIntoSourceCodeAnalysisExceptionIfNeeded
 
@@ -254,3 +263,30 @@ fun <T> List<T>.smartPlus(other: List<T>): List<T> = when {
 
 // Source element may be missing if the class came from a library
 fun FirVariable.isEnumEntries(containingClass: FirClass) = isStatic && name == StandardNames.ENUM_ENTRIES && containingClass.isEnumClass
+fun FirVariable.isEnumEntries(containingClassSymbol: FirClassSymbol<*>): Boolean {
+    return isStatic && name == StandardNames.ENUM_ENTRIES && containingClassSymbol.isEnumClass
+}
+
+val FirExpression.isArraySet: Boolean
+    get() {
+        val name = (this as? FirFunctionCall)?.calleeReference?.name ?: return false
+        return origin == FirFunctionCallOrigin.Operator && name == OperatorNameConventions.SET
+    }
+
+val FirExpression.isStatementLikeExpression: Boolean
+    get() = when (this) {
+        is FirFunctionCall -> origin == FirFunctionCallOrigin.Operator && calleeReference.name in STATEMENT_LIKE_OPERATORS
+        else -> isIndexedAssignment
+    }
+
+private val FirExpression.isIndexedAssignment: Boolean
+    get() = this is FirBlock && statements.lastOrNull()?.source?.kind == KtFakeSourceElementKind.ImplicitUnit.IndexedAssignmentCoercion
+
+fun FirBasedSymbol<*>.packageFqName(): FqName {
+    return when (this) {
+        is FirClassLikeSymbol<*> -> classId.packageFqName
+        is FirPropertyAccessorSymbol -> propertySymbol.packageFqName()
+        is FirCallableSymbol<*> -> callableId.packageName
+        else -> error("No package fq name for $this")
+    }
+}

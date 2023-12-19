@@ -31,7 +31,7 @@ class Kotlinp(private val settings: KotlinpSettings) {
 
     internal fun readMetadata(metadata: Metadata): KotlinClassMetadata {
         return try {
-            KotlinClassMetadata.read(metadata)
+            KotlinClassMetadata.readLenient(metadata)
         } catch (e: IllegalArgumentException) {
             throw KotlinpException("inconsistent Kotlin metadata: ${e.message}")
         }
@@ -44,7 +44,7 @@ class Kotlinp(private val settings: KotlinpSettings) {
 
     @OptIn(UnstableMetadataApi::class)
     internal fun readModuleFile(file: File): KotlinModuleMetadata? =
-        KotlinModuleMetadata.read(file.readBytes())
+        runCatching { KotlinModuleMetadata.read(file.readBytes()) }.getOrNull()
 }
 
 data class KotlinpSettings(

@@ -16,6 +16,7 @@ import org.jetbrains.kotlin.gradle.plugin.extraProperties
 import org.jetbrains.kotlin.gradle.util.applyKotlinJvmPlugin
 import org.jetbrains.kotlin.gradle.util.buildProject
 import org.jetbrains.kotlin.gradle.util.checkDiagnostics
+import org.jetbrains.kotlin.gradle.util.set
 import org.junit.Test
 
 class DiagnosticsReportingFunctionalTest {
@@ -161,11 +162,8 @@ private fun buildProjectWithMockedCheckers(
         }
     )
 
-    project.allprojects {
-        project.extensions.extraProperties.set(
-            KOTLIN_GRADLE_PROJECT_CHECKERS_OVERRIDE,
-            listOf(MockChecker, MockPerProjectChecker, MockPerBuildChecker)
-        )
+    project.allprojects { currentProject ->
+        KotlinGradleProjectChecker.extensionPoint[currentProject] = listOf(MockChecker, MockPerProjectChecker, MockPerBuildChecker)
     }
 
     project.block()

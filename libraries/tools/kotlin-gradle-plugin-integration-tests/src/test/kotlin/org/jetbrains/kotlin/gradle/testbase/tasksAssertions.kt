@@ -5,7 +5,6 @@
 
 package org.jetbrains.kotlin.gradle.testbase
 
-import org.gradle.api.logging.LogLevel
 import org.gradle.testkit.runner.BuildResult
 import org.gradle.testkit.runner.TaskOutcome
 
@@ -36,7 +35,12 @@ fun BuildResult.assertTasksExecuted(vararg tasks: String) {
     tasks.forEach { task ->
         assert(task(task)?.outcome == TaskOutcome.SUCCESS) {
             printBuildOutput()
-            "Task $task didn't have 'SUCCESS' state: ${task(task)?.outcome}"
+            """
+            Task $task didn't have 'SUCCESS' state: ${task(task)?.outcome}
+
+            Actual task states:
+            ${getActualTasksAsString()}
+            """.trimIndent()
         }
     }
 }
@@ -93,7 +97,12 @@ fun BuildResult.assertTasksUpToDate(vararg tasks: String) {
     tasks.forEach { task ->
         assert(task(task)?.outcome == TaskOutcome.UP_TO_DATE) {
             printBuildOutput()
-            "Task $task didn't have 'UP-TO-DATE' state: ${task(task)?.outcome}"
+            """
+            Task $task didn't have 'UP-TO-DATE' state: ${task(task)?.outcome}
+
+            Actual task states:
+            ${getActualTasksAsString()}
+            """.trimIndent()
         }
     }
 }
@@ -151,21 +160,6 @@ fun BuildResult.assertTasksPackedToCache(vararg tasks: String) {
 }
 
 /**
- * Asserts classpath of the given K/N compiler tool for given tasks' paths.
- *
- * Note: Log level of output must be set to [LogLevel.DEBUG].
- *
- * @param tasksPaths tasks' paths, for which classpath should be checked with give assertions
- * @param toolName name of build tool
- * @param assertions assertions, with will be applied to each classpath of each given task
- */
-fun BuildResult.assertNativeTasksClasspath(
-    vararg tasksPaths: String,
-    toolName: NativeToolKind = NativeToolKind.KONANC,
-    assertions: (List<String>) -> Unit,
-) = tasksPaths.forEach { taskPath -> assertions(extractNativeCompilerClasspath(getOutputForTask(taskPath), toolName)) }
-
-/**
  * Builds test project with 'tasks --all' arguments and then
  * asserts that [registeredTasks] of the given tasks have been registered
  * and tasks from the [notRegisteredTasks] list have not been registered.
@@ -218,6 +212,13 @@ fun BuildResult.assertTasksInBuildOutput(
             "$it task should not be registered in $registeredTasks"
         }
     }
+}
+
+/**
+ * Returns printable list of tasks that actually executed.
+ */
+private fun BuildResult.getActualTasksAsString(): String {
+    return tasks.joinToString("\n") { "${it.path} - ${it.outcome}" }
 }
 
 /**

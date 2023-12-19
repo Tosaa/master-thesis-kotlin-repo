@@ -37,12 +37,12 @@ abstract class AbstractFir2IrLazyFunction<F : FirCallableDeclaration>(
     override val endOffset: Int,
     override var origin: IrDeclarationOrigin,
     override val symbol: IrSimpleFunctionSymbol,
+    override var parent: IrDeclarationParent,
     override var isFakeOverride: Boolean
 ) : AbstractIrLazyFunction(), AbstractFir2IrLazyDeclaration<F>, Fir2IrTypeParametersContainer, IrLazyFunctionBase,
     Fir2IrComponents by components {
 
     override lateinit var typeParameters: List<IrTypeParameter>
-    override lateinit var parent: IrDeclarationParent
 
     override var isTailrec: Boolean
         get() = fir.isTailRec
@@ -108,9 +108,9 @@ abstract class AbstractFir2IrLazyFunction<F : FirCallableDeclaration>(
     }
 
     protected fun createThisReceiverParameter(thisType: IrType, explicitReceiver: FirReceiverParameter? = null): IrValueParameter {
-        declarationStorage.enterScope(this)
+        declarationStorage.enterScope(this.symbol)
         return declareThisReceiverParameter(thisType, origin, explicitReceiver = explicitReceiver).apply {
-            declarationStorage.leaveScope(this@AbstractFir2IrLazyFunction)
+            declarationStorage.leaveScope(this@AbstractFir2IrLazyFunction.symbol)
         }
     }
 

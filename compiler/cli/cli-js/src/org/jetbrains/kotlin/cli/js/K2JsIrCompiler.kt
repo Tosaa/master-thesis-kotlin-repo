@@ -33,7 +33,6 @@ import org.jetbrains.kotlin.cli.jvm.compiler.EnvironmentConfigFiles
 import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment
 import org.jetbrains.kotlin.cli.jvm.plugins.PluginCliParser
 import org.jetbrains.kotlin.config.*
-import org.jetbrains.kotlin.descriptors.DeclarationDescriptor
 import org.jetbrains.kotlin.diagnostics.DiagnosticReporterFactory
 import org.jetbrains.kotlin.incremental.components.ExpectActualTracker
 import org.jetbrains.kotlin.incremental.components.LookupTracker
@@ -48,7 +47,6 @@ import org.jetbrains.kotlin.ir.backend.js.transformers.irToJs.*
 import org.jetbrains.kotlin.ir.declarations.impl.IrFactoryImpl
 import org.jetbrains.kotlin.ir.declarations.impl.IrFactoryImplForJsIC
 import org.jetbrains.kotlin.ir.linkage.partial.setupPartialLinkageConfig
-import org.jetbrains.kotlin.ir.symbols.IrSymbol
 import org.jetbrains.kotlin.js.analyzer.JsAnalysisResult
 import org.jetbrains.kotlin.js.config.*
 import org.jetbrains.kotlin.konan.file.ZipFileSystemAccessor
@@ -71,6 +69,13 @@ private val K2JSCompilerArguments.granularity: JsGenerationGranularity
         this.irPerFile -> JsGenerationGranularity.PER_FILE
         this.irPerModule -> JsGenerationGranularity.PER_MODULE
         else -> JsGenerationGranularity.WHOLE_PROGRAM
+    }
+
+private val K2JSCompilerArguments.dtsStrategy: TsCompilationStrategy
+    get() = when {
+        !this.generateDts -> TsCompilationStrategy.NONE
+        this.irPerFile -> TsCompilationStrategy.EACH_FILE
+        else -> TsCompilationStrategy.MERGED
     }
 
 private class DisposableZipFileSystemAccessor private constructor(
@@ -101,6 +106,7 @@ class K2JsIrCompiler : CLICompiler<K2JSCompilerArguments>() {
     ) {
         private fun lowerIr(): LoweredIr {
             return compile(
+                mainCallArguments,
                 module,
                 phaseConfig,
                 IrFactoryImplForJsIC(WholeWorldStageController()),
@@ -123,7 +129,7 @@ class K2JsIrCompiler : CLICompiler<K2JSCompilerArguments>() {
 
         private fun makeJsCodeGenerator(): JsCodeGenerator {
             val ir = lowerIr()
-            val transformer = IrModuleToJsTransformer(ir.context, mainCallArguments, ir.moduleFragmentToUniqueName)
+            val transformer = IrModuleToJsTransformer(ir.context, ir.moduleFragmentToUniqueName, mainCallArguments != null)
 
             val mode = TranslationMode.fromFlags(arguments.irDce, arguments.granularity, arguments.irMinimizedMemberNames)
             return transformer.makeJsCodeGenerator(ir.allModules, mode)
@@ -203,6 +209,10 @@ class K2JsIrCompiler : CLICompiler<K2JSCompilerArguments>() {
         configurationJs.put(JSConfigurationKeys.GENERATE_POLYFILLS, arguments.generatePolyfills)
         configurationJs.put(JSConfigurationKeys.GENERATE_DTS, arguments.generateDts)
         configurationJs.put(JSConfigurationKeys.GENERATE_INLINE_ANONYMOUS_FUNCTIONS, arguments.irGenerateInlineAnonymousFunctions)
+
+        arguments.platformArgumentsProviderJsExpression?.let {
+            configurationJs.put(JSConfigurationKeys.DEFINE_PLATFORM_MAIN_FUNCTION_ARGUMENTS, it)
+        }
 
         val zipAccessor = DisposableZipFileSystemAccessor(64)
         Disposer.register(rootDisposable, zipAccessor)
@@ -304,7 +314,7 @@ class K2JsIrCompiler : CLICompiler<K2JSCompilerArguments>() {
                 )
 
                 val (outputs, rebuiltModules) = jsExecutableProducer.buildExecutable(arguments.granularity, outJsProgram = false)
-                outputs.writeAll(outputDir, outputName, arguments.generateDts, moduleName, moduleKind)
+                outputs.writeAll(outputDir, outputName, arguments.dtsStrategy, moduleName, moduleKind)
 
                 icCaches.cacheGuard.release()
 
@@ -392,7 +402,7 @@ class K2JsIrCompiler : CLICompiler<K2JSCompilerArguments>() {
 
                 messageCollector.report(INFO, "Executable production duration: ${System.currentTimeMillis() - start}ms")
 
-                outputs.writeAll(outputDir, outputName, arguments.generateDts, moduleName, moduleKind)
+                outputs.writeAll(outputDir, outputName, arguments.dtsStrategy, moduleName, moduleKind)
             } catch (e: CompilationException) {
                 messageCollector.report(
                     ERROR,
@@ -442,7 +452,6 @@ class K2JsIrCompiler : CLICompiler<K2JSCompilerArguments>() {
         if (sourceModule.jsFrontEndResult.jsAnalysisResult.shouldGenerateCode && (arguments.irProduceKlibDir || arguments.irProduceKlibFile)) {
             val moduleSourceFiles = (sourceModule.mainModule as MainModule.SourceFiles).files
             val icData = environmentForJS.configuration.incrementalDataProvider?.getSerializedData(moduleSourceFiles) ?: emptyList()
-            val expectDescriptorToSymbol = mutableMapOf<DeclarationDescriptor, IrSymbol>()
 
             val (moduleFragment, _) = generateIrForKlibSerialization(
                 environmentForJS.project,
@@ -451,7 +460,6 @@ class K2JsIrCompiler : CLICompiler<K2JSCompilerArguments>() {
                 sourceModule.jsFrontEndResult.jsAnalysisResult,
                 sourceModule.allDependencies,
                 icData,
-                expectDescriptorToSymbol,
                 IrFactoryImpl,
                 verifySignatures = true
             ) {
@@ -465,17 +473,24 @@ class K2JsIrCompiler : CLICompiler<K2JSCompilerArguments>() {
                     sourceModule.jsFrontEndResult.hasErrors
                 )
 
+            val diagnosticsReporter = DiagnosticReporterFactory.createPendingReporter()
             generateKLib(
                 sourceModule,
                 outputKlibPath,
                 nopack = arguments.irProduceKlibDir,
                 jsOutputName = arguments.irPerModuleOutputName,
                 icData = icData,
-                expectDescriptorToSymbol = expectDescriptorToSymbol,
                 moduleFragment = moduleFragment,
+                diagnosticReporter = diagnosticsReporter,
                 builtInsPlatform = if (arguments.wasm) BuiltInsPlatform.WASM else BuiltInsPlatform.JS
             ) { file ->
                 metadataSerializer.serializeScope(file, sourceModule.jsFrontEndResult.bindingContext, moduleFragment.descriptor)
+            }
+
+            val messageCollector = environmentForJS.configuration.getNotNull(CLIConfigurationKeys.MESSAGE_COLLECTOR_KEY)
+            reportCollectedDiagnostics(environmentForJS.configuration, diagnosticsReporter, messageCollector)
+            if (diagnosticsReporter.hasErrors) {
+                throw CompilationErrorException()
             }
         }
         return sourceModule
@@ -555,11 +570,17 @@ class K2JsIrCompiler : CLICompiler<K2JSCompilerArguments>() {
                 firOutputs = analyzedOutput.output,
                 fir2IrActualizedResult = fir2IrActualizedResult,
                 outputKlibPath = outputKlibPath,
+                nopack = arguments.irProduceKlibDir,
                 messageCollector = messageCollector,
                 diagnosticsReporter = diagnosticsReporter,
                 jsOutputName = arguments.irPerModuleOutputName,
                 useWasmPlatform = arguments.wasm
             )
+
+            reportCollectedDiagnostics(moduleStructure.compilerConfiguration, diagnosticsReporter, messageCollector)
+            if (diagnosticsReporter.hasErrors) {
+                throw CompilationErrorException()
+            }
         }
 
         return moduleStructure
@@ -601,10 +622,10 @@ class K2JsIrCompiler : CLICompiler<K2JSCompilerArguments>() {
                 cacheDir = cacheDirectory,
                 compilerConfiguration = configurationJs,
                 irFactory = { IrFactoryImplForJsIC(WholeWorldStageController()) },
-                mainArguments = mainCallArguments,
                 compilerInterfaceFactory = { mainModule, cfg ->
                     JsIrCompilerWithIC(
                         mainModule,
+                        mainCallArguments,
                         cfg,
                         arguments.granularity,
                         PhaseConfig(jsPhases),

@@ -91,3 +91,26 @@ public final class ErrorSomeMissingAnnotations {
         super();
     }
 }
+
+////////////////////
+
+
+import kotlin.reflect.KClass;
+
+@com.example.XYZ()
+/**
+ * public final class FullyQualifiedMissingAnnotation : kotlin/Any {
+ *
+ *   // signature: <init>()V
+ *   public constructor()
+ *
+ *   // module name: main
+ * }
+ */
+@kotlin.Metadata()
+public final class FullyQualifiedMissingAnnotation {
+
+    public FullyQualifiedMissingAnnotation() {
+        super();
+    }
+}

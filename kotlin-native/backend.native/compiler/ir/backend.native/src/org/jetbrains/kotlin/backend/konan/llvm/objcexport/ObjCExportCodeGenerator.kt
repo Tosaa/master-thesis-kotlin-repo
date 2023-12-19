@@ -5,7 +5,6 @@
 
 package org.jetbrains.kotlin.backend.konan.llvm.objcexport
 
-import kotlinx.cinterop.toCValues
 import kotlinx.cinterop.toKString
 import llvm.*
 import org.jetbrains.kotlin.backend.common.lower.coroutines.getOrCreateFunctionWithContinuationStub
@@ -22,7 +21,6 @@ import org.jetbrains.kotlin.backend.konan.llvm.objc.ObjCCodeGenerator
 import org.jetbrains.kotlin.backend.konan.llvm.objc.ObjCDataGenerator
 import org.jetbrains.kotlin.backend.konan.lower.getObjectClassInstanceFunction
 import org.jetbrains.kotlin.backend.konan.objcexport.*
-import org.jetbrains.kotlin.backend.konan.serialization.resolveFakeOverrideMaybeAbstract
 import org.jetbrains.kotlin.descriptors.ClassKind
 import org.jetbrains.kotlin.descriptors.Modality
 import org.jetbrains.kotlin.incremental.components.NoLookupLocation
@@ -1077,10 +1075,10 @@ private fun ObjCExportCodeGenerator.generateObjCImp(
             is MethodBridge.ReturnValue.Mapped -> if (LLVMTypeOf(targetResult!!) == llvm.voidType) {
                 returnBridge.bridge.makeNothing(llvm)
             } else {
-                when (returnBridge.bridge) {
+                when (val bridge = returnBridge.bridge) {
                     is ReferenceBridge -> return autoreleaseAndRet(kotlinReferenceToRetainedObjC(targetResult))
-                    is BlockPointerBridge -> return autoreleaseAndRet(kotlinFunctionToRetainedObjCBlockPointer(returnBridge.bridge, targetResult))
-                    is ValueTypeBridge -> kotlinToObjC(targetResult, returnBridge.bridge.objCValueType)
+                    is BlockPointerBridge -> return autoreleaseAndRet(kotlinFunctionToRetainedObjCBlockPointer(bridge, targetResult))
+                    is ValueTypeBridge -> kotlinToObjC(targetResult, bridge.objCValueType)
                 }
             }
             MethodBridge.ReturnValue.WithError.Success -> llvm.int8(1) // true
@@ -1143,11 +1141,11 @@ private fun ObjCExportCodeGenerator.effectiveThrowsClasses(method: IrFunction, s
     val throwsVararg = throwsAnnotation.getValueArgument(0)
             ?: return emptyList()
 
-    if (throwsVararg !is IrVararg) error(method.getContainingFile(), throwsVararg, "unexpected vararg")
+    if (throwsVararg !is IrVararg) error(method.fileOrNull, throwsVararg, "unexpected vararg")
 
     return throwsVararg.elements.map {
         (it as? IrClassReference)?.symbol?.owner as? IrClass
-                ?: error(method.getContainingFile(), it, "unexpected @Throws argument")
+                ?: error(method.fileOrNull, it, "unexpected @Throws argument")
     }
 }
 
@@ -1200,11 +1198,11 @@ private fun ObjCExportCodeGenerator.generateKotlinToObjCBridge(
                     if (LLVMTypeOf(kotlinValue) == llvm.voidType) {
                         bridge.bridge.makeNothing(llvm)
                     } else {
-                        when (bridge.bridge) {
+                        when (val typeBridge = bridge.bridge) {
                             is ReferenceBridge -> kotlinReferenceToRetainedObjC(kotlinValue).also { objCReferenceArgsToRelease += it }
-                            is BlockPointerBridge -> kotlinFunctionToRetainedObjCBlockPointer(bridge.bridge, kotlinValue) // TODO: use stack-allocated block here.
+                            is BlockPointerBridge -> kotlinFunctionToRetainedObjCBlockPointer(typeBridge, kotlinValue) // TODO: use stack-allocated block here.
                                     .also { objCReferenceArgsToRelease += it }
-                            is ValueTypeBridge -> kotlinToObjC(kotlinValue, bridge.bridge.objCValueType)
+                            is ValueTypeBridge -> kotlinToObjC(kotlinValue, typeBridge.objCValueType)
                         }
                     }
                 }
@@ -1288,7 +1286,7 @@ private fun ObjCExportCodeGenerator.generateKotlinToObjCBridge(
         assert(baseMethod.symbol !is IrConstructorSymbol)
 
         fun rethrow() {
-            val error = load(errorOutPtr!!)
+            val error = load(llvm.int8PtrType, errorOutPtr!!)
             val exception = callFromBridge(
                     llvm.Kotlin_ObjCExport_NSErrorAsException,
                     listOf(error),
@@ -1327,7 +1325,7 @@ private fun ObjCExportCodeGenerator.generateKotlinToObjCBridge(
 
             is MethodBridge.ReturnValue.WithError.ZeroForError -> {
                 if (returnBridge.successMayBeZero) {
-                    val error = load(errorOutPtr!!)
+                    val error = load(llvm.int8PtrType, errorOutPtr!!)
                     ifThen(icmpNe(error, llvm.kNullInt8Ptr)) {
                         // error is not null, so targetResult should be null => no need for objc_release on it.
                         rethrow()
@@ -1535,7 +1533,7 @@ private fun ObjCExportCodeGenerator.itablePlace(irFunction: IrSimpleFunction): C
     assert(irFunction.isOverridable)
     val irClass = irFunction.parentAsClass
     return if (irClass.isInterface
-            && (irFunction.isReal || irFunction.resolveFakeOverrideMaybeAbstract().parent != context.irBuiltIns.anyClass.owner)
+            && (irFunction.isReal || irFunction.resolveFakeOverrideMaybeAbstract()?.parent != context.irBuiltIns.anyClass.owner)
     ) {
         context.getLayoutBuilder(irClass).itablePlace(irFunction)
     } else {
@@ -1785,7 +1783,7 @@ private fun ObjCExportCodeGenerator.createDirectAdapters(
         )
     }
 
-    val inheritedAdapters = superClass?.getAllRequiredDirectAdapters().orEmpty()
+    val inheritedAdapters = superClass?.getAllRequiredDirectAdapters().orEmpty().toSet()
     val requiredAdapters = typeDeclaration.getAllRequiredDirectAdapters() - inheritedAdapters
 
     return requiredAdapters.distinctBy { it.base.selector }.map { createMethodAdapter(it) }
@@ -2007,4 +2005,27 @@ private fun NativeGenerationState.is64BitNSInteger(): Boolean {
         "Target ${configurables.target} has no support for NSInteger type."
     }
     return llvm.nsIntegerTypeWidth == 64L
+}
+
+private fun MethodBridge.parametersAssociated(
+        irFunction: IrFunction
+): List<Pair<MethodBridgeParameter, IrValueParameter?>> {
+    val kotlinParameters = irFunction.allParameters.iterator()
+
+    return this.paramBridges.map {
+        when (it) {
+            is MethodBridgeValueParameter.Mapped,
+            MethodBridgeReceiver.Instance,
+            is MethodBridgeValueParameter.SuspendCompletion ->
+                it to kotlinParameters.next()
+
+            MethodBridgeReceiver.Static, MethodBridgeSelector, MethodBridgeValueParameter.ErrorOutParameter ->
+                it to null
+
+            MethodBridgeReceiver.Factory -> {
+                kotlinParameters.next()
+                it to null
+            }
+        }
+    }.also { assert(!kotlinParameters.hasNext()) }
 }

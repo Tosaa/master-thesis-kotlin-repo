@@ -57,8 +57,6 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-metadata-klib:$metadataVersion")
 
     implementation("org.jetbrains.kotlin:kotlin-util-klib:${project.bootstrapKotlinVersion}")
-
-    implementation(project(":kotlin-native-shared"))
     implementation(project(":kotlin-native-executors"))
 }
 
@@ -78,6 +76,7 @@ compileKotlin.apply {
             listOf(
                 "-Xskip-prerelease-check",
                 "-Xsuppress-version-warnings",
+                "-Xallow-unstable-dependencies"
             )
         )
     }
@@ -93,7 +92,6 @@ kotlin {
     sourceSets {
         main {
             kotlin.srcDir("src/main/kotlin")
-            kotlin.srcDir("../../kotlin-native/tools/kotlin-native-gradle-plugin/src/main/kotlin")
         }
     }
 }
@@ -123,6 +121,14 @@ gradlePlugin {
         create("native") {
             id = "native"
             implementationClass = "org.jetbrains.kotlin.tools.NativePlugin"
+        }
+        create("nativeDependenciesDownloader") {
+            id = "native-dependencies-downloader"
+            implementationClass = "org.jetbrains.kotlin.dependencies.NativeDependenciesDownloaderPlugin"
+        }
+        create("nativeDependencies") {
+            id = "native-dependencies"
+            implementationClass = "org.jetbrains.kotlin.dependencies.NativeDependenciesPlugin"
         }
     }
 }

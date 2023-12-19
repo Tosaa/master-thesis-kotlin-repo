@@ -61,7 +61,7 @@ object CommonConfigurationKeys {
     val HMPP_MODULE_STRUCTURE = CompilerConfigurationKey.create<HmppCliModuleStructure>("HMPP module structure")
 
     @JvmField
-    val EXPECT_ACTUAL_LINKER = CompilerConfigurationKey.create<Boolean>("Experimental expect/actual linker")
+    val METADATA_KLIB = CompilerConfigurationKey.create<Boolean>("Produce metadata klib")
 
     @JvmField
     val USE_FIR_EXTENDED_CHECKERS = CompilerConfigurationKey.create<Boolean>("fir extended checkers")
@@ -96,6 +96,10 @@ object CommonConfigurationKeys {
     @JvmField
     val EVALUATED_CONST_TRACKER =
         CompilerConfigurationKey.create<EvaluatedConstTracker>("Keeps track of all evaluated by IrInterpreter constants")
+
+    @JvmField
+    val USE_IR_FAKE_OVERRIDE_BUILDER =
+        CompilerConfigurationKey.create<Boolean>("Generate fake overrides via IR. See KT-61514")
 }
 
 var CompilerConfiguration.languageVersionSettings: LanguageVersionSettings

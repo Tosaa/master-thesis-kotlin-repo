@@ -4,6 +4,7 @@
  */
 package org.jetbrains.kotlin.backend.konan.ir.interop.cenum
 
+import org.jetbrains.kotlin.backend.common.lower.createIrBuilder
 import org.jetbrains.kotlin.backend.konan.ir.KonanSymbols
 import org.jetbrains.kotlin.backend.konan.ir.interop.DescriptorToIrTranslationMixin
 import org.jetbrains.kotlin.backend.konan.ir.interop.findDeclarationByName
@@ -55,7 +56,7 @@ internal class CEnumByValueFunctionGenerator(
         // }
         // throw NPE
         postLinkageSteps.add {
-            byValueIrFunction.body = irBuilder(irBuiltIns, byValueIrFunction.symbol, SYNTHETIC_OFFSET, SYNTHETIC_OFFSET).irBlockBody {
+            byValueIrFunction.body = irBuiltIns.createIrBuilder(byValueIrFunction.symbol, SYNTHETIC_OFFSET, SYNTHETIC_OFFSET).irBlockBody {
                 +irReturn(irBlock {
                     val values = irTemporary(irCall(valuesIrFunctionSymbol), isMutable = true)
                     val inductionVariable = irTemporary(irInt(0), isMutable = true)
@@ -82,7 +83,7 @@ internal class CEnumByValueFunctionGenerator(
                                     type = irBuiltIns.unitType,
                                     condition = irEquals(entryValue, irGet(irValueParameter)),
                                     thenPart = irReturn(irGet(entry)),
-                                    elsePart = irSetVar(
+                                    elsePart = irSet(
                                             inductionVariable,
                                             irCallOp(plusFun, irBuiltIns.intType,
                                                     irGet(inductionVariable),

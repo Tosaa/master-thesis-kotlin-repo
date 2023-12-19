@@ -5,13 +5,11 @@
 
 package org.jetbrains.kotlin.jvm.abi
 
-import kotlinx.metadata.KmClass
-import kotlinx.metadata.KmPackage
-import kotlinx.metadata.Visibility
+import kotlinx.metadata.*
+import kotlinx.metadata.jvm.JvmMetadataVersion
 import kotlinx.metadata.jvm.KotlinClassMetadata
 import kotlinx.metadata.jvm.Metadata
 import kotlinx.metadata.jvm.localDelegatedProperties
-import kotlinx.metadata.visibility
 import org.jetbrains.kotlin.load.java.JvmAnnotationNames.*
 import org.jetbrains.org.objectweb.asm.AnnotationVisitor
 import org.jetbrains.org.objectweb.asm.Opcodes
@@ -31,34 +29,25 @@ fun abiMetadataProcessor(annotationVisitor: AnnotationVisitor): AnnotationVisito
         } ?: intArrayOf(1, 4)
 
         val newHeader = runCatching {
-            when (val metadata = KotlinClassMetadata.read(header)) {
-                is KotlinClassMetadata.Class -> {
-                    val klass = metadata.kmClass
-                    klass.removePrivateDeclarations()
-                    KotlinClassMetadata.writeClass(klass, metadataVersion, header.extraInt)
+            KotlinClassMetadata.transform(header) { metadata ->
+                when (metadata) {
+                    is KotlinClassMetadata.Class -> {
+                        metadata.kmClass.removePrivateDeclarations()
+                    }
+                    is KotlinClassMetadata.FileFacade -> {
+                        metadata.kmPackage.removePrivateDeclarations()
+                    }
+                    is KotlinClassMetadata.MultiFileClassPart -> {
+                        metadata.kmPackage.removePrivateDeclarations()
+                    }
+                    else -> Unit
                 }
-                is KotlinClassMetadata.FileFacade -> {
-                    val pkg = metadata.kmPackage
-                    pkg.removePrivateDeclarations()
-                    KotlinClassMetadata.writeFileFacade(pkg, metadataVersion, header.extraInt)
-                }
-                is KotlinClassMetadata.MultiFileClassPart -> {
-                    val pkg = metadata.kmPackage
-                    pkg.removePrivateDeclarations()
-                    KotlinClassMetadata.writeMultiFileClassPart(
-                        pkg,
-                        metadata.facadeClassName,
-                        metadataVersion,
-                        header.extraInt
-                    )
-                }
-                else -> header
             }
         }.getOrElse { cause ->
             // TODO: maybe jvm-abi-gen should throw this exception by default, and not only in tests.
             if (System.getProperty("idea.is.unit.test").toBoolean()) {
                 val actual = "${metadataVersion[0]}.${metadataVersion[1]}"
-                val expected = KotlinClassMetadata.COMPATIBLE_METADATA_VERSION.let { "${it[0]}.${it[1]}" }
+                val expected = JvmMetadataVersion.LATEST_STABLE_SUPPORTED.toString()
                 throw AssertionError(
                     "jvm-abi-gen can't process class file with the new metadata version because the version of kotlinx-metadata-jvm " +
                             "it depends on is too old.\n" +
@@ -162,17 +151,27 @@ private fun AnnotationVisitor.visitKotlinMetadata(header: Metadata) {
 
 private fun KmClass.removePrivateDeclarations() {
     constructors.removeIf { it.visibility.isPrivate }
-    functions.removeIf { it.visibility.isPrivate }
-    properties.removeIf { it.visibility.isPrivate }
+    (this as KmDeclarationContainer).removePrivateDeclarations()
     localDelegatedProperties.clear()
     // TODO: do not serialize private type aliases once KT-17229 is fixed.
 }
 
 private fun KmPackage.removePrivateDeclarations() {
-    functions.removeIf { it.visibility.isPrivate }
-    properties.removeIf { it.visibility.isPrivate }
+    (this as KmDeclarationContainer).removePrivateDeclarations()
     localDelegatedProperties.clear()
     // TODO: do not serialize private type aliases once KT-17229 is fixed.
+}
+
+private fun KmDeclarationContainer.removePrivateDeclarations() {
+    functions.removeIf { it.visibility.isPrivate }
+    properties.removeIf { it.visibility.isPrivate }
+
+    for (property in properties) {
+        // Whether or not the *non-const* property is initialized by a compile-time constant is not a part of the ABI.
+        if (!property.isConst) {
+            property.hasConstant = false
+        }
+    }
 }
 
 private val Visibility.isPrivate: Boolean

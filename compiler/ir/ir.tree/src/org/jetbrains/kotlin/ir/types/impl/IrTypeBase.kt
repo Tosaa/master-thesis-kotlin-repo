@@ -10,6 +10,7 @@ import org.jetbrains.kotlin.ir.declarations.IrTypeParameter
 import org.jetbrains.kotlin.ir.expressions.IrConstructorCall
 import org.jetbrains.kotlin.ir.symbols.IrClassifierSymbol
 import org.jetbrains.kotlin.ir.types.*
+import org.jetbrains.kotlin.ir.util.render
 import org.jetbrains.kotlin.types.KotlinType
 import org.jetbrains.kotlin.types.Variance
 import org.jetbrains.kotlin.types.model.CaptureStatus
@@ -44,11 +45,7 @@ class IrDynamicTypeImpl(
 val IrType.originalKotlinType: KotlinType?
     get() = (this as? IrTypeBase)?.kotlinType
 
-object IrStarProjectionImpl : IrStarProjection {
-    override fun equals(other: Any?): Boolean = this === other
-
-    override fun hashCode(): Int = System.identityHashCode(this)
-}
+data object IrStarProjectionImpl : IrStarProjection
 
 /**
  * An instance which should be used when creating an IR element whose type cannot be determined at the moment of creation.
@@ -60,15 +57,11 @@ object IrStarProjectionImpl : IrStarProjection {
  * however this could lead to a situation where we forget to set return type sometimes. This would result in crashes at unexpected moments,
  * especially in Kotlin/JS where function return types are not present in the resulting binary files.
  */
-object IrUninitializedType : IrType() {
+data object IrUninitializedType : IrType() {
     override val annotations: List<IrConstructorCall> = emptyList()
-
-    override fun equals(other: Any?): Boolean = this === other
-
-    override fun hashCode(): Int = System.identityHashCode(this)
 }
 
-class ReturnTypeIsNotInitializedException(function: IrFunction) : IllegalStateException(
+internal class ReturnTypeIsNotInitializedException(function: IrFunction) : IllegalStateException(
     "Return type is not initialized for function '${function.name}'"
 )
 
@@ -78,40 +71,29 @@ class IrCapturedType(
     val captureStatus: CaptureStatus,
     val lowerType: IrType?,
     projection: IrTypeArgument,
-    typeParameter: IrTypeParameter
+    typeParameter: IrTypeParameter,
+    override val nullability: SimpleTypeNullability,
+    override val annotations: List<IrConstructorCall>,
+    override val abbreviation: IrTypeAbbreviation?,
 ) : IrSimpleType(null), CapturedTypeMarker {
-
-    override val variance: Variance
-        get() = TODO("Not yet implemented")
-
-    class Constructor(val argument: IrTypeArgument, val typeParameter: IrTypeParameter) :
-        CapturedTypeConstructorMarker {
-
-        private var _superTypes: List<IrType> = emptyList()
-
-        val superTypes: List<IrType> get() = _superTypes
+    class Constructor(val argument: IrTypeArgument, val typeParameter: IrTypeParameter) : CapturedTypeConstructorMarker {
+        var superTypes: List<IrType> = emptyList()
+            private set
 
         fun initSuperTypes(superTypes: List<IrType>) {
-            _superTypes = superTypes
+            this.superTypes = superTypes
         }
     }
 
     val constructor: Constructor = Constructor(projection, typeParameter)
 
     override val classifier: IrClassifierSymbol get() = error("Captured Type does not have a classifier")
+
     override val arguments: List<IrTypeArgument> get() = emptyList()
-    override val abbreviation: IrTypeAbbreviation? get () = null
-    override val nullability: SimpleTypeNullability get() = SimpleTypeNullability.DEFINITELY_NOT_NULL
-    override val annotations: List<IrConstructorCall> get() = emptyList()
 
-    override fun equals(other: Any?): Boolean {
-        return other is IrCapturedType
-                && captureStatus == other.captureStatus
-                && lowerType == other.lowerType
-                && constructor === other.constructor
-    }
+    override fun equals(other: Any?): Boolean = this === other
 
-    override fun hashCode(): Int {
-        return (captureStatus.hashCode() * 31 + (lowerType?.hashCode() ?: 0)) * 31 + constructor.hashCode()
-    }
+    override fun hashCode(): Int = System.identityHashCode(this)
+
+    override fun toString(): String = "IrCapturedType(${constructor.argument.render()}"
 }

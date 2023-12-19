@@ -7,20 +7,26 @@ package org.jetbrains.kotlin.fir.analysis.checkers.expression
 
 import org.jetbrains.kotlin.KtSourceElement
 import org.jetbrains.kotlin.config.AnalysisFlags
+import org.jetbrains.kotlin.descriptors.ClassKind
 import org.jetbrains.kotlin.diagnostics.DiagnosticReporter
 import org.jetbrains.kotlin.diagnostics.reportOn
 import org.jetbrains.kotlin.fir.*
 import org.jetbrains.kotlin.fir.analysis.checkers.*
 import org.jetbrains.kotlin.fir.analysis.checkers.context.CheckerContext
+import org.jetbrains.kotlin.fir.analysis.checkers.declaration.primaryConstructorSymbol
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors
 import org.jetbrains.kotlin.fir.declarations.*
 import org.jetbrains.kotlin.fir.declarations.utils.correspondingValueParameterFromPrimaryConstructor
+import org.jetbrains.kotlin.fir.declarations.utils.isData
+import org.jetbrains.kotlin.fir.declarations.utils.nameOrSpecialName
 import org.jetbrains.kotlin.fir.expressions.FirConstExpression
 import org.jetbrains.kotlin.fir.expressions.FirQualifiedAccessExpression
-import org.jetbrains.kotlin.fir.references.resolved
+import org.jetbrains.kotlin.fir.references.FirErrorNamedReference
+import org.jetbrains.kotlin.fir.references.FirNamedReference
 import org.jetbrains.kotlin.fir.resolve.fullyExpandedType
 import org.jetbrains.kotlin.fir.resolve.toFirRegularClassSymbol
 import org.jetbrains.kotlin.fir.resolve.toSymbol
+import org.jetbrains.kotlin.fir.scopes.impl.typeAliasForConstructor
 import org.jetbrains.kotlin.fir.symbols.FirBasedSymbol
 import org.jetbrains.kotlin.fir.symbols.SymbolInternals
 import org.jetbrains.kotlin.fir.symbols.impl.FirCallableSymbol
@@ -31,6 +37,7 @@ import org.jetbrains.kotlin.fir.symbols.lazyResolveToPhase
 import org.jetbrains.kotlin.fir.types.*
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.Name
+import org.jetbrains.kotlin.resolve.DataClassResolver
 import org.jetbrains.kotlin.resolve.checkers.OptInNames
 import org.jetbrains.kotlin.utils.SmartSet
 import org.jetbrains.kotlin.utils.addIfNotNull
@@ -144,6 +151,10 @@ object FirOptInUsageBaseChecker {
     )
 
     @OptIn(SymbolInternals::class)
+    fun FirClassLikeSymbol<*>.isExperimentalMarker(session: FirSession) =
+        this is FirRegularClassSymbol && fir.getAnnotationByClassId(OptInNames.REQUIRES_OPT_IN_CLASS_ID, session) != null
+
+    @OptIn(SymbolInternals::class)
     private fun FirBasedSymbol<*>.loadExperimentalities(
         context: CheckerContext,
         knownExperimentalities: SmartSet<Experimentality>?,
@@ -191,8 +202,9 @@ object FirOptInUsageBaseChecker {
     ) {
         val parentClassSymbol = containingClassLookupTag()?.toSymbol(context.session) as? FirRegularClassSymbol
         if (this is FirConstructor) {
+            val ownerClassLikeSymbol = this.typeAliasForConstructor ?: parentClassSymbol
             // For other callable we check dispatch receiver type instead
-            parentClassSymbol?.loadExperimentalities(
+            ownerClassLikeSymbol?.loadExperimentalities(
                 context, result, visited, fromSetter = false, dispatchReceiverType = null, fromSupertype = false
             )
         } else {
@@ -205,7 +217,18 @@ object FirOptInUsageBaseChecker {
             valueParameters.forEach {
                 it.returnTypeRef.coneType.addExperimentalities(context, result, visited)
             }
+
+            // Handling data class 'componentN' function
+            if (parentClassSymbol?.isData == true && DataClassResolver.isComponentLike(this.nameOrSpecialName) && parentClassSymbol.classKind == ClassKind.CLASS) {
+                val componentNIndex = DataClassResolver.getComponentIndex(this.nameOrSpecialName.identifier)
+                val valueParameters = parentClassSymbol.primaryConstructorSymbol(context.session)?.valueParameterSymbols
+                val valueParameter = valueParameters?.getOrNull(componentNIndex - 1)
+                val properties = parentClassSymbol.declarationSymbols.filterIsInstance<FirPropertySymbol>()
+                val property = properties.firstOrNull { it.name == valueParameter?.name }
+                property?.loadExperimentalities(context, result, visited, fromSetter = false, dispatchReceiverType, fromSupertype = false)
+            }
         }
+
         if (fromSetter && symbol is FirPropertySymbol) {
             symbol.setterSymbol?.loadExperimentalities(
                 context, result, visited, fromSetter = false, dispatchReceiverType, fromSupertype = false
@@ -226,10 +249,8 @@ object FirOptInUsageBaseChecker {
                     context, result, visited, fromSetter = false, dispatchReceiverType = null, fromSupertype = false
                 )
             }
-            is FirTypeAlias -> {
-                expandedTypeRef.coneType.addExperimentalities(context, result, visited)
-            }
-            is FirAnonymousObject -> {
+
+            is FirAnonymousObject, is FirTypeAlias -> {
             }
         }
     }
@@ -257,7 +278,13 @@ object FirOptInUsageBaseChecker {
             ?: return null
 
         val levelArgument = experimental.findArgumentByName(LEVEL) as? FirQualifiedAccessExpression
-        val levelName = levelArgument?.calleeReference?.resolved?.name?.asString()
+
+        val levelName = when (val calleeReference = levelArgument?.calleeReference) {
+            is FirErrorNamedReference -> null
+            is FirNamedReference -> calleeReference.name.asString()
+            else -> null
+        }
+
         val severity = Experimentality.Severity.values().firstOrNull { it.name == levelName } ?: Experimentality.DEFAULT_SEVERITY
         val message = (experimental.findArgumentByName(MESSAGE) as? FirConstExpression<*>)?.value as? String
         return Experimentality(symbol.classId, severity, message, annotatedOwnerClassName)

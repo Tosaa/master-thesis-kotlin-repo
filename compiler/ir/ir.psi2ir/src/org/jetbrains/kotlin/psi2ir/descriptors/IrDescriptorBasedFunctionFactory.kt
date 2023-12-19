@@ -20,7 +20,10 @@ import org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol
 import org.jetbrains.kotlin.ir.symbols.impl.IrValueParameterSymbolImpl
 import org.jetbrains.kotlin.ir.types.IrType
 import org.jetbrains.kotlin.ir.types.SimpleTypeNullability
-import org.jetbrains.kotlin.ir.types.impl.*
+import org.jetbrains.kotlin.ir.types.impl.IrSimpleTypeBuilder
+import org.jetbrains.kotlin.ir.types.impl.IrStarProjectionImpl
+import org.jetbrains.kotlin.ir.types.impl.buildSimpleType
+import org.jetbrains.kotlin.ir.types.impl.makeTypeProjection
 import org.jetbrains.kotlin.ir.util.*
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.Name
@@ -77,8 +80,8 @@ abstract class IrAbstractDescriptorBasedFunctionFactory {
     }
 
     companion object {
-        val classOrigin = object : IrDeclarationOriginImpl("FUNCTION_INTERFACE_CLASS") {}
-        val memberOrigin = object : IrDeclarationOriginImpl("FUNCTION_INTERFACE_MEMBER") {}
+        val classOrigin = IrDeclarationOriginImpl("FUNCTION_INTERFACE_CLASS")
+        val memberOrigin = IrDeclarationOriginImpl("FUNCTION_INTERFACE_MEMBER")
         const val offset = SYNTHETIC_OFFSET
 
         internal fun functionClassName(isK: Boolean, isSuspend: Boolean, arity: Int): String =
@@ -516,7 +519,7 @@ class IrDescriptorBasedFunctionFactory(
             arguments = listOf(
                 with(IrSimpleTypeBuilder()) {
                     classifier = r.symbol
-                    buildTypeProjection()
+                    buildSimpleType()
                 },
             )
             buildSimpleType()

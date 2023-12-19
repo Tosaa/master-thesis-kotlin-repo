@@ -19,7 +19,7 @@ object AnalysisFlags {
     val multiPlatformDoNotCheckActual by AnalysisFlag.Delegates.Boolean
 
     @JvmStatic
-    val expectActualLinker by AnalysisFlag.Delegates.Boolean
+    val skipExpectedActualDeclarationChecker by AnalysisFlag.Delegates.Boolean
 
     @JvmStatic
     val optIn by AnalysisFlag.Delegates.ListOfStrings
@@ -62,4 +62,7 @@ object AnalysisFlags {
 
     @JvmStatic
     val eagerResolveOfLightClasses by AnalysisFlag.Delegates.Boolean
+
+    @JvmStatic
+    val dontWarnOnErrorSuppression by AnalysisFlag.Delegates.Boolean
 }

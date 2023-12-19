@@ -5,13 +5,14 @@
 
 package org.jetbrains.kotlin.analysis.api.descriptors.components
 
-import org.jetbrains.kotlin.analysis.api.components.KtCompilerFacility
 import org.jetbrains.kotlin.analysis.api.components.KtCompilationResult
+import org.jetbrains.kotlin.analysis.api.components.KtCompilerFacility
 import org.jetbrains.kotlin.analysis.api.components.KtCompilerTarget
 import org.jetbrains.kotlin.analysis.api.descriptors.Fe10AnalysisFacade.AnalysisMode
 import org.jetbrains.kotlin.analysis.api.descriptors.KtFe10AnalysisSession
 import org.jetbrains.kotlin.analysis.api.descriptors.components.base.Fe10KtAnalysisSessionComponent
 import org.jetbrains.kotlin.analysis.api.descriptors.utils.InlineFunctionAnalyzer
+import org.jetbrains.kotlin.analysis.api.descriptors.utils.collectReachableInlineDelegatedPropertyAccessors
 import org.jetbrains.kotlin.analysis.api.diagnostics.KtDiagnostic
 import org.jetbrains.kotlin.analysis.api.impl.base.util.KtCompiledFileForOutputFile
 import org.jetbrains.kotlin.backend.common.phaser.PhaseConfig
@@ -19,7 +20,6 @@ import org.jetbrains.kotlin.backend.jvm.FacadeClassSourceShimForFragmentCompilat
 import org.jetbrains.kotlin.backend.jvm.JvmGeneratorExtensionsImpl
 import org.jetbrains.kotlin.backend.jvm.JvmIrCodegenFactory
 import org.jetbrains.kotlin.backend.jvm.jvmPhases
-import org.jetbrains.kotlin.codegen.DefaultCodegenFactory
 import org.jetbrains.kotlin.codegen.KotlinCodegenFacade
 import org.jetbrains.kotlin.codegen.state.GenerationState
 import org.jetbrains.kotlin.config.*
@@ -35,8 +35,6 @@ import org.jetbrains.kotlin.serialization.deserialization.descriptors.Deserializ
  * Whether unbound IR symbols should be stubbed instead of linked.
  * This should be enabled if the compiled file could refer to symbols defined in another file of the same module.
  * Such symbols are not compiled (only the file is passed to the backend) and so they cannot be linked from a dependency.
- *
- * The option only has an effect when the IR backend is active.
  */
 val STUB_UNBOUND_IR_SYMBOLS: CompilerConfigurationKey<Boolean> = CompilerConfigurationKey<Boolean>("stub unbound IR symbols")
 
@@ -63,7 +61,6 @@ internal class KtFe10CompilerFacility(
                 put(JVMConfigurationKeys.DO_NOT_CLEAR_BINDING_CONTEXT, true)
             }
 
-        val useIrBackend = effectiveConfiguration.getBoolean(JVMConfigurationKeys.IR)
         val disableInline = effectiveConfiguration.getBoolean(CommonConfigurationKeys.DISABLE_INLINE)
 
         // The binding context needs to be built from all files with reachable inline functions, as such files may contain classes whose
@@ -73,7 +70,7 @@ internal class KtFe10CompilerFacility(
         val inlineAnalyzer = InlineFunctionAnalyzer(analysisContext, analyzeOnlyReifiedInlineFunctions = disableInline)
         inlineAnalyzer.analyze(file)
 
-        val filesToCompile = inlineAnalyzer.allFiles()
+        val filesToCompile = inlineAnalyzer.allFiles().collectReachableInlineDelegatedPropertyAccessors()
         val bindingContext = analysisContext.analyze(filesToCompile, AnalysisMode.ALL_COMPILER_CHECKS)
 
         val frontendErrors = computeErrors(bindingContext.diagnostics, allowedErrorFilter)
@@ -83,11 +80,7 @@ internal class KtFe10CompilerFacility(
 
         // The IR backend will try to regenerate object literals defined in inline functions from generated class files during inlining.
         // Hence, we need to be aware of which object declarations are defined in the relevant inline functions.
-        val inlineObjectDeclarations = when {
-            useIrBackend -> inlineAnalyzer.inlineObjectDeclarations()
-            else -> setOf()
-        }
-
+        val inlineObjectDeclarations = inlineAnalyzer.inlineObjectDeclarations()
         val inlineObjectDeclarationFiles = inlineObjectDeclarations.mapTo(mutableSetOf()) { it.containingKtFile }
 
         class GenerateClassFilter : GenerationState.GenerateClassFilter() {
@@ -113,10 +106,7 @@ internal class KtFe10CompilerFacility(
 
         val generateClassFilter = GenerateClassFilter()
 
-        val codegenFactory = when {
-            useIrBackend -> createJvmIrCodegenFactory(effectiveConfiguration)
-            else -> DefaultCodegenFactory
-        }
+        val codegenFactory = createJvmIrCodegenFactory(effectiveConfiguration)
 
         val state = GenerationState.Builder(
             file.project,
@@ -158,7 +148,7 @@ internal class KtFe10CompilerFacility(
     }
 
     private fun createJvmIrCodegenFactory(configuration: CompilerConfiguration): JvmIrCodegenFactory {
-        val stubUnboundIrSymbols = configuration[STUB_UNBOUND_IR_SYMBOLS] ?: false
+        val stubUnboundIrSymbols = configuration[STUB_UNBOUND_IR_SYMBOLS] == true
 
         val jvmGeneratorExtensions = if (stubUnboundIrSymbols) {
             object : JvmGeneratorExtensionsImpl(configuration) {

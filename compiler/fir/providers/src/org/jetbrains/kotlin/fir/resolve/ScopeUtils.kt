@@ -12,7 +12,7 @@ import org.jetbrains.kotlin.fir.expressions.FirSmartCastExpression
 import org.jetbrains.kotlin.fir.resolve.substitution.ConeRawScopeSubstitutor
 import org.jetbrains.kotlin.fir.resolve.substitution.substitutorByMap
 import org.jetbrains.kotlin.fir.scopes.*
-import org.jetbrains.kotlin.fir.scopes.impl.FirScopeWithFakeOverrideTypeCalculator
+import org.jetbrains.kotlin.fir.scopes.impl.FirScopeWithCallableCopyReturnTypeUpdater
 import org.jetbrains.kotlin.fir.scopes.impl.FirTypeIntersectionScope
 import org.jetbrains.kotlin.fir.scopes.impl.dynamicMembersStorage
 import org.jetbrains.kotlin.fir.scopes.impl.getOrBuildScopeForIntegerConstantOperatorType
@@ -33,7 +33,7 @@ fun FirSmartCastExpression.smartcastScope(
     val smartcastScope = smartcastType.scope(
         useSiteSession = useSiteSession,
         scopeSession = scopeSession,
-        fakeOverrideTypeCalculator = FakeOverrideTypeCalculator.DoNothing,
+        callableCopyTypeCalculator = CallableCopyTypeCalculator.DoNothing,
         requiredMembersPhase = requiredMembersPhase,
     )
 
@@ -41,10 +41,10 @@ fun FirSmartCastExpression.smartcastScope(
         return smartcastScope
     }
 
-    val originalScope = originalExpression.typeRef.coneType.scope(
+    val originalScope = originalExpression.resolvedType.scope(
         useSiteSession = useSiteSession,
         scopeSession = scopeSession,
-        fakeOverrideTypeCalculator = FakeOverrideTypeCalculator.DoNothing,
+        callableCopyTypeCalculator = CallableCopyTypeCalculator.DoNothing,
         requiredMembersPhase = requiredMembersPhase,
     ) ?: return smartcastScope
 
@@ -65,12 +65,12 @@ fun ConeClassLikeType.delegatingConstructorScope(
 fun ConeKotlinType.scope(
     useSiteSession: FirSession,
     scopeSession: ScopeSession,
-    fakeOverrideTypeCalculator: FakeOverrideTypeCalculator,
+    callableCopyTypeCalculator: CallableCopyTypeCalculator,
     requiredMembersPhase: FirResolvePhase?,
 ): FirTypeScope? {
     val scope = scope(useSiteSession, scopeSession, requiredMembersPhase) ?: return null
-    if (fakeOverrideTypeCalculator == FakeOverrideTypeCalculator.DoNothing) return scope
-    return FirScopeWithFakeOverrideTypeCalculator(scope, fakeOverrideTypeCalculator)
+    if (callableCopyTypeCalculator == CallableCopyTypeCalculator.DoNothing) return scope
+    return FirScopeWithCallableCopyReturnTypeUpdater(scope, callableCopyTypeCalculator)
 }
 
 private fun ConeKotlinType.scope(
@@ -91,7 +91,25 @@ private fun ConeKotlinType.scope(
             intersectionType.scope(useSiteSession, scopeSession, requiredMembersPhase) ?: FirTypeScope.Empty
         }
     }
-
+    is ConeStubTypeForChainInference -> {
+        // Actually, it should be the intersection of bounds, but K1 doesn't think so.
+        // interface ABC {
+        //     fun foo()
+        // }
+        //
+        // class Buildee<out U : ABC> {
+        //     fun get(): U = null!!
+        // }
+        //
+        // fun <F: ABC> buildsome(l: Buildee<F>.() -> Unit) {}
+        //
+        // fun test() {
+        //    buildsome {
+        //        this.get().foo()
+        //    }
+        // }
+        useSiteSession.builtinTypes.anyType.type.scope(useSiteSession, scopeSession, requiredMembersPhase)
+    }
     is ConeRawType -> lowerBound.scope(useSiteSession, scopeSession, requiredMembersPhase)
     is ConeDynamicType -> useSiteSession.dynamicMembersStorage.getDynamicScopeFor(scopeSession)
     is ConeFlexibleType -> lowerBound.scope(useSiteSession, scopeSession, requiredMembersPhase)

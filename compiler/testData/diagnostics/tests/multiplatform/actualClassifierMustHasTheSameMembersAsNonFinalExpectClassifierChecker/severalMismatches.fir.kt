@@ -2,13 +2,13 @@
 // FILE: common.kt
 
 open class Base() {
-    <!INCOMPATIBLE_MATCHING{JVM}!>open fun overrideReturnType(): Any = ""<!>
-    <!INCOMPATIBLE_MATCHING{JVM}!>open fun overrideModality1(): Any = ""<!>
-    <!INCOMPATIBLE_MATCHING{JVM}!>open fun overrideModality2(): Any = ""<!>
-    <!INCOMPATIBLE_MATCHING{JVM}!>protected open fun overrideVisibility(): Any = ""<!>
+    open fun overrideReturnType(): Any = ""
+    open fun overrideModality1(): Any = ""
+    open fun overrideModality2(): Any = ""
+    protected open fun overrideVisibility(): Any = ""
 }
 
-<!INCOMPATIBLE_MATCHING{JVM}!>expect open class Foo : Base {
+<!EXPECT_ACTUAL_INCOMPATIBILITY{JVM}, EXPECT_ACTUAL_INCOMPATIBILITY{JVM}, EXPECT_ACTUAL_INCOMPATIBILITY{JVM}, EXPECT_ACTUAL_INCOMPATIBILITY{JVM}, EXPECT_ACTUAL_INCOMPATIBILITY{JVM}!>expect open class Foo : Base {
     fun existingMethod()
     val existingParam: Int
 }<!>
@@ -22,8 +22,8 @@ actual open class Foo : Base() {
 
     fun injectedMethod() {}
     val injectedProperty: Int = 42
-    override fun overrideReturnType(): String = ""
-    final override fun overrideModality1(): Any = ""
-    final override fun overrideModality2(): Any = ""
-    public override fun overrideVisibility(): Any = ""
+    override fun <!ACTUAL_WITHOUT_EXPECT!>overrideReturnType<!>(): String = ""
+    final override fun <!ACTUAL_WITHOUT_EXPECT!>overrideModality1<!>(): Any = ""
+    final override fun <!ACTUAL_WITHOUT_EXPECT!>overrideModality2<!>(): Any = ""
+    public override fun <!ACTUAL_WITHOUT_EXPECT!>overrideVisibility<!>(): Any = ""
 }

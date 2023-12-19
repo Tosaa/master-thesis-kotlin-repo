@@ -45,6 +45,7 @@ fun copyK2NativeCompilerArguments(from: K2NativeCompilerArguments, to: K2NativeC
     to.generateNoExitTestRunner = from.generateNoExitTestRunner
     to.generateTestRunner = from.generateTestRunner
     to.generateWorkerTestRunner = from.generateWorkerTestRunner
+    to.headerKlibPath = from.headerKlibPath
     to.includeBinaries = from.includeBinaries?.copyOf()
     to.includes = from.includes?.copyOf()
     to.incrementalCacheDir = from.incrementalCacheDir
@@ -62,7 +63,6 @@ fun copyK2NativeCompilerArguments(from: K2NativeCompilerArguments, to: K2NativeC
     to.makePerFileCache = from.makePerFileCache
     to.manifestFile = from.manifestFile
     to.memoryModel = from.memoryModel
-    to.metadataKlib = from.metadataKlib
     to.moduleName = from.moduleName
     to.nativeLibraries = from.nativeLibraries?.copyOf()
     to.noObjcGenerics = from.noObjcGenerics

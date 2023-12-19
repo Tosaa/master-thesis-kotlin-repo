@@ -24,6 +24,9 @@ class Foo(@Serializable(with = BazSerializer::class) val i: <!SERIALIZER_TYPE_IN
 class Foo2(val li: List<@Serializable(with = BazSerializer::class) <!SERIALIZER_TYPE_INCOMPATIBLE!>Bar<!>>)
 
 @Serializable
+class Foo25(val i: @Serializable(with = BazSerializer::class) <!SERIALIZER_TYPE_INCOMPATIBLE!>Bar<!>)
+
+@Serializable
 class Foo3(@Serializable(with = BazSerializer::class) val i: Baz)
 
 @Serializable
@@ -37,3 +40,11 @@ class Foo6(@Serializable(with = NullableBazSerializer::class) val i: <!SERIALIZE
 
 @Serializable
 class Foo7(@Serializable(with = NullableBazSerializer::class) val i: <!SERIALIZER_TYPE_INCOMPATIBLE!>Bar?<!>)
+
+// It is OK to report, because subclasses can't generally be deserialized (as `deserialize()` signature returns base class)
+@Serializable
+@Suppress("FINAL_UPPER_BOUND")
+class Foo8<Br: Bar>(@Serializable(BarSerializer::class) val b: <!SERIALIZER_TYPE_INCOMPATIBLE("Br; BarSerializer; Bar")!>Br<!>)
+
+@Serializable
+class Foo9<T>(@Serializable(BarSerializer::class) val b: <!SERIALIZER_TYPE_INCOMPATIBLE("T; BarSerializer; Bar")!>T<!>)

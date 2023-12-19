@@ -8,16 +8,13 @@ package org.jetbrains.kotlin.fir.resolve.dfa
 import org.jetbrains.kotlin.fir.FirElement
 import org.jetbrains.kotlin.fir.declarations.FirDeclaration
 import org.jetbrains.kotlin.fir.expressions.*
-import org.jetbrains.kotlin.fir.references.FirNamedReferenceWithCandidateBase
-import org.jetbrains.kotlin.fir.references.FirResolvedNamedReference
-import org.jetbrains.kotlin.fir.references.FirThisReference
+import org.jetbrains.kotlin.fir.references.symbol
 import org.jetbrains.kotlin.fir.symbols.FirBasedSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirCallableSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirFunctionSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirSyntheticPropertySymbol
 import org.jetbrains.kotlin.fir.types.ConeKotlinType
 import org.jetbrains.kotlin.fir.types.ConeTypeContext
-import org.jetbrains.kotlin.fir.types.coneType
 import org.jetbrains.kotlin.fir.unwrapFakeOverrides
 
 fun TypeStatement?.smartCastedType(context: ConeTypeContext, originalType: ConeKotlinType): ConeKotlinType =
@@ -37,14 +34,10 @@ fun FirOperation.isEq(): Boolean {
 }
 
 @DfaInternals
-val FirExpression.coneType: ConeKotlinType
-    get() = typeRef.coneType
-
-@DfaInternals
 val FirElement.symbol: FirBasedSymbol<*>?
     get() = when (this) {
-        is FirResolvable -> symbol.unwrapFakeOverridesIfNecessary()
-        is FirVariableAssignment -> unwrapLValue()?.symbol
+        is FirResolvable -> calleeReference.symbol.unwrapFakeOverridesIfNecessary()
+        is FirVariableAssignment -> unwrapLValue()?.calleeReference?.symbol
         is FirDeclaration -> symbol.unwrapFakeOverridesIfNecessary()
         is FirWhenSubjectExpression -> whenRef.value.subject?.symbol
         is FirSafeCallExpression -> selector.symbol
@@ -67,21 +60,12 @@ private fun FirBasedSymbol<*>?.unwrapFakeOverridesIfNecessary(): FirBasedSymbol<
 }
 
 @DfaInternals
-internal val FirResolvable.symbol: FirBasedSymbol<*>?
-    get() = when (val reference = calleeReference) {
-        is FirThisReference -> reference.boundSymbol
-        is FirResolvedNamedReference -> reference.resolvedSymbol
-        is FirNamedReferenceWithCandidateBase -> reference.candidateSymbol
-        else -> null
-    }
-
-@DfaInternals
 fun FirElement.unwrapElement(): FirElement = when (this) {
     is FirWhenSubjectExpression -> whenRef.value.let { it.subjectVariable ?: it.subject }?.unwrapElement() ?: this
     is FirSmartCastExpression -> originalExpression.unwrapElement()
     is FirSafeCallExpression -> selector.unwrapElement()
     is FirCheckedSafeCallSubject -> originalReceiverRef.value.unwrapElement()
     is FirCheckNotNullCall -> argument.unwrapElement()
+    is FirDesugaredAssignmentValueReferenceExpression -> expressionRef.value.unwrapElement()
     else -> this
 }
-

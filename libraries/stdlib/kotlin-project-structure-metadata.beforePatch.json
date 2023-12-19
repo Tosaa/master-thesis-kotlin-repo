@@ -16,18 +16,6 @@
         ]
       },
       {
-        "name": "jsV1ApiElements",
-        "sourceSet": [
-          "commonMain"
-        ]
-      },
-      {
-        "name": "jsV1RuntimeElements",
-        "sourceSet": [
-          "commonMain"
-        ]
-      },
-      {
         "name": "jvmApiElements",
         "sourceSet": [
           "commonMain"
@@ -35,6 +23,30 @@
       },
       {
         "name": "jvmRuntimeElements",
+        "sourceSet": [
+          "commonMain"
+        ]
+      },
+      {
+        "name": "wasmJsApiElements",
+        "sourceSet": [
+          "commonMain"
+        ]
+      },
+      {
+        "name": "wasmJsRuntimeElements",
+        "sourceSet": [
+          "commonMain"
+        ]
+      },
+      {
+        "name": "wasmWasiApiElements",
+        "sourceSet": [
+          "commonMain"
+        ]
+      },
+      {
+        "name": "wasmWasiRuntimeElements",
         "sourceSet": [
           "commonMain"
         ]

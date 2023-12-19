@@ -10,7 +10,7 @@ import org.junit.Test
 import kotlin.reflect.KMutableProperty0
 import kotlin.test.*
 
-@Suppress("DEPRECATION")
+@Suppress("DEPRECATION", "DEPRECATION_ERROR") // flags will become internal eventually
 class FlagDelegatesTest {
     private class Private
 
@@ -100,9 +100,10 @@ class FlagDelegatesTest {
                 field = param.takeLast(0)
             }
 
-        var noinlineModifierVar: String = ""
+        inline var noinlineModifierVar: () -> String
+            get() = { "" }
             set(noinline param) {
-                field = param.takeLast(0)
+                param()
             }
 
     }
@@ -146,7 +147,9 @@ class FlagDelegatesTest {
         }
 
         assertProperty("getterSetterNoFieldNoParamVar", true, true, true) {
-            assertEquals(true, it?.name?.contains("anonymous parameter"))
+            assertEquals(true, it?.name == "_") // KT-62582 (K2 should have _ here despite a special name is used in K1)
+            // K1 version
+            // assertEquals(true, it?.name?.contains("anonymous parameter"))
         }
 
         assertProperty("defaultSetterVar", true, true, false)
@@ -154,7 +157,7 @@ class FlagDelegatesTest {
             assertEquals("param", it?.name)
         }
 
-        assertProperty("noinlineModifierVar", true, false, true) {
+        assertProperty("noinlineModifierVar", true, true, true) {
             assertEquals("param", it?.name)
             assertEquals(true, it?.isNoinline)
         }
@@ -186,7 +189,7 @@ class FlagDelegatesTest {
         val props = X::class.java.readMetadataAsKmClass().properties.associateBy { it.name }
         props.values.forEach { assertFalse(it.isConst, it.name) }
         assertTrue(props.getValue("a").hasConstant)
-        assertTrue(props.getValue("b").hasConstant)
+        assertFalse(props.getValue("b").hasConstant)
         assertFalse(props.getValue("c").hasConstant)
     }
 
@@ -205,7 +208,7 @@ class FlagDelegatesTest {
         val foo = Foo::class.java.readMetadataAsKmClass()
         val props = foo.properties.associateBy { it.name }
         with(props["x"]!!) {
-            assertEquals(MemberKind.DELEGATION, kind)
+            //assertEquals(MemberKind.DELEGATION, kind) // TODO: KT-62581 (uncomment after bootstrapping, remove TODO)
             assertFalse(isDelegated)
             assertFalse(getter.isNotDefault)
         }

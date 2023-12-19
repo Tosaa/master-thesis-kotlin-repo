@@ -25,7 +25,7 @@ import java.util.Arrays;
 @kotlin.Deprecated(
         message = "Kotlin clients should instantiate Metadata annotation directly",
         replaceWith = @ReplaceWith(expression = "Metadata", imports = {}),
-        level = DeprecationLevel.WARNING
+        level = DeprecationLevel.ERROR
 )
 public final class KotlinClassHeader implements Metadata {
     private final int k;
@@ -52,7 +52,7 @@ public final class KotlinClassHeader implements Metadata {
                     expression = "kotlinx.metadata.jvm.Metadata(kind, metadataVersion, data1, data2, extraString, packageName, extraInt)",
                     imports = {}
             ),
-            level = DeprecationLevel.WARNING
+            level = DeprecationLevel.ERROR
     )
     public KotlinClassHeader(
             @Nullable Integer kind,
@@ -178,7 +178,7 @@ public final class KotlinClassHeader implements Metadata {
     public static final int MULTI_FILE_CLASS_PART_KIND = 5;
 
     /**
-     * Use {@link KotlinClassMetadata#COMPATIBLE_METADATA_VERSION} instead
+     * Use {@link kotlinx.metadata.jvm.JvmMetadataVersion#LATEST_STABLE_SUPPORTED} instead
      */
     @Deprecated
     public static final int[] COMPATIBLE_METADATA_VERSION = Arrays.copyOf(JvmMetadataVersion.INSTANCE.toArray(), 3);

@@ -878,7 +878,6 @@ internal object DevirtualizationAnalysis {
             val directEdgesCount = IntArrayList()
             val reversedEdgesCount = IntArrayList()
 
-            @OptIn(ExperimentalUnsignedTypes::class)
             private fun addEdge(from: Node, to: Node) {
                 val fromId = from.id
                 val toId = to.id
@@ -1263,7 +1262,7 @@ internal object DevirtualizationAnalysis {
                             node.constructor?.let {
                                 doCall(
                                         it,
-                                        @OptIn(ExperimentalStdlibApi::class) buildList {
+                                        buildList {
                                             add(instanceNode)
                                             node.arguments?.forEach { add(edgeToConstraintNode(it)) }
                                         },
@@ -1524,7 +1523,7 @@ internal object DevirtualizationAnalysis {
                         possibleCallees.isEmpty() -> irBlock(expression) {
                             val throwExpr = irCall(symbols.throwInvalidReceiverTypeException.owner).apply {
                                 putValueArgument(0,
-                                        irCall(symbols.kClassImplConstructor.owner, listOf(dispatchReceiver.type)).apply {
+                                        irCallWithSubstitutedType(symbols.kClassImplConstructor.owner, listOf(dispatchReceiver.type)).apply {
                                             putValueArgument(0,
                                                     irCall(symbols.getObjectTypeInfo.owner).apply {
                                                         putValueArgument(0, dispatchReceiver)
@@ -1582,7 +1581,7 @@ internal object DevirtualizationAnalysis {
                                                         }
                                                     } else {
                                                         val receiverType = actualCallee.irFunction!!.parentAsClass
-                                                        irCall(isSubtype, listOf(receiverType.defaultType)).apply {
+                                                        irCallWithSubstitutedType(isSubtype, listOf(receiverType.defaultType)).apply {
                                                             putValueArgument(0, irGet(typeInfo))
                                                         }
                                                     }
@@ -1601,7 +1600,7 @@ internal object DevirtualizationAnalysis {
                                         condition = irTrue(),
                                         result = irCall(symbols.throwInvalidReceiverTypeException).apply {
                                             putValueArgument(0,
-                                                    irCall(symbols.kClassImplConstructor, listOf(dispatchReceiver.type)).apply {
+                                                    irCallWithSubstitutedType(symbols.kClassImplConstructor, listOf(dispatchReceiver.type)).apply {
                                                         putValueArgument(0, irGet(typeInfo))
                                                     }
                                             )

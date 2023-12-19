@@ -31,6 +31,7 @@ class JsPerModuleCache(
     private fun ModuleArtifact.fetchModuleInfo() = File(artifactsDir, JS_MODULE_HEADER).useCodedInputIfExists {
         val crossModuleReferencesHash = ICHash.fromProtoStream(this)
         val reexportedInModuleWithName = ifTrue { readString() }
+        val importedWithEffectInModuleWithName = ifTrue { readString() }
         val (definitions, nameBindings, optionalCrossModuleImports) = fetchJsIrModuleHeaderNames()
 
         CachedModuleInfo(
@@ -42,6 +43,7 @@ class JsPerModuleCache(
                 nameBindings = nameBindings,
                 optionalCrossModuleImports = optionalCrossModuleImports,
                 reexportedInModuleWithName = reexportedInModuleWithName,
+                importedWithEffectInModuleWithName = importedWithEffectInModuleWithName,
                 associatedModule = null
             ),
             crossModuleReferencesHash = crossModuleReferencesHash
@@ -52,17 +54,12 @@ class JsPerModuleCache(
         File(cacheDir, JS_MODULE_HEADER).useCodedOutput {
             crossModuleReferencesHash.toProtoStream(this)
             ifNotNull(jsIrHeader.reexportedInModuleWithName) { writeStringNoTag(it) }
+            ifNotNull(jsIrHeader.importedWithEffectInModuleWithName) { writeStringNoTag(it) }
             commitJsIrModuleHeaderNames(jsIrHeader)
         }
     }
 
     override fun loadJsIrModule(cacheInfo: CachedModuleInfo) = cacheInfo.artifact.loadJsIrModule()
-
-    override fun getMainModuleAndDependencies(cacheInfo: List<CachedModuleInfo>) =
-        cacheInfo.last() to cacheInfo.dropLast(1)
-
-    override fun fetchCompiledJsCodeForNullCacheInfo() =
-        error("Should never happen for per module granularity")
 
     override fun fetchCompiledJsCode(cacheInfo: CachedModuleInfo) = cacheInfo.artifact.artifactsDir?.let { cacheDir ->
         val jsCodeFile = File(cacheDir, CACHED_MODULE_JS).ifExists { this }

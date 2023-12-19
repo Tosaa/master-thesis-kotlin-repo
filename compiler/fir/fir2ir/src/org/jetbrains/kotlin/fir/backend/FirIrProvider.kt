@@ -12,24 +12,25 @@ import org.jetbrains.kotlin.fir.declarations.*
 import org.jetbrains.kotlin.fir.declarations.utils.classId
 import org.jetbrains.kotlin.fir.resolve.providers.symbolProvider
 import org.jetbrains.kotlin.fir.scopes.FirScope
-import org.jetbrains.kotlin.fir.scopes.unsubstitutedScope
-import org.jetbrains.kotlin.fir.symbols.SymbolInternals
 import org.jetbrains.kotlin.fir.symbols.impl.FirPropertySymbol
 import org.jetbrains.kotlin.fir.types.ConeClassLikeType
-import org.jetbrains.kotlin.ir.declarations.*
+import org.jetbrains.kotlin.ir.declarations.IrClass
+import org.jetbrains.kotlin.ir.declarations.IrDeclaration
+import org.jetbrains.kotlin.ir.declarations.IrProperty
+import org.jetbrains.kotlin.ir.declarations.IrTypeParametersContainer
 import org.jetbrains.kotlin.ir.linkage.IrProvider
-import org.jetbrains.kotlin.ir.symbols.*
+import org.jetbrains.kotlin.ir.symbols.IrSymbol
 import org.jetbrains.kotlin.ir.util.IdSignature
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.Name
+import org.jetbrains.kotlin.utils.addToStdlib.shouldNotBeCalled
 
-@OptIn(SymbolInternals::class)
-class FirIrProvider(val fir2IrComponents: Fir2IrComponents) : IrProvider {
-    private val symbolProvider = fir2IrComponents.session.symbolProvider
-    private val declarationStorage = fir2IrComponents.declarationStorage
-    private val classifierStorage = fir2IrComponents.classifierStorage
-    private val fakeOverrideGenerator = FakeOverrideGenerator(fir2IrComponents, Fir2IrConversionScope())
+class FirIrProvider(val components: Fir2IrComponents) : IrProvider {
+    private val symbolProvider = components.session.symbolProvider
+    private val declarationStorage = components.declarationStorage
+    private val classifierStorage = components.classifierStorage
+    private val fakeOverrideGenerator = FakeOverrideGenerator(components, Fir2IrConversionScope(components.configuration))
 
     override fun getDeclaration(symbol: IrSymbol): IrDeclaration? {
         val signature = symbol.signature ?: return null
@@ -69,13 +70,11 @@ class FirIrProvider(val fir2IrComponents: Fir2IrComponents) : IrProvider {
         val nameSegments = signature.nameSegments
         val topName = Name.identifier(nameSegments[0])
 
-        val packageFragment = declarationStorage.getIrExternalPackageFragment(packageFqName)
-
         val firCandidates: List<FirDeclaration>
-        val parent: IrDeclarationParent
+        val parentClass: IrClass?
         if (nameSegments.size == 1 && kind != SymbolKind.CLASS_SYMBOL) {
             firCandidates = symbolProvider.getTopLevelCallableSymbols(packageFqName, topName).map { it.fir }
-            parent = packageFragment // TODO: need to insert file facade class on JVM
+            parentClass = null // TODO: need to insert file facade class on JVM
         } else {
             val topLevelClass = symbolProvider.getClassLikeSymbolByClassId(ClassId(packageFqName, topName))?.fir as? FirRegularClass
                 ?: return null
@@ -88,38 +87,42 @@ class FirIrProvider(val fir2IrComponents: Fir2IrComponents) : IrProvider {
                     ?: return null
             }
             val classId = firClass.classId
-            val scope = firClass.unsubstitutedScope(
-                fir2IrComponents.session,
-                fir2IrComponents.scopeSession,
-                withForcedTypeCalculator = true,
-                memberRequiredPhase = null,
-            )
+            val scope = with(components) { firClass.unsubstitutedScope() }
+
+            fun findIrClass(firClass: FirRegularClass): IrClass {
+                val irClassSymbol = classifierStorage.getOrCreateIrClass(firClass.symbol).symbol
+                return getDeclaration(irClassSymbol) as IrClass
+            }
 
             when (kind) {
                 SymbolKind.CLASS_SYMBOL -> {
                     firCandidates = listOf(firClass)
-                    parent = firParentClass?.let { classifierStorage.getIrClassSymbol(it.symbol).owner } ?: packageFragment
+                    parentClass = firParentClass?.let { findIrClass(it) }
                 }
                 SymbolKind.ENUM_ENTRY_SYMBOL -> {
                     val lastName = Name.guessByFirstCharacter(nameSegments.last())
                     val firCandidate = firClass.declarations.singleOrNull { (it as? FirEnumEntry)?.name == lastName }
                     firCandidates = firCandidate?.let { listOf(it) } ?: return null
-                    parent = classifierStorage.getIrClassSymbol(firClass.symbol).owner
+                    parentClass = findIrClass(firClass)
                 }
                 SymbolKind.CONSTRUCTOR_SYMBOL -> {
                     val constructors = mutableListOf<FirConstructor>()
                     scope.processDeclaredConstructors { constructors.add(it.fir) }
                     firCandidates = constructors
-                    parent = classifierStorage.getIrClassSymbol(firClass.symbol).owner
+                    parentClass = findIrClass(firClass)
                 }
                 SymbolKind.FUNCTION_SYMBOL -> {
-                    parent = classifierStorage.getIrClassSymbol(firClass.symbol).owner
+                    parentClass = findIrClass(firClass)
                     val lastName = Name.guessByFirstCharacter(nameSegments.last())
                     val functions = mutableListOf<FirSimpleFunction>()
                     scope.processFunctionsByName(lastName) { functionSymbol ->
                         val dispatchReceiverClassId = (functionSymbol.fir.dispatchReceiverType as? ConeClassLikeType)?.lookupTag?.classId
                         val function = if (dispatchReceiverClassId != null && dispatchReceiverClassId != classId) {
-                            fakeOverrideGenerator.createFirFunctionFakeOverride(firClass, parent, functionSymbol, scope)!!.first
+                            fakeOverrideGenerator.createFirFunctionFakeOverrideIfNeeded(
+                                functionSymbol.fir,
+                                firClass.symbol.toLookupTag(),
+                                parentClass
+                            )!!
                         } else functionSymbol.fir
                         functions.add(function)
                     }
@@ -129,21 +132,25 @@ class FirIrProvider(val fir2IrComponents: Fir2IrComponents) : IrProvider {
                     firCandidates = functions
                 }
                 SymbolKind.PROPERTY_SYMBOL -> {
-                    parent = classifierStorage.getIrClassSymbol(firClass.symbol).owner
+                    parentClass = findIrClass(firClass)
                     val lastName = Name.guessByFirstCharacter(nameSegments.last())
                     val properties = mutableListOf<FirVariable>()
                     scope.processPropertiesByName(lastName) { propertySymbol ->
                         propertySymbol as FirPropertySymbol
                         val dispatchReceiverClassId = (propertySymbol.fir.dispatchReceiverType as? ConeClassLikeType)?.lookupTag?.classId
                         val property = if (dispatchReceiverClassId != null && dispatchReceiverClassId != classId) {
-                            fakeOverrideGenerator.createFirPropertyFakeOverride(firClass, parent, propertySymbol, scope)!!.first
+                            fakeOverrideGenerator.createFirPropertyFakeOverrideIfNeeded(
+                                propertySymbol.fir,
+                                firClass.symbol.toLookupTag(),
+                                parentClass
+                            )!!
                         } else propertySymbol.fir
                         properties.add(property)
                     }
                     firCandidates = properties
                 }
                 SymbolKind.FIELD_SYMBOL -> {
-                    parent = classifierStorage.getIrClassSymbol(firClass.symbol).owner
+                    parentClass = findIrClass(firClass)
                     val lastName = Name.guessByFirstCharacter(nameSegments.last())
                     val fields = mutableListOf<FirVariable>()
                     scope.processPropertiesByName(lastName) { propertySymbol ->
@@ -157,36 +164,33 @@ class FirIrProvider(val fir2IrComponents: Fir2IrComponents) : IrProvider {
                 else -> {
                     val lastName = nameSegments.last()
                     firCandidates = firClass.declarations.filter { it is FirCallableDeclaration && it.symbol.name.asString() == lastName }
-                    parent = classifierStorage.getIrClassSymbol(firClass.symbol).owner
+                    parentClass = findIrClass(firClass)
                 }
             }
         }
 
-        val firDeclaration = findDeclarationByHash(firCandidates, signature.id)
-            ?: return null
+        val firDeclaration = findDeclarationByHash(firCandidates, signature.id) ?: return null
+        val parent = parentClass ?: declarationStorage.getIrExternalPackageFragment(packageFqName, firDeclaration.moduleData)
 
         return when (kind) {
-            SymbolKind.CLASS_SYMBOL -> classifierStorage.getIrClassSymbol(
-                (firDeclaration as FirRegularClass).symbol
-            ).owner
-            SymbolKind.ENUM_ENTRY_SYMBOL -> classifierStorage.getIrEnumEntry(
+            SymbolKind.CLASS_SYMBOL -> {
+                classifierStorage.getOrCreateIrClass((firDeclaration as FirRegularClass).symbol)
+            }
+            SymbolKind.ENUM_ENTRY_SYMBOL -> classifierStorage.getOrCreateIrEnumEntry(
                 firDeclaration as FirEnumEntry, parent as IrClass
             )
             SymbolKind.CONSTRUCTOR_SYMBOL -> {
-                val firConstructor = firDeclaration as FirConstructor
-                declarationStorage.getOrCreateIrConstructor(firConstructor, parent as IrClass)
+                shouldNotBeCalled()
             }
             SymbolKind.FUNCTION_SYMBOL -> {
-                val firSimpleFunction = firDeclaration as FirSimpleFunction
-                declarationStorage.getOrCreateIrFunction(firSimpleFunction, parent)
+                shouldNotBeCalled()
             }
             SymbolKind.PROPERTY_SYMBOL -> {
-                val firProperty = firDeclaration as FirProperty
-                declarationStorage.getOrCreateIrProperty(firProperty, parent)
+                shouldNotBeCalled()
             }
             SymbolKind.FIELD_SYMBOL -> {
                 val firField = firDeclaration as FirField
-                declarationStorage.getIrFieldSymbol(firField.symbol).owner
+                declarationStorage.getOrCreateIrField(firField.symbol)
             }
             else -> error("Don't know how to deal with this symbol kind: $kind")
         }
@@ -199,10 +203,10 @@ class FirIrProvider(val fir2IrComponents: Fir2IrComponents) : IrProvider {
                 candidate is FirClass || candidate is FirEnumEntry || candidate is FirTypeAlias
             } else {
                 // The next line should have singleOrNull, but in some cases we get multiple references to the same FIR declaration.
-                with(fir2IrComponents.signatureComposer.mangler) { candidate.signatureMangle(compatibleMode = false) == hash }
+                with(components.signatureComposer.mangler) { candidate.signatureMangle(compatibleMode = false) == hash }
             }
         }
 
     private val FirClass.staticScopeForCallables: FirScope?
-        get() = scopeProvider.getStaticMemberScopeForCallables(this, fir2IrComponents.session, fir2IrComponents.scopeSession)
+        get() = scopeProvider.getStaticMemberScopeForCallables(this, components.session, components.scopeSession)
 }

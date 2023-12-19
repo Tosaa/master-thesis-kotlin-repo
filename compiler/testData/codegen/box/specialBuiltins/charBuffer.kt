@@ -1,4 +1,5 @@
 // TARGET_BACKEND: JVM
+// IGNORE_CODEGEN_WITH_IR_FAKE_OVERRIDE_GENERATION: KT-63489
 // MODULE: lib
 // FILE: CharBuffer.java
 
@@ -32,6 +33,7 @@ public abstract class CharBuffer implements CharSequence {
 
 // MODULE: main(lib)
 // FILE: 1.kt
+abstract class KCB : CharBuffer()
 
 fun box(): String {
     val cb: CharBuffer = CharBuffer.impl()

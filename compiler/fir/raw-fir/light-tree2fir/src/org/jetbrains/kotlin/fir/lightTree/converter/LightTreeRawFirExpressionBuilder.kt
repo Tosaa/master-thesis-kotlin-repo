@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2022 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Copyright 2010-2023 JetBrains s.r.o. and Kotlin Programming Language contributors.
  * Use of this source code is governed by the Apache 2.0 license that can be found in the license/LICENSE.txt file.
  */
 
@@ -8,16 +8,13 @@ package org.jetbrains.kotlin.fir.lightTree.converter
 import com.intellij.lang.LighterASTNode
 import com.intellij.psi.TokenType
 import com.intellij.util.diff.FlyweightCapableTreeStructure
+import org.jetbrains.kotlin.*
 import org.jetbrains.kotlin.ElementTypeUtils.getOperationSymbol
 import org.jetbrains.kotlin.ElementTypeUtils.isExpression
-import org.jetbrains.kotlin.KtFakeSourceElementKind
-import org.jetbrains.kotlin.KtLightSourceElement
 import org.jetbrains.kotlin.KtNodeTypes.*
-import org.jetbrains.kotlin.KtSourceElement
 import org.jetbrains.kotlin.descriptors.EffectiveVisibility
 import org.jetbrains.kotlin.descriptors.Modality
 import org.jetbrains.kotlin.descriptors.Visibilities
-import org.jetbrains.kotlin.fakeElement
 import org.jetbrains.kotlin.fir.*
 import org.jetbrains.kotlin.fir.builder.*
 import org.jetbrains.kotlin.fir.declarations.FirDeclarationOrigin
@@ -35,6 +32,7 @@ import org.jetbrains.kotlin.fir.expressions.impl.FirSingleExpressionBlock
 import org.jetbrains.kotlin.fir.expressions.impl.buildSingleExpressionBlock
 import org.jetbrains.kotlin.fir.lightTree.fir.ValueParameter
 import org.jetbrains.kotlin.fir.lightTree.fir.WhenEntry
+import org.jetbrains.kotlin.fir.lightTree.fir.addDestructuringStatements
 import org.jetbrains.kotlin.fir.references.FirNamedReference
 import org.jetbrains.kotlin.fir.references.builder.buildErrorNamedReference
 import org.jetbrains.kotlin.fir.references.builder.buildExplicitSuperReference
@@ -53,6 +51,7 @@ import org.jetbrains.kotlin.psi.stubs.elements.KtConstantExpressionElementType
 import org.jetbrains.kotlin.psi.stubs.elements.KtNameReferenceExpressionElementType
 import org.jetbrains.kotlin.types.expressions.OperatorConventions
 import org.jetbrains.kotlin.util.OperatorNameConventions
+import org.jetbrains.kotlin.utils.addToStdlib.runIf
 
 class LightTreeRawFirExpressionBuilder(
     session: FirSession,
@@ -61,15 +60,41 @@ class LightTreeRawFirExpressionBuilder(
     context: Context<LighterASTNode> = Context(),
 ) : AbstractLightTreeRawFirBuilder(session, tree, context) {
 
-    inline fun <reified R : FirElement> getAsFirExpression(expression: LighterASTNode?, errorReason: String = ""): R {
+    inline fun <reified R : FirExpression> getAsFirExpression(
+        expression: LighterASTNode?,
+        errorReason: String = "",
+        sourceWhenInvalidExpression: LighterASTNode? = expression,
+        isValidExpression: (R) -> Boolean = { !it.isStatementLikeExpression },
+    ): R {
         val converted = expression?.let { convertExpression(it, errorReason) }
-        return converted as? R
-            ?: buildErrorExpression(
-                expression?.toFirSourceElement(),
+
+        return when {
+            converted is R -> when {
+                isValidExpression(converted) -> converted
+                else -> buildErrorExpression(
+                    sourceWhenInvalidExpression?.toFirSourceElement(),
+                    ConeSimpleDiagnostic(errorReason, DiagnosticKind.ExpressionExpected),
+                    converted,
+                )
+            }
+            else -> buildErrorExpression(
+                converted?.source?.realElement() ?: expression?.toFirSourceElement(),
                 if (expression == null) ConeSyntaxDiagnostic(errorReason)
                 else ConeSimpleDiagnostic(errorReason, DiagnosticKind.ExpressionExpected),
                 converted,
-            ) as R
+            )
+        } as R
+    }
+
+    fun getAsFirStatement(expression: LighterASTNode, errorReason: String = ""): FirStatement {
+        return when (val converted = convertExpression(expression, errorReason)) {
+            is FirStatement -> converted
+            else -> buildErrorExpression(
+                expression.toFirSourceElement(),
+                ConeSimpleDiagnostic(errorReason, DiagnosticKind.ExpressionExpected),
+                converted,
+            )
+        }
     }
 
     /*****    EXPRESSIONS    *****/
@@ -176,42 +201,58 @@ class LightTreeRawFirExpressionBuilder(
                         isNoinline = false
                         isVararg = false
                     }
-                    destructuringStatements += generateDestructuringBlock(
+                    destructuringStatements.addDestructuringStatements(
                         baseModuleData,
                         multiDeclaration,
                         multiParameter,
-                        tmpVariable = false
-                    ).statements
+                        tmpVariable = false,
+                        localEntries = true
+                    )
                     multiParameter
                 } else {
                     valueParameter.firValueParameter
                 }
             }
 
-            body = if (block != null) {
-                declarationBuilder.convertBlockExpressionWithoutBuilding(block!!).apply {
-                    statements.firstOrNull()?.let {
-                        if (it.isContractBlockFirCheck()) {
-                            this@buildAnonymousFunction.contractDescription = it.toLegacyRawContractDescription()
-                            statements[0] = FirContractCallBlock(it)
-                        }
-                    }
-
-                    if (statements.isEmpty()) {
-                        statements.add(
-                            buildReturnExpression {
-                                source = expressionSource.fakeElement(KtFakeSourceElementKind.ImplicitReturn.FromExpressionBody)
-                                this.target = target
-                                result = buildUnitExpression {
-                                    source = expressionSource.fakeElement(KtFakeSourceElementKind.ImplicitUnit.LambdaCoercion)
-                                }
+            body = withForcedLocalContext {
+                if (block != null) {
+                    val kind = runIf(destructuringStatements.isNotEmpty()) {
+                    KtFakeSourceElementKind.LambdaDestructuringBlock
+                }
+                val bodyBlock = declarationBuilder.convertBlockExpressionWithoutBuilding(block!!, kind).apply {
+                        statements.firstOrNull()?.let {
+                            if (it.isContractBlockFirCheck()) {
+                                this@buildAnonymousFunction.contractDescription = it.toLegacyRawContractDescription()
+                                statements[0] = FirContractCallBlock(it)
                             }
-                        )
+                        }
+
+                        if (statements.isEmpty()) {
+                            statements.add(
+                                buildReturnExpression {
+                                    source = expressionSource.fakeElement(KtFakeSourceElementKind.ImplicitReturn.FromExpressionBody)
+                                    this.target = target
+                                    result = buildUnitExpression {
+                                        source = expressionSource.fakeElement(KtFakeSourceElementKind.ImplicitUnit.LambdaCoercion)
+                                    }
+                                }
+                            )
+                        }
+                    }.build()
+
+                if (destructuringStatements.isNotEmpty()) {
+                    // Destructured variables must be in a separate block so that they can be shadowed.
+                    buildBlock {
+                        source = bodyBlock.source?.realElement()
+                        statements.addAll(destructuringStatements)
+                        statements.add(bodyBlock)
                     }
-                    statements.addAll(0, destructuringStatements)
-                }.build()
-            } else {
-                buildSingleExpressionBlock(buildErrorExpression(null, ConeSyntaxDiagnostic("Lambda has no body")))
+                } else {
+                    bodyBlock
+                }
+                } else {
+                    buildSingleExpressionBlock(buildErrorExpression(null, ConeSyntaxDiagnostic("Lambda has no body")))
+                }
             }
             context.firFunctionTargets.removeLast()
         }.also {
@@ -301,7 +342,14 @@ class LightTreeRawFirExpressionBuilder(
                     firOperation,
                     leftArgAsFir.annotations,
                     rightArg,
-                ) { getAsFirExpression(this) }
+                ) {
+                    getAsFirExpression<FirExpression>(
+                        this,
+                        "Incorrect expression in assignment: ${binaryExpression.asText}",
+                        sourceWhenInvalidExpression = binaryExpression,
+                        isValidExpression = { !it.isStatementLikeExpression || it.isArraySet },
+                    )
+                }
             } else {
                 buildEqualityOperatorCall {
                     source = binaryExpression.toFirSourceElement()
@@ -364,7 +412,7 @@ class LightTreeRawFirExpressionBuilder(
                 }
                 BLOCK -> firExpression = declarationBuilder.convertBlock(it)
                 PROPERTY -> firExpression = declarationBuilder.convertPropertyDeclaration(it)
-                else -> if (it.isExpression()) firExpression = getAsFirExpression(it)
+                else -> if (it.isExpression()) firExpression = getAsFirStatement(it)
             }
         }
 
@@ -442,7 +490,7 @@ class LightTreeRawFirExpressionBuilder(
                 BLOCK -> firExpression = declarationBuilder.convertBlockExpression(it)
                 else -> if (it.isExpression()) {
                     context.forwardLabelUsagePermission(annotatedExpression, it)
-                    firExpression = getAsFirExpression(it)
+                    firExpression = getAsFirStatement(it)
                 }
             }
         }
@@ -728,6 +776,7 @@ class LightTreeRawFirExpressionBuilder(
                         symbol = FirPropertySymbol(variable.name)
                         isLocal = true
                         status = FirDeclarationStatusImpl(Visibilities.Local, Modality.FINAL)
+                        annotations += variable.annotations
                     }
                 }
                 DESTRUCTURING_DECLARATION -> subjectExpression =
@@ -1107,18 +1156,19 @@ class LightTreeRawFirExpressionBuilder(
         val calculatedRangeExpression =
             rangeExpression ?: buildErrorExpression(null, ConeSyntaxDiagnostic("No range in for loop"))
         val fakeSource = forLoop.toFirSourceElement(KtFakeSourceElementKind.DesugaredForLoop)
+        val rangeSource = calculatedRangeExpression.source?.fakeElement(KtFakeSourceElementKind.DesugaredForLoop) ?: fakeSource
         val target: FirLoopTarget
         // NB: FirForLoopChecker relies on this block existence and structure
         return buildBlock {
             source = fakeSource
             val iteratorVal = generateTemporaryVariable(
                 baseModuleData,
-                calculatedRangeExpression.source?.fakeElement(KtFakeSourceElementKind.DesugaredForLoop),
+                rangeSource,
                 SpecialNames.ITERATOR,
                 buildFunctionCall {
-                    source = fakeSource
+                    source = rangeSource
                     calleeReference = buildSimpleNamedReference {
-                        source = fakeSource
+                        source = rangeSource
                         name = OperatorNameConventions.ITERATOR
                     }
                     explicitReceiver = calculatedRangeExpression
@@ -1128,12 +1178,12 @@ class LightTreeRawFirExpressionBuilder(
             statements += FirWhileLoopBuilder().apply {
                 source = fakeSource
                 condition = buildFunctionCall {
-                    source = fakeSource
+                    source = rangeSource
                     calleeReference = buildSimpleNamedReference {
-                        source = fakeSource
+                        source = rangeSource
                         name = OperatorNameConventions.HAS_NEXT
                     }
-                    explicitReceiver = generateResolvedAccessExpression(fakeSource, iteratorVal)
+                    explicitReceiver = generateResolvedAccessExpression(rangeSource, iteratorVal)
                 }
                 // break/continue in the for loop condition will refer to an outer loop if any.
                 // So, prepare the loop target after building the condition.
@@ -1148,23 +1198,24 @@ class LightTreeRawFirExpressionBuilder(
                         valueParameter.source,
                         if (multiDeclaration != null) SpecialNames.DESTRUCT else valueParameter.name,
                         buildFunctionCall {
-                            source = fakeSource
+                            source = rangeSource
                             calleeReference = buildSimpleNamedReference {
-                                source = fakeSource
+                                source = rangeSource
                                 name = OperatorNameConventions.NEXT
                             }
-                            explicitReceiver = generateResolvedAccessExpression(fakeSource, iteratorVal)
+                            explicitReceiver = generateResolvedAccessExpression(rangeSource, iteratorVal)
                         },
-                        valueParameter.returnTypeRef
+                        valueParameter.returnTypeRef,
+                        extractedAnnotations = valueParameter.annotations
                     )
                     if (multiDeclaration != null) {
-                        val destructuringBlock = generateDestructuringBlock(
+                        statements.addDestructuringStatements(
                             baseModuleData,
                             multiDeclaration,
                             firLoopParameter,
-                            tmpVariable = true
+                            tmpVariable = true,
+                            localEntries = true,
                         )
-                        statements.addAll(destructuringBlock.statements)
                     } else {
                         statements.add(firLoopParameter)
                     }
@@ -1192,10 +1243,10 @@ class LightTreeRawFirExpressionBuilder(
                     if (it.getChildNodeByType(BLOCK) != null) {
                         firBlock = getAsFirExpression(it)
                     } else {
-                        firStatement = getAsFirExpression(it)
+                        firStatement = getAsFirStatement(it)
                     }
                 }
-                else -> if (it.isExpression()) firStatement = getAsFirExpression(it)
+                else -> if (it.isExpression()) firStatement = getAsFirStatement(it)
             }
         }
 
@@ -1289,7 +1340,7 @@ class LightTreeRawFirExpressionBuilder(
                 with(components) {
                     val trueBranch = convertLoopBody(thenBlock)
                     branches += buildWhenBranch {
-                        source = thenBlock?.toFirSourceElement()
+                        source = firCondition?.source
                         condition = firCondition ?: buildErrorExpression(
                             null,
                             ConeSyntaxDiagnostic("If statement should have condition")

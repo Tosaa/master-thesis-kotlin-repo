@@ -13,7 +13,6 @@ enum class BooleanMetrics(val type: BooleanOverridePolicy, val anonymization: Bo
 
     // whether the build is executed from IDE or from console
     EXECUTED_FROM_IDEA(OVERRIDE, SAFE),
-
     // Build script
 
     //annotation processors
@@ -48,6 +47,12 @@ enum class BooleanMetrics(val type: BooleanOverridePolicy, val anonymization: Bo
     JS_KLIB_INCREMENTAL(OR, SAFE),
     JS_IR_INCREMENTAL(OR, SAFE),
 
+    //Build reports
+    FILE_BUILD_REPORT(OR, SAFE),
+    BUILD_SCAN_BUILD_REPORT(OR, SAFE),
+    HTTP_BUILD_REPORT(OR, SAFE),
+    SINGLE_FILE_BUILD_REPORT(OR, SAFE),
+
     //Dokka features
     ENABLED_DOKKA(OR, SAFE),
     ENABLED_DOKKA_HTML(OR, SAFE),
@@ -75,6 +80,6 @@ enum class BooleanMetrics(val type: BooleanOverridePolicy, val anonymization: Bo
     COCOAPODS_PLUGIN_ENABLED(OR, SAFE);
 
     companion object {
-        const val VERSION = 2
+        const val VERSION = 3
     }
 }

@@ -38,8 +38,8 @@ import org.jetbrains.kotlin.config.Services
 import org.jetbrains.kotlin.incremental.components.ExpectActualTracker
 import org.jetbrains.kotlin.incremental.components.LookupTracker
 import org.jetbrains.kotlin.incremental.parsing.classesFqNames
+import org.jetbrains.kotlin.incremental.storage.BasicFileToPathConverter
 import org.jetbrains.kotlin.incremental.storage.FileLocations
-import org.jetbrains.kotlin.incremental.storage.FileToAbsolutePathConverter
 import org.jetbrains.kotlin.incremental.util.BufferingMessageCollector
 import org.jetbrains.kotlin.incremental.util.ExceptionLocation
 import org.jetbrains.kotlin.incremental.util.reportException
@@ -81,7 +81,7 @@ abstract class IncrementalCompilerRunner<
     private val dirtySourcesSinceLastTimeFile = File(workingDir, DIRTY_SOURCES_FILE_NAME)
     protected val lastBuildInfoFile = File(workingDir, LAST_BUILD_INFO_FILE_NAME)
     private val abiSnapshotFile = File(workingDir, ABI_SNAPSHOT_FILE_NAME)
-    protected open val kotlinSourceFilesExtensions: List<String> = DEFAULT_KOTLIN_SOURCE_FILES_EXTENSIONS
+    protected open val kotlinSourceFilesExtensions: Set<String> = DEFAULT_KOTLIN_SOURCE_FILES_EXTENSIONS
 
     /**
      * Creates an instance of [IncrementalCompilationContext] that holds common incremental compilation context mostly required for [CacheManager]
@@ -90,8 +90,8 @@ abstract class IncrementalCompilerRunner<
         fileLocations: FileLocations?,
         transaction: CompilationTransaction,
     ) = IncrementalCompilationContext(
-        pathConverterForSourceFiles = fileLocations?.let { it.getRelocatablePathConverterForSourceFiles() } ?: FileToAbsolutePathConverter,
-        pathConverterForOutputFiles = fileLocations?.let { it.getRelocatablePathConverterForOutputFiles() } ?: FileToAbsolutePathConverter,
+        pathConverterForSourceFiles = fileLocations?.let { it.getRelocatablePathConverterForSourceFiles() } ?: BasicFileToPathConverter,
+        pathConverterForOutputFiles = fileLocations?.let { it.getRelocatablePathConverterForOutputFiles() } ?: BasicFileToPathConverter,
         transaction = transaction,
         reporter = reporter,
         trackChangesInLookupCache = shouldTrackChangesInLookupCache,
@@ -113,7 +113,7 @@ abstract class IncrementalCompilerRunner<
         changedFiles: ChangedFiles?, // When not-null, changes are provided by the build system; otherwise, the IC will need to track them
         fileLocations: FileLocations? = null, // Must be not-null if the build system needs to support build cache relocatability
     ): ExitCode = reporter.measure(GradleBuildTime.INCREMENTAL_COMPILATION_DAEMON) {
-        return when (val result = tryCompileIncrementally(allSourceFiles, changedFiles, args, fileLocations, messageCollector)) {
+        val result = when (val result = tryCompileIncrementally(allSourceFiles, changedFiles, args, fileLocations, messageCollector)) {
             is ICResult.Completed -> {
                 reporter.debug { "Incremental compilation completed" }
                 result.exitCode
@@ -146,6 +146,8 @@ abstract class IncrementalCompilerRunner<
                 )
             }
         }
+        collectSizeMetrics()
+        return result
     }
 
     /** The result when attempting to compile incrementally ([tryCompileIncrementally]). */
@@ -411,17 +413,17 @@ abstract class IncrementalCompilerRunner<
 
     protected open fun performWorkBeforeCompilation(compilationMode: CompilationMode, args: Args) {}
 
-    protected open fun performWorkAfterCompilation(compilationMode: CompilationMode, exitCode: ExitCode, caches: CacheManager) {
-        collectMetrics()
-    }
+    protected open fun performWorkAfterCompilation(compilationMode: CompilationMode, exitCode: ExitCode, caches: CacheManager) {}
 
-    private fun collectMetrics() {
+    private fun collectSizeMetrics() {
         reporter.measure(GradleBuildTime.CALCULATE_OUTPUT_SIZE) {
             reporter.addMetric(
                 GradleBuildPerformanceMetric.SNAPSHOT_SIZE,
                 (buildHistoryFile?.length() ?: 0) + lastBuildInfoFile.length() + abiSnapshotFile.length()
             )
-            reporter.addMetric(GradleBuildPerformanceMetric.CACHE_DIRECTORY_SIZE, cacheDirectory.walk().sumOf { it.length() })
+            reporter.addMetric(
+                GradleBuildPerformanceMetric.CACHE_DIRECTORY_SIZE,
+                cacheDirectory.walk().filter { it.isFile }.sumOf { it.length() })
         }
     }
 
@@ -662,4 +664,24 @@ abstract class IncrementalCompilerRunner<
             }
         }
     }
+}
+
+@Deprecated("Temporary function to reuse the logic. KT-62759")
+fun extractKotlinSourcesFromFreeCompilerArguments(
+    compilerArguments: CommonCompilerArguments,
+    kotlinFilenameExtensions: Set<String>,
+): List<File> {
+    val dotExtensions = kotlinFilenameExtensions.map { ".$it" }
+    val freeArgs = arrayListOf<String>()
+    val allKotlinFiles = arrayListOf<File>()
+    for (arg in compilerArguments.freeArgs) {
+        val file = File(arg)
+        if (file.isFile && dotExtensions.any { ext -> file.path.endsWith(ext, ignoreCase = true) }) {
+            allKotlinFiles.add(file)
+        } else {
+            freeArgs.add(arg)
+        }
+    }
+    compilerArguments.freeArgs = freeArgs
+    return allKotlinFiles
 }

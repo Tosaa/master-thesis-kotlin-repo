@@ -11,15 +11,14 @@ import org.gradle.api.logging.configuration.WarningMode
 import org.gradle.internal.logging.LoggingConfigurationBuildOptions.StacktraceOption
 import org.gradle.tooling.GradleConnector
 import org.gradle.util.GradleVersion
-import org.jetbrains.kotlin.cli.common.CompilerSystemProperties.COMPILE_INCREMENTAL_WITH_ARTIFACT_TRANSFORM
 import org.jetbrains.kotlin.gradle.model.ModelContainer
 import org.jetbrains.kotlin.gradle.model.ModelFetcherBuildAction
 import org.jetbrains.kotlin.gradle.report.BuildReportType
 import org.jetbrains.kotlin.gradle.testbase.*
 import org.jetbrains.kotlin.gradle.util.*
-import org.jetbrains.kotlin.gradle.util.modify
 import org.jetbrains.kotlin.konan.target.HostManager
 import org.jetbrains.kotlin.konan.target.KonanTarget
+import org.jetbrains.kotlin.konan.target.presetName
 import org.jetbrains.kotlin.test.RunnerWithMuteInDatabase
 import org.junit.After
 import org.junit.AfterClass
@@ -33,7 +32,6 @@ import java.nio.file.Paths
 import java.util.*
 import java.util.regex.Pattern
 import javax.xml.parsers.DocumentBuilderFactory
-import kotlin.collections.HashSet
 import kotlin.io.path.absolutePathString
 import kotlin.io.path.isDirectory
 import kotlin.test.*
@@ -45,23 +43,12 @@ abstract class BaseGradleIT {
 
     protected var workingDir = File(".")
 
-    internal open fun defaultBuildOptions(): BuildOptions = BuildOptions(
-        withDaemon = true,
-        enableKpmModelMapping = isKpmModelMappingEnabled
-    )
+    internal open fun defaultBuildOptions(): BuildOptions = BuildOptions(withDaemon = true)
 
     open val defaultGradleVersion: GradleVersionRequired
         get() = GradleVersionRequired.None
 
     val isTeamCityRun = System.getenv("TEAMCITY_VERSION") != null
-
-    /**
-     * `var` makes it configurable per test
-     * `open` makes it configurable per test suite
-     */
-    protected open var isKpmModelMappingEnabled = System
-        .getProperty("kotlin.gradle.kpm.enableModelMapping")
-        .toBoolean()
 
     @Before
     open fun setUp() {
@@ -280,7 +267,6 @@ abstract class BaseGradleIT {
         val dryRun: Boolean = false,
         val abiSnapshot: Boolean = false,
         val hierarchicalMPPStructureSupport: Boolean? = null,
-        val enableCompatibilityMetadataVariant: Boolean? = null,
         val withReports: List<BuildReportType> = emptyList(),
         val enableKpmModelMapping: Boolean? = null,
         val useDaemonFallbackStrategy: Boolean? = null,
@@ -288,6 +274,8 @@ abstract class BaseGradleIT {
         val showDiagnosticsStacktrace: Boolean? = false, // false by default to not clutter the testdata + stacktraces change often
         val stacktraceMode: String? = StacktraceOption.FULL_STACKTRACE_LONG_OPTION,
         val konanDataDir: Path = konanDir,
+        // TODO(Dmitrii Krasnov): we can remove this, when downloading konan from maven local will be possible KT-63198
+        val distributionDownloadFromMaven: Boolean? = false,
     ) {
         val safeAndroidGradlePluginVersion: AGPVersion
             get() = androidGradlePluginVersion ?: error("AGP version is expected to be set")
@@ -861,6 +849,68 @@ abstract class BaseGradleIT {
         assertEquals(expectedTestResults, actualTestResults)
     }
 
+    /**
+     * Filter output for specific task with given [taskPath]
+     *
+     * Requires using [LogLevel.DEBUG].
+     */
+    fun CompiledProject.getOutputForTask(taskPath: String): String = getOutputForTask(taskPath, output)
+
+    fun CompiledProject.withNativeCommandLineArguments(
+        vararg taskPaths: String,
+        toolName: NativeToolKind = NativeToolKind.KONANC,
+        check: (List<String>) -> Unit,
+    ) = taskPaths.forEach { taskPath -> check(extractNativeCompilerCommandLineArguments(getOutputForTask(taskPath), toolName)) }
+
+    internal fun transformNativeTestProject(
+        projectName: String,
+        wrapperVersion: GradleVersionRequired = defaultGradleVersion,
+        directoryPrefix: String? = null,
+    ): BaseGradleIT.Project {
+        val project = Project(projectName, wrapperVersion, directoryPrefix = directoryPrefix)
+        project.setupWorkingDir()
+        project.configureSingleNativeTarget()
+        project.gradleProperties().apply {
+            configureJvmMemory()
+            disableKotlinNativeCaches()
+        }
+        return project
+    }
+
+    internal fun transformNativeTestProjectWithPluginDsl(
+        projectName: String,
+        wrapperVersion: GradleVersionRequired = defaultGradleVersion,
+        directoryPrefix: String? = null,
+    ): BaseGradleIT.Project {
+        val project = transformProjectWithPluginsDsl(projectName, wrapperVersion, directoryPrefix = directoryPrefix)
+        project.configureSingleNativeTarget()
+        project.gradleProperties().apply {
+            configureJvmMemory()
+            disableKotlinNativeCaches()
+        }
+        return project
+    }
+
+    internal fun File.configureJvmMemory() {
+        appendText("\norg.gradle.jvmargs=-Xmx1g\n")
+    }
+
+    internal fun File.disableKotlinNativeCaches() {
+        appendText("\nkotlin.native.cacheKind=none\n")
+    }
+
+    private val SINGLE_NATIVE_TARGET_PLACEHOLDER = "<SingleNativeTarget>"
+
+    private fun Project.configureSingleNativeTarget(preset: String = HostManager.host.presetName) {
+        projectDir.walk()
+            .filter { it.isFile && (it.name == "build.gradle.kts" || it.name == "build.gradle") }
+            .forEach { file ->
+                file.modify {
+                    it.replace(SINGLE_NATIVE_TARGET_PLACEHOLDER, preset)
+                }
+            }
+    }
+
     private fun Project.createGradleTailParameters(options: BuildOptions, params: Array<out String> = arrayOf()): List<String> =
         params.toMutableList().apply {
             when (minLogLevel) {
@@ -885,7 +935,7 @@ abstract class BaseGradleIT {
             options.incrementalJs?.let { add("-Pkotlin.incremental.js=$it") }
             options.incrementalJsKlib?.let { add("-Pkotlin.incremental.js.klib=$it") }
             options.usePreciseJavaTracking?.let { add("-Pkotlin.incremental.usePreciseJavaTracking=$it") }
-            options.useClasspathSnapshot?.let { add("-P${COMPILE_INCREMENTAL_WITH_ARTIFACT_TRANSFORM.property}=$it") }
+            options.useClasspathSnapshot?.let { add("-Pkotlin.incremental.useClasspathSnapshot=$it") }
             options.androidGradlePluginVersion?.let { add("-Pandroid_tools_version=$it") }
             if (options.debug) {
                 add("-Dorg.gradle.debug=true")
@@ -926,16 +976,8 @@ abstract class BaseGradleIT {
                 add("-Pkotlin.mpp.hierarchicalStructureSupport=${options.hierarchicalMPPStructureSupport}")
             }
 
-            if (options.enableCompatibilityMetadataVariant != null) {
-                add("-Pkotlin.mpp.enableCompatibilityMetadataVariant=${options.enableCompatibilityMetadataVariant}")
-            }
-
             if (options.withReports.isNotEmpty()) {
                 add("-Pkotlin.build.report.output=${options.withReports.joinToString { it.name }}")
-            }
-
-            if (options.enableKpmModelMapping != null) {
-                add("-Pkotlin.kpm.experimentalModelMapping=${options.enableKpmModelMapping}")
             }
 
             options.useDaemonFallbackStrategy?.let { add("-Pkotlin.daemon.useFallbackStrategy=$it") }
@@ -957,11 +999,15 @@ abstract class BaseGradleIT {
 
             // temporary suppression for the usage of deprecated pre-HMPP properties.
             // Should be removed together with the flags support in 2.0
-            if (options.hierarchicalMPPStructureSupport != null || options.enableCompatibilityMetadataVariant != null) {
+            if (options.hierarchicalMPPStructureSupport != null) {
                 add("-Pkotlin.internal.suppressGradlePluginErrors=PreHMPPFlagsError")
             }
 
-            add("-Pkonan.data.dir=${options.konanDataDir.toAbsolutePath().normalize()}")
+            add("-Pkonan.data.dir=${options.konanDataDir.absolutePathString().normalize()}")
+
+            options.distributionDownloadFromMaven?.let {
+                add("-Pkotlin.native.distribution.downloadFromMaven=${it}")
+            }
 
             // Workaround: override a console type set in the user machine gradle.properties (since Gradle 4.3):
             add("--console=plain")

@@ -13,8 +13,9 @@ internal fun Class<*>.getMetadata(): Metadata {
 }
 
 internal fun Metadata.readAsKmClass(): KmClass {
-    val clazz = KotlinClassMetadata.read(this) as? KotlinClassMetadata.Class
+    val clazz = KotlinClassMetadata.readStrict(this) as? KotlinClassMetadata.Class
     return clazz?.kmClass ?: error("Not a KotlinClassMetadata.Class: $clazz")
 }
 
 internal fun Class<*>.readMetadataAsKmClass(): KmClass = getMetadata().readAsKmClass()
+internal fun Class<*>.readMetadataAsClass(): KotlinClassMetadata.Class = KotlinClassMetadata.readStrict(getMetadata()) as KotlinClassMetadata.Class

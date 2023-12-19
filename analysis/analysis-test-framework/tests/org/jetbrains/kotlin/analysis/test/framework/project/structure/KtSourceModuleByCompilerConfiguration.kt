@@ -10,6 +10,7 @@ import com.intellij.psi.PsiFile
 import com.intellij.psi.search.GlobalSearchScope
 import org.jetbrains.kotlin.analysis.api.standalone.base.project.structure.StandaloneProjectFactory
 import org.jetbrains.kotlin.analysis.project.structure.*
+import org.jetbrains.kotlin.analysis.test.framework.services.environmentManager
 import org.jetbrains.kotlin.cli.jvm.compiler.TopDownAnalyzerFacadeForJVM
 import org.jetbrains.kotlin.cli.jvm.config.jvmClasspathRoots
 import org.jetbrains.kotlin.cli.jvm.config.jvmModularRoots
@@ -17,8 +18,10 @@ import org.jetbrains.kotlin.config.JVMConfigurationKeys
 import org.jetbrains.kotlin.config.LanguageVersionSettings
 import org.jetbrains.kotlin.platform.TargetPlatform
 import org.jetbrains.kotlin.platform.jvm.JvmPlatforms
+import org.jetbrains.kotlin.platform.konan.isNative
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.resolve.PlatformDependentAnalyzerServices
+import org.jetbrains.kotlin.test.frontend.fir.getAllNativeDependenciesPaths
 import org.jetbrains.kotlin.test.getAnalyzerServices
 import org.jetbrains.kotlin.test.model.TestModule
 import org.jetbrains.kotlin.test.services.TestServices
@@ -45,18 +48,33 @@ abstract class KtModuleByCompilerConfiguration(
     val directRegularDependencies: List<KtModule> by lazy(LazyThreadSafetyMode.PUBLICATION) {
         buildList {
             testModule.allDependencies.mapTo(this) { moduleProvider.getModule(it.moduleName) }
-            val roots = buildList {
-                addAll(configuration.jvmModularRoots.map(File::toPath))
-                addAll(configuration.jvmClasspathRoots.map(File::toPath))
+            addAll(computeLibraryDependencies())
+        }
+    }
+
+    private fun computeLibraryDependencies(): List<KtBinaryModule> {
+        val targetPlatform = testModule.targetPlatform
+        return when {
+            targetPlatform.isNative() -> {
+                librariesByRoots(getAllNativeDependenciesPaths(testModule, testServices).map { Paths.get(it) })
             }
-            addAll(librariesByRoots(roots))
-            addIfNotNull(createJdkFromConfiguration())
+            else -> buildList {
+                val roots = buildList {
+                    addAll(configuration.jvmModularRoots.map(File::toPath))
+                    addAll(configuration.jvmClasspathRoots.map(File::toPath))
+                }
+                addAll(librariesByRoots(roots))
+                addIfNotNull(createJdkFromConfiguration())
+            }
         }
     }
 
     private fun createJdkFromConfiguration(): KtSdkModule? = configuration.get(JVMConfigurationKeys.JDK_HOME)?.let { jdkHome ->
         val jdkHomePaths = StandaloneProjectFactory.getDefaultJdkModulePaths(project, jdkHome.toPath())
-        val scope = TestModuleStructureFactory.getScopeForLibraryByRoots(jdkHomePaths, project, testServices)
+        val scope = StandaloneProjectFactory.createSearchScopeByLibraryRoots(
+            jdkHomePaths,
+            testServices.environmentManager.getProjectEnvironment()
+        )
 
         KtJdkModuleImpl(
             "jdk",
@@ -86,7 +104,7 @@ abstract class KtModuleByCompilerConfiguration(
 
     protected abstract val ktModule: KtModule
 
-    private fun librariesByRoots(roots: List<Path>): List<LibraryByRoot> = roots.map { LibraryByRoot(it, ktModule, project, testServices) }
+    private fun librariesByRoots(roots: List<Path>): List<LibraryByRoots> = roots.map { LibraryByRoots(listOf(it), ktModule, project, testServices) }
 
     val languageVersionSettings: LanguageVersionSettings
         get() = testModule.languageVersionSettings
@@ -108,6 +126,16 @@ class KtSourceModuleByCompilerConfiguration(
 
     override val contentScope: GlobalSearchScope =
         TopDownAnalyzerFacadeForJVM.newModuleSearchScope(project, psiFiles.filterIsInstance<KtFile>())
+}
+
+class KtScriptModuleByCompilerConfiguration(
+    project: Project,
+    testModule: TestModule,
+    override val file: KtFile,
+    testServices: TestServices,
+) : KtModuleByCompilerConfiguration(project, testModule, listOf(file), testServices), KtScriptModule {
+    override val ktModule: KtModule get() = this
+    override val contentScope: GlobalSearchScope get() = GlobalSearchScope.fileScope(file)
 }
 
 class KtLibraryModuleByCompilerConfiguration(
@@ -140,33 +168,36 @@ class KtLibrarySourceModuleByCompilerConfiguration(
     override val libraryName: String get() = testModule.name
 }
 
-private class LibraryByRoot(
-    private val root: Path,
+private class LibraryByRoots(
+    private val roots: List<Path>,
     private val parentModule: KtModule,
     override val project: Project,
     testServices: TestServices,
 ) : KtLibraryModule {
-    override val contentScope: GlobalSearchScope = TestModuleStructureFactory.getScopeForLibraryByRoots(listOf(root), project, testServices)
-    override val libraryName: String get() = "Test Library $root"
+    override val contentScope: GlobalSearchScope = StandaloneProjectFactory.createSearchScopeByLibraryRoots(
+        roots,
+        testServices.environmentManager.getProjectEnvironment(),
+    )
+    override val libraryName: String get() = "Test Library $roots"
     override val directRegularDependencies: List<KtModule> get() = emptyList()
     override val directDependsOnDependencies: List<KtModule> get() = emptyList()
     override val transitiveDependsOnDependencies: List<KtModule> get() = emptyList()
     override val directFriendDependencies: List<KtModule> get() = emptyList()
     override val platform: TargetPlatform get() = parentModule.platform
     override val analyzerServices: PlatformDependentAnalyzerServices get() = parentModule.analyzerServices
-    override fun getBinaryRoots(): Collection<Path> = listOf(root)
+    override fun getBinaryRoots(): Collection<Path> = roots
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (javaClass != other?.javaClass) return false
 
-        other as LibraryByRoot
+        other as LibraryByRoots
 
-        return root == other.root
+        return roots == other.roots
     }
 
     override fun hashCode(): Int {
-        return root.hashCode()
+        return roots.hashCode()
     }
 
     override val librarySources: KtLibrarySourceModule? get() = null

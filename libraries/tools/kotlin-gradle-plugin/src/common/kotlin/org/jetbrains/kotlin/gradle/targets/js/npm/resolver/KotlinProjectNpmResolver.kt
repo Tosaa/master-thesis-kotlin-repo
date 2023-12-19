@@ -13,8 +13,7 @@ import org.jetbrains.kotlin.gradle.dsl.KotlinSingleTargetExtension
 import org.jetbrains.kotlin.gradle.dsl.kotlinExtensionOrNull
 import org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType
 import org.jetbrains.kotlin.gradle.plugin.KotlinTarget
-import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinJsCompilation
-import org.jetbrains.kotlin.gradle.targets.js.KotlinJsTarget
+import org.jetbrains.kotlin.gradle.targets.js.ir.KotlinJsIrCompilation
 import org.jetbrains.kotlin.gradle.targets.js.npm.KotlinNpmResolutionManager
 import org.jetbrains.kotlin.gradle.targets.js.npm.resolved.KotlinProjectNpmResolution
 import java.io.Serializable
@@ -31,7 +30,7 @@ class KotlinProjectNpmResolver(
 
     private val byCompilation = mutableMapOf<String, KotlinCompilationNpmResolver>()
 
-    operator fun get(compilation: KotlinJsCompilation): KotlinCompilationNpmResolver {
+    operator fun get(compilation: KotlinJsIrCompilation): KotlinCompilationNpmResolver {
         return byCompilation[compilation.disambiguatedName] ?: error("$compilation was not registered in $this")
     }
 
@@ -68,25 +67,16 @@ class KotlinProjectNpmResolver(
             target.platformType == KotlinPlatformType.wasm
         ) {
             target.compilations.all { compilation ->
-                if (compilation is KotlinJsCompilation) {
+                if (compilation is KotlinJsIrCompilation) {
                     // compilation may be KotlinWithJavaTarget for old Kotlin2JsPlugin
                     addCompilation(compilation)
-                }
-            }
-
-            // Hack for mixed mode, when target is JS and contain JS-IR
-            if (target is KotlinJsTarget) {
-                target.irTarget?.compilations?.all { compilation ->
-                    if (compilation is KotlinJsCompilation) {
-                        addCompilation(compilation)
-                    }
                 }
             }
         }
     }
 
     @Synchronized
-    private fun addCompilation(compilation: KotlinJsCompilation) {
+    private fun addCompilation(compilation: KotlinJsIrCompilation) {
         check(resolution == null) { resolver.alreadyResolvedMessage("add compilation $compilation") }
 
         byCompilation[compilation.disambiguatedName] =

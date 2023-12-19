@@ -9,27 +9,28 @@ import org.jetbrains.kotlin.KtFakeSourceElementKind
 import org.jetbrains.kotlin.diagnostics.DiagnosticReporter
 import org.jetbrains.kotlin.diagnostics.reportOn
 import org.jetbrains.kotlin.fir.analysis.checkers.context.CheckerContext
+import org.jetbrains.kotlin.fir.analysis.checkers.hasDiagnosticKind
 import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors
-import org.jetbrains.kotlin.fir.diagnostics.ConeSimpleDiagnostic
 import org.jetbrains.kotlin.fir.diagnostics.DiagnosticKind
 import org.jetbrains.kotlin.fir.expressions.FirExpression
+import org.jetbrains.kotlin.fir.expressions.FirLambdaArgumentExpression
 import org.jetbrains.kotlin.fir.expressions.FirStatement
-import org.jetbrains.kotlin.fir.expressions.impl.FirNoReceiverExpression
 import org.jetbrains.kotlin.fir.types.*
+import org.jetbrains.kotlin.psi.KtLambdaArgument
 
 object FirRecursiveProblemChecker : FirBasicExpressionChecker() {
     override fun check(expression: FirStatement, context: CheckerContext, reporter: DiagnosticReporter) {
         if (
             expression !is FirExpression ||
-            expression.source?.kind is KtFakeSourceElementKind ||
-            expression.isExpressionWithAlwaysImplicitTypeRef
+            expression.source?.kind is KtFakeSourceElementKind
         ) {
             return
         }
 
         fun checkConeType(coneType: ConeKotlinType?) {
-            if (coneType is ConeErrorType && (coneType.diagnostic as? ConeSimpleDiagnostic)?.kind == DiagnosticKind.RecursionInImplicitTypes) {
-                reporter.reportOn(expression.source, FirErrors.TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM, context)
+            if (coneType?.hasDiagnosticKind(DiagnosticKind.RecursionInImplicitTypes) == true) {
+                val source = ((expression as? FirLambdaArgumentExpression)?.expression ?: expression).source
+                reporter.reportOn(source, FirErrors.TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM, context)
             } else if (coneType is ConeClassLikeType) {
                 for (typeArgument in coneType.typeArguments) {
                     checkConeType(typeArgument.type)
@@ -37,8 +38,6 @@ object FirRecursiveProblemChecker : FirBasicExpressionChecker() {
             }
         }
 
-        checkConeType(expression.typeRef.coneType)
+        checkConeType(expression.resolvedType)
     }
-
-    private val FirStatement.isExpressionWithAlwaysImplicitTypeRef get() = this is FirNoReceiverExpression
 }

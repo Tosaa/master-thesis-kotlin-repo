@@ -26,6 +26,7 @@ import org.jetbrains.kotlin.fir.resolve.providers.FirSymbolProvider
 import org.jetbrains.kotlin.fir.resolve.providers.FirSymbolProviderInternals
 import org.jetbrains.kotlin.fir.scopes.FirKotlinScopeProvider
 import org.jetbrains.kotlin.fir.symbols.impl.*
+import org.jetbrains.kotlin.fir.types.ConeTypeProjection
 import org.jetbrains.kotlin.fir.types.builder.buildResolvedTypeRef
 import org.jetbrains.kotlin.fir.types.constructClassType
 import org.jetbrains.kotlin.fir.types.toLookupTag
@@ -61,11 +62,11 @@ class NativeForwardDeclarationsSymbolProvider(
         }
     }
 
-    private val includedForwardDeclarationsByPackage: Map<FqName, Set<String>> by lazy {
-        buildMap<FqName, MutableSet<String>> {
+    private val includedForwardDeclarationsByPackage: Map<FqName, Set<Name>> by lazy {
+        buildMap<FqName, MutableSet<Name>> {
             for (classId in includedForwardDeclarations) {
                 getOrPut(classId.packageFqName) { mutableSetOf() }
-                    .add(classId.shortClassName.asString())
+                    .add(classId.shortClassName)
             }
         }
     }
@@ -125,7 +126,7 @@ class NativeForwardDeclarationsSymbolProvider(
                         NativeStandardInteropNames.ExperimentalForeignApi
                     )
                     type = annotationClassId.toLookupTag()
-                        .constructClassType(typeArguments = emptyArray(), isNullable = false)
+                        .constructClassType(typeArguments = ConeTypeProjection.EMPTY_ARRAY, isNullable = false)
                 }
                 argumentMapping = FirEmptyAnnotationArgumentMapping
             }
@@ -156,7 +157,7 @@ class NativeForwardDeclarationsSymbolProvider(
     }
 
     override val symbolNamesProvider: FirSymbolNamesProvider = object : FirSymbolNamesProviderWithoutCallables() {
-        override fun getTopLevelClassifierNamesInPackage(packageFqName: FqName): Set<String> =
+        override fun getTopLevelClassifierNamesInPackage(packageFqName: FqName): Set<Name> =
             includedForwardDeclarationsByPackage[packageFqName].orEmpty()
     }
 }

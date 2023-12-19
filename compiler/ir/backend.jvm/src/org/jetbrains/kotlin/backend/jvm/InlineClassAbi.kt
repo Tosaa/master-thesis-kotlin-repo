@@ -33,7 +33,7 @@ object InlineClassAbi {
      * perform inline class mangling and so in the absence of jvm signatures in the metadata we need to avoid
      * inline class mangling as well in the function references used as arguments to the signature string intrinsic.
      */
-    object UNMANGLED_FUNCTION_REFERENCE : IrStatementOriginImpl("UNMANGLED_FUNCTION_REFERENCE")
+    val UNMANGLED_FUNCTION_REFERENCE by IrStatementOriginImpl
 
     /**
      * Unwraps inline class types to their underlying representation.
@@ -134,7 +134,7 @@ object InlineClassAbi {
 
 fun IrType.getRequiresMangling(includeInline: Boolean = true, includeMFVC: Boolean = true): Boolean {
     val irClass = erasedUpperBound
-    return irClass.fqNameWhenAvailable != StandardNames.RESULT_FQ_NAME && when {
+    return !irClass.isClassWithFqName(StandardNames.RESULT_FQ_NAME) && when {
         irClass.isSingleFieldValueClass -> includeInline
         irClass.isMultiFieldValueClass -> includeMFVC
         else -> false

@@ -8,7 +8,6 @@ package org.jetbrains.kotlin.gradle
 import org.gradle.util.GradleVersion
 import org.jetbrains.kotlin.gradle.util.*
 import org.junit.Test
-import java.io.File
 import kotlin.test.assertTrue
 
 class VariantAwareDependenciesMppIT : BaseGradleIT() {
@@ -171,78 +170,6 @@ class VariantAwareDependenciesMppIT : BaseGradleIT() {
     }
 
     @Test
-    fun testKtAppResolvesOldMpp() {
-        val outerProject = Project("multiplatformProject")
-        val innerJvmProject = Project("simpleProject")
-
-        with(outerProject) {
-            embedProject(innerJvmProject)
-
-            listOf(innerJvmProject to ":libJvm").forEach { (project, dependency) ->
-                gradleBuildScript(project.projectName).appendText(
-                    "\n" + """
-                        dependencies {
-                            implementation project('$dependency')
-                            implementation project(':lib')
-                        }
-                    """.trimIndent()
-                )
-
-                testResolveAllConfigurations(project.projectName)
-            }
-        }
-    }
-
-    @Test
-    fun testResolvesOldKotlinArtifactsPublishedWithMetadata() = with(Project("multiplatformProject", gradleVersion)) {
-        setupWorkingDir()
-        gradleBuildScript().appendText(
-            "\n" + """
-                configure([project(':lib'), project(':libJvm')]) {
-                    group 'com.example.oldmpp'
-                    version '1.0'
-                    apply plugin: 'maven-publish'
-                    afterEvaluate {
-                        publishing {
-                            repositories { maven { url "file://${'$'}{rootDir.absolutePath.replace('\\', '/')}/repo" } }
-                            publications { kotlin(MavenPublication) { from(components.java) } }
-                        }
-                    }
-                }
-            """.trimIndent()
-        )
-        build("publish") { assertSuccessful() }
-
-        gradleBuildScript().modify {
-            it.replace("'com.example.oldmpp'", "'com.example.consumer'") +
-                    "\nsubprojects { repositories { maven { url \"file://${'$'}{rootDir.absolutePath.replace('\\\\', '/')}/repo\" } } }"
-        }
-
-        gradleBuildScript("lib").appendText("\ndependencies { implementation 'com.example.oldmpp:lib:1.0' }")
-        testResolveAllConfigurations("lib")
-
-        gradleBuildScript("libJvm").appendText("\ndependencies { implementation 'com.example.oldmpp:libJvm:1.0' }")
-        testResolveAllConfigurations("libJvm")
-
-        embedProject(Project("sample-lib", directoryPrefix = "new-mpp-lib-and-app"))
-        gradleBuildScript("sample-lib").appendText(
-            "\n" + """
-            dependencies {
-                commonMainApi 'com.example.oldmpp:lib:1.0'
-                jvm6MainApi 'com.example.oldmpp:libJvm:1.0'
-            }
-        """.trimIndent()
-        )
-
-        build(
-            "assemble",
-            projectDir = File(workingDir, "sample-lib"),
-        ) {
-            assertSuccessful()
-        }
-    }
-
-    @Test
     fun testJvmWithJavaProjectCanBeResolvedInAllConfigurations() =
         with(Project("new-mpp-jvm-with-java-multi-module", GradleVersionRequired.FOR_MPP_SUPPORT)) {
             testResolveAllConfigurations("app")
@@ -328,40 +255,6 @@ class VariantAwareDependenciesMppIT : BaseGradleIT() {
             assertTrue(items.toString()) { items.any { "atomicfu-jvm" in it } }
         }
     }
-
-    @Test
-    fun testResolveCompatibilityMetadataVariantWithNative() = with(Project("native-libraries")) {
-        setupWorkingDir()
-        val nestedProjectName = "nested"
-        embedProject(Project("native-libraries"), nestedProjectName)
-
-        projectDir.resolve("gradle.properties").appendText(
-            "\n" + """
-                kotlin.mpp.enableCompatibilityMetadataVariant=true
-                kotlin.internal.suppressGradlePluginErrors=PreHMPPFlagsError
-            """
-        )
-
-        val resolveConfigurationTaskName = "resolveConfiguration"
-        val marker = "###=>"
-
-        gradleBuildScript().appendText(
-            "\n" + """
-                dependencies { "commonMainImplementation"(project(":$nestedProjectName")) }
-                tasks.create("$resolveConfigurationTaskName") {
-                    doFirst {
-                        println("$marker" + configurations.getByName("metadataCompileClasspath").toList())
-                    }
-                }
-            """
-        )
-        build(resolveConfigurationTaskName) {
-            assertSuccessful()
-            val output = output.lines().single { marker in it }.substringAfter(marker).removeSurrounding("[", "]").split(",")
-            assertTrue { output.any { "$nestedProjectName-1.0.jar" in it } }
-        }
-    }
-
 }
 
 internal fun BaseGradleIT.Project.embedProject(other: BaseGradleIT.Project, renameTo: String? = null) {

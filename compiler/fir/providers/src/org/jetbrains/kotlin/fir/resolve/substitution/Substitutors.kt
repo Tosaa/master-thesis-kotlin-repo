@@ -53,16 +53,31 @@ abstract class AbstractConeSubstitutor(protected val typeContext: ConeTypeContex
 
     override fun substituteOrNull(type: ConeKotlinType): ConeKotlinType? {
         val newType = substituteType(type)
+
         if (newType != null && type is ConeDefinitelyNotNullType) {
             return newType.makeConeTypeDefinitelyNotNullOrNotNull(typeContext, avoidComprehensiveCheck = false)
         }
-        return (newType ?: type.substituteRecursive())
+
+        val substitutedType = newType ?: type.substituteRecursive()
+        val substitutedAttributes = (substitutedType ?: type).attributes.transformTypesWith(this::substituteOrNull)
+
+        return if (substitutedType != null || substitutedAttributes != null) {
+            var result = substitutedType ?: type
+
+            if (substitutedAttributes != null) {
+                result = result.withAttributes(substitutedAttributes)
+            }
+
+            result
+        } else {
+            null
+        }
     }
 
     private fun ConeKotlinType.substituteRecursive(): ConeKotlinType? {
         return when (this) {
             is ConeClassLikeType -> this.substituteArguments()
-            is ConeLookupTagBasedType -> return null
+            is ConeLookupTagBasedType, is ConeTypeVariableType -> return null
             is ConeFlexibleType -> this.substituteBounds()?.let {
                 // TODO: may be (?) it's worth adding regular type comparison via AbstractTypeChecker
                 // However, the simplified check here should be enough for typical flexible types
@@ -79,10 +94,22 @@ abstract class AbstractConeSubstitutor(protected val typeContext: ConeTypeContex
 
     private fun ConeCapturedType.substituteCapturedType(): ConeCapturedType? {
         val innerType = this.lowerType ?: this.constructor.projection.type
+        // TODO(KT-64024): This early return looks suspicious.
+        //  In fact, if the inner type wasn't substituted we will ignore potential substitution in
+        //  super types
         val substitutedInnerType = substituteOrNull(innerType) ?: return null
         if (substitutedInnerType is ConeCapturedType) return substitutedInnerType
         val substitutedSuperTypes =
             this.constructor.supertypes?.map { substituteOrSelf(it) }
+
+        // TODO(KT-64027): Creation of new captured types creates unexpected behavior by breaking substitution consistency.
+        //  E.g:
+        //  ```
+        //   substitution = { A => B }
+        //   substituteOrSelf(C<CapturedType(out A)_0>) -> C<CapturedType(out B)_1>
+        //   substituteOrSelf(C<CapturedType(out A)_0>) -> C<CapturedType(out B)_2>
+        //   C<CapturedType(out B)_1> <!:> C<CapturedType(out B)_2>
+        //  ```
 
         return ConeCapturedType(
             captureStatus,
@@ -133,7 +160,7 @@ abstract class AbstractConeSubstitutor(protected val typeContext: ConeTypeContex
         return null
     }
 
-    private fun ConeClassLikeType.substituteArguments(): ConeKotlinType? {
+    private fun ConeSimpleKotlinType.substituteArguments(): ConeKotlinType? {
         val newArguments by lazy { arrayOfNulls<ConeTypeProjection>(typeArguments.size) }
         var initialized = false
 
@@ -183,7 +210,7 @@ fun substitutorByMap(substitution: Map<FirTypeParameterSymbol, ConeKotlinType>, 
     return ConeSubstitutorByMap(substitution, useSiteSession)
 }
 
-data class ChainedSubstitutor(private val first: ConeSubstitutor, private val second: ConeSubstitutor) : ConeSubstitutor() {
+data class ChainedSubstitutor(val first: ConeSubstitutor, val second: ConeSubstitutor) : ConeSubstitutor() {
     override fun substituteOrNull(type: ConeKotlinType): ConeKotlinType? {
         first.substituteOrNull(type)?.let { return second.substituteOrSelf(it) }
         return second.substituteOrNull(type)
@@ -302,7 +329,7 @@ internal class ConeTypeSubstitutorByTypeConstructor(
     private val approximateIntegerLiterals: Boolean
 ) : AbstractConeSubstitutor(typeContext), TypeSubstitutorMarker {
     override fun substituteType(type: ConeKotlinType): ConeKotlinType? {
-        if (type !is ConeLookupTagBasedType && type !is ConeStubType) return null
+        if (type !is ConeLookupTagBasedType && type !is ConeStubType && type !is ConeTypeVariableType) return null
         val new = map[type.typeConstructor(typeContext)] ?: return null
         val approximatedIntegerLiteralType = if (approximateIntegerLiterals) new.approximateIntegerLiteralType() else new
         return approximatedIntegerLiteralType.updateNullabilityIfNeeded(type)?.withCombinedAttributesFrom(type)

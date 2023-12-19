@@ -7,6 +7,7 @@ package org.jetbrains.kotlin.gradle
 
 import org.gradle.util.GradleVersion
 import org.jetbrains.kotlin.gradle.testbase.*
+import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.condition.DisabledOnOs
 import org.junit.jupiter.api.condition.OS
@@ -14,7 +15,7 @@ import kotlin.io.path.exists
 
 @DisplayName("Compiler plugin incremental compilation")
 @OtherGradlePluginTests
-open class CompilerPluginsIncrementalIT : KGPBaseTest() {
+abstract class CompilerPluginsIncrementalIT : KGPBaseTest() {
     override val defaultBuildOptions: BuildOptions
         get() = super.defaultBuildOptions.copy(
             incremental = true
@@ -23,7 +24,7 @@ open class CompilerPluginsIncrementalIT : KGPBaseTest() {
     @DisabledOnOs(OS.WINDOWS, disabledReason = "Kotlin compiler holds an open file descriptor to plugin jar file")
     @DisplayName("KT-38570: After changing compiler plugin code, next incremental build picks it up")
     @GradleTest
-    internal fun afterChangeInPluginBuildDoesIncrementalProcessing(gradleVersion: GradleVersion) {
+    open fun afterChangeInPluginBuildDoesIncrementalProcessing(gradleVersion: GradleVersion) {
         project("incrementalChangeInPlugin".prefix, gradleVersion) {
             build("assemble")
 
@@ -69,7 +70,34 @@ open class CompilerPluginsIncrementalIT : KGPBaseTest() {
     private val String.prefix get() = "compilerPlugins/$this"
 }
 
+class CompilerPluginsK1IncrementalIT : CompilerPluginsIncrementalIT() {
+    override val defaultBuildOptions = super.defaultBuildOptions.copyEnsuringK1()
+}
+
+class CompilerPluginsK2IncrementalIT : CompilerPluginsIncrementalIT() {
+    override val defaultBuildOptions = super.defaultBuildOptions.copyEnsuringK2()
+
+    @Disabled("KT-61171")
+    override fun afterChangeInPluginBuildDoesIncrementalProcessing(gradleVersion: GradleVersion) {
+        super.afterChangeInPluginBuildDoesIncrementalProcessing(gradleVersion)
+    }
+}
+
+@DisplayName("Compiler plugin incremental compilation with disabled precise compilation outputs backup")
+abstract class CompilerPluginsIncrementalWithoutPreciseBackupIT : CompilerPluginsIncrementalIT() {
+    override val defaultBuildOptions = super.defaultBuildOptions.copy(usePreciseOutputsBackup = false, keepIncrementalCompilationCachesInMemory = false)
+}
+
 @DisplayName("Compiler plugin incremental compilation with precise compilation outputs backup")
-class CompilerPluginsIncrementalWithPreciseBackupIT : CompilerPluginsIncrementalIT() {
-    override val defaultBuildOptions = super.defaultBuildOptions.copy(usePreciseOutputsBackup = true, keepIncrementalCompilationCachesInMemory = true)
+class CompilerPluginsK1IncrementalWithoutPreciseBackupIT : CompilerPluginsIncrementalWithoutPreciseBackupIT() {
+    override val defaultBuildOptions = super.defaultBuildOptions.copyEnsuringK1()
+}
+
+class CompilerPluginsK2IncrementalWithoutPreciseBackupIT : CompilerPluginsIncrementalWithoutPreciseBackupIT() {
+    override val defaultBuildOptions = super.defaultBuildOptions.copyEnsuringK2()
+
+    @Disabled("KT-61171")
+    override fun afterChangeInPluginBuildDoesIncrementalProcessing(gradleVersion: GradleVersion) {
+        super.afterChangeInPluginBuildDoesIncrementalProcessing(gradleVersion)
+    }
 }

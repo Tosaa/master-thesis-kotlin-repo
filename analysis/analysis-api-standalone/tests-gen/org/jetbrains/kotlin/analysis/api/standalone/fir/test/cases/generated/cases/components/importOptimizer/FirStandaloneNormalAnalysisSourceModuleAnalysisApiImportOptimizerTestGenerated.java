@@ -43,7 +43,7 @@ public class FirStandaloneNormalAnalysisSourceModuleAnalysisApiImportOptimizerTe
 
     @Test
     public void testAllFilesPresentInAnalyseImports() throws Exception {
-        KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("analysis/analysis-api/testData/components/importOptimizer/analyseImports"), Pattern.compile("^([^.]+)\\.kt$"), null, true);
+        KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("analysis/analysis-api/testData/components/importOptimizer/analyseImports"), Pattern.compile("^(.+)\\.kt$"), null, true);
     }
 
     @Test
@@ -119,6 +119,12 @@ public class FirStandaloneNormalAnalysisSourceModuleAnalysisApiImportOptimizerTe
     }
 
     @Test
+    @TestMetadata("unusedObject_invokeOperator.kt")
+    public void testUnusedObject_invokeOperator() throws Exception {
+        runTest("analysis/analysis-api/testData/components/importOptimizer/analyseImports/unusedObject_invokeOperator.kt");
+    }
+
+    @Test
     @TestMetadata("unusedStaticFunctionImportFromJavaChildClass.kt")
     public void testUnusedStaticFunctionImportFromJavaChildClass() throws Exception {
         runTest("analysis/analysis-api/testData/components/importOptimizer/analyseImports/unusedStaticFunctionImportFromJavaChildClass.kt");
@@ -128,6 +134,18 @@ public class FirStandaloneNormalAnalysisSourceModuleAnalysisApiImportOptimizerTe
     @TestMetadata("unusedTypeAsVarargType.kt")
     public void testUnusedTypeAsVarargType() throws Exception {
         runTest("analysis/analysis-api/testData/components/importOptimizer/analyseImports/unusedTypeAsVarargType.kt");
+    }
+
+    @Test
+    @TestMetadata("unusedType_underscoreNameInCatchSection.kt")
+    public void testUnusedType_underscoreNameInCatchSection() throws Exception {
+        runTest("analysis/analysis-api/testData/components/importOptimizer/analyseImports/unusedType_underscoreNameInCatchSection.kt");
+    }
+
+    @Test
+    @TestMetadata("unusedType_underscoreVariableInDestructuringDeclaration.kt")
+    public void testUnusedType_underscoreVariableInDestructuringDeclaration() throws Exception {
+        runTest("analysis/analysis-api/testData/components/importOptimizer/analyseImports/unusedType_underscoreVariableInDestructuringDeclaration.kt");
     }
 
     @Test
@@ -215,6 +233,12 @@ public class FirStandaloneNormalAnalysisSourceModuleAnalysisApiImportOptimizerTe
     }
 
     @Test
+    @TestMetadata("usedObject_invokeOperator.kt")
+    public void testUsedObject_invokeOperator() throws Exception {
+        runTest("analysis/analysis-api/testData/components/importOptimizer/analyseImports/usedObject_invokeOperator.kt");
+    }
+
+    @Test
     @TestMetadata("usedStaticFunctionImportFromJavaChildClass.kt")
     public void testUsedStaticFunctionImportFromJavaChildClass() throws Exception {
         runTest("analysis/analysis-api/testData/components/importOptimizer/analyseImports/usedStaticFunctionImportFromJavaChildClass.kt");
@@ -238,7 +262,19 @@ public class FirStandaloneNormalAnalysisSourceModuleAnalysisApiImportOptimizerTe
     public class ReferencesWithErrors {
         @Test
         public void testAllFilesPresentInReferencesWithErrors() throws Exception {
-            KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("analysis/analysis-api/testData/components/importOptimizer/analyseImports/referencesWithErrors"), Pattern.compile("^([^.]+)\\.kt$"), null, true);
+            KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("analysis/analysis-api/testData/components/importOptimizer/analyseImports/referencesWithErrors"), Pattern.compile("^(.+)\\.kt$"), null, true);
+        }
+
+        @Test
+        @TestMetadata("ambiguousFunction.kt")
+        public void testAmbiguousFunction() throws Exception {
+            runTest("analysis/analysis-api/testData/components/importOptimizer/analyseImports/referencesWithErrors/ambiguousFunction.kt");
+        }
+
+        @Test
+        @TestMetadata("missingFunctionCall.kt")
+        public void testMissingFunctionCall() throws Exception {
+            runTest("analysis/analysis-api/testData/components/importOptimizer/analyseImports/referencesWithErrors/missingFunctionCall.kt");
         }
 
         @Test

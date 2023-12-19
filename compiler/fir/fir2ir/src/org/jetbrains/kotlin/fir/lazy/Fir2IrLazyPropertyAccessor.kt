@@ -12,18 +12,18 @@ import org.jetbrains.kotlin.fir.declarations.FirPropertyAccessor
 import org.jetbrains.kotlin.fir.declarations.FirRegularClass
 import org.jetbrains.kotlin.fir.declarations.synthetic.FirSyntheticPropertyAccessor
 import org.jetbrains.kotlin.fir.declarations.utils.isInline
-import org.jetbrains.kotlin.ir.declarations.IrClass
-import org.jetbrains.kotlin.ir.declarations.IrDeclarationOrigin
-import org.jetbrains.kotlin.ir.declarations.IrFunction
-import org.jetbrains.kotlin.ir.declarations.IrValueParameter
+import org.jetbrains.kotlin.ir.declarations.*
 import org.jetbrains.kotlin.ir.declarations.lazy.lazyVar
 import org.jetbrains.kotlin.ir.expressions.IrConstructorCall
+import org.jetbrains.kotlin.ir.symbols.IrPropertySymbol
 import org.jetbrains.kotlin.ir.symbols.IrSimpleFunctionSymbol
+import org.jetbrains.kotlin.ir.symbols.UnsafeDuringIrConstructionAPI
 import org.jetbrains.kotlin.ir.types.IrType
 import org.jetbrains.kotlin.ir.util.isFacadeClass
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.serialization.deserialization.descriptors.DeserializedContainerSource
 
+@Suppress("DELEGATED_MEMBER_HIDES_SUPERTYPE_OVERRIDE") // K2 warning suppression, TODO: KT-62472
 class Fir2IrLazyPropertyAccessor(
     components: Fir2IrComponents,
     startOffset: Int,
@@ -34,8 +34,10 @@ class Fir2IrLazyPropertyAccessor(
     private val firParentProperty: FirProperty,
     firParentClass: FirRegularClass?,
     symbol: IrSimpleFunctionSymbol,
-    isFakeOverride: Boolean
-) : AbstractFir2IrLazyFunction<FirCallableDeclaration>(components, startOffset, endOffset, origin, symbol, isFakeOverride) {
+    parent: IrDeclarationParent,
+    isFakeOverride: Boolean,
+    override var correspondingPropertySymbol: IrPropertySymbol?
+) : AbstractFir2IrLazyFunction<FirCallableDeclaration>(components, startOffset, endOffset, origin, symbol, parent, isFakeOverride) {
     init {
         symbol.bind(this)
     }
@@ -76,19 +78,19 @@ class Fir2IrLazyPropertyAccessor(
     override var valueParameters: List<IrValueParameter> by lazyVar(lock) {
         if (!isSetter && contextReceiverParametersCount == 0) emptyList()
         else {
-            declarationStorage.enterScope(this)
+            declarationStorage.enterScope(this.symbol)
 
             buildList {
-                declarationStorage.addContextReceiverParametersTo(
+                callablesGenerator.addContextReceiverParametersTo(
                     fir.contextReceiversForFunctionOrContainingProperty(),
                     this@Fir2IrLazyPropertyAccessor,
-                    this@buildList,
+                    this@buildList
                 )
 
                 if (isSetter) {
                     val valueParameter = firAccessor?.valueParameters?.firstOrNull()
                     add(
-                        declarationStorage.createDefaultSetterParameter(
+                        callablesGenerator.createDefaultSetterParameter(
                             startOffset, endOffset,
                             (valueParameter?.returnTypeRef ?: firParentProperty.returnTypeRef).toIrType(
                                 typeConverter, conversionTypeContext
@@ -102,18 +104,32 @@ class Fir2IrLazyPropertyAccessor(
                     )
                 }
             }.apply {
-                declarationStorage.leaveScope(this@Fir2IrLazyPropertyAccessor)
+                declarationStorage.leaveScope(this@Fir2IrLazyPropertyAccessor.symbol)
             }
         }
     }
 
     override var overriddenSymbols: List<IrSimpleFunctionSymbol> by lazyVar(lock) {
         if (firParentClass == null) return@lazyVar emptyList()
-        firParentProperty.generateOverriddenAccessorSymbols(firParentClass, !isSetter)
+        // If property accessor is created then corresponding property is definitely created too
+        @OptIn(UnsafeDuringIrConstructionAPI::class)
+        correspondingPropertySymbol!!.owner.overriddenSymbols.mapNotNull {
+            when (isSetter) {
+                false -> declarationStorage.findGetterOfProperty(it)
+                true -> declarationStorage.findSetterOfProperty(it)
+            }
+        }
     }
 
     override val initialSignatureFunction: IrFunction? by lazy {
-        (fir as? FirSyntheticPropertyAccessor)?.delegate?.let { declarationStorage.getIrFunctionSymbol(it.symbol).owner }
+        val originalFirFunction = (fir as? FirSyntheticPropertyAccessor)?.delegate ?: return@lazy null
+        // If property accessor is created then corresponding property is definitely created too
+        @OptIn(UnsafeDuringIrConstructionAPI::class)
+        val lookupTag = (correspondingPropertySymbol!!.owner as Fir2IrLazyProperty).containingClass?.symbol?.toLookupTag()
+
+        // `initialSignatureFunction` is not called during fir2ir conversion
+        @OptIn(UnsafeDuringIrConstructionAPI::class)
+        declarationStorage.getIrFunctionSymbol(originalFirFunction.symbol, lookupTag).owner
     }
 
     override val containerSource: DeserializedContainerSource?

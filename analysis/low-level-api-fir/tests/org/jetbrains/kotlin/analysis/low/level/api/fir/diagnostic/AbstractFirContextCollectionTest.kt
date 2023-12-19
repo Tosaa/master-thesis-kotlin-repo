@@ -55,20 +55,11 @@ abstract class AbstractFirContextCollectionTest : AbstractLowLevelApiSingleFileT
             val fileStructure = fileStructureCache.getFileStructure(ktFile)
             val allStructureElements = fileStructure.getAllStructureElements()
 
-            handler.elementsToCheckContext = allStructureElements.map { it.getFirDeclaration() }
+            handler.elementsToCheckContext = allStructureElements.map(FileStructureElement::firDeclaration)
             handler.firFile = ktFile.getOrBuildFirFile(firResolveSession)
 
             ktFile.getDiagnostics(firResolveSession, DiagnosticCheckerFilter.ONLY_COMMON_CHECKERS)
         }
-    }
-
-    private fun FileStructureElement.getFirDeclaration(): FirDeclaration = when (this) {
-        is ReanalyzableStructureElement<*, *> -> firSymbol.fir
-        is RootStructureElement -> firFile
-        is DanglingTopLevelModifierListStructureElement -> fir
-        is NonReanalyzableClassDeclarationStructureElement -> fir
-        is NonReanalyzableNonClassDeclarationStructureElement -> fir
-        is RootScriptStructureElement -> script
     }
 
     private class BeforeElementLLFirSessionConfigurator(private val testServices: TestServices) : LLFirSessionConfigurator {
@@ -121,5 +112,5 @@ abstract class AbstractFirOutOfContentRootContextCollectionTest : AbstractFirCon
 }
 
 abstract class AbstractScriptContextCollectionTest : AbstractFirContextCollectionTest() {
-    override val configurator get() = AnalysisApiFirScriptTestConfigurator
+    override val configurator = AnalysisApiFirScriptTestConfigurator(analyseInDependentSession = false)
 }

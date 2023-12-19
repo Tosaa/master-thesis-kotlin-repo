@@ -6,6 +6,7 @@
 package org.jetbrains.kotlin.fir.resolve
 
 import org.jetbrains.kotlin.fir.FirSession
+import org.jetbrains.kotlin.fir.declarations.FirClassLikeDeclaration
 import org.jetbrains.kotlin.fir.declarations.FirResolvePhase
 import org.jetbrains.kotlin.fir.declarations.FirTypeAlias
 import org.jetbrains.kotlin.fir.declarations.utils.expandedConeType
@@ -19,6 +20,17 @@ import org.jetbrains.kotlin.util.WeakPair
 import org.jetbrains.kotlin.util.component1
 import org.jetbrains.kotlin.util.component2
 
+/**
+ * Compute the recursive type-alias expansion in the given type.
+ *
+ * A type of an expect class, that is actualized by a typealias will be expanded to the expansion of the typealias,
+ * when supplied with the session of actual.
+ *
+ * See `/docs/fir/k2_kmp.md`
+ *
+ * @param useSiteSession Session to be used for classifier lookups, see [toSymbol]
+ * @return Type, that is expanded to the concrete class type w.r.t to the [useSiteSession]
+ */
 fun ConeClassLikeType.fullyExpandedType(
     useSiteSession: FirSession,
     expandedConeType: (FirTypeAlias) -> ConeClassLikeType? = { alias ->
@@ -40,6 +52,9 @@ fun ConeClassLikeType.fullyExpandedType(
     return fullyExpandedTypeNoCache(useSiteSession, expandedConeType)
 }
 
+/**
+ * @see fullyExpandedType
+ */
 fun ConeKotlinType.fullyExpandedType(
     useSiteSession: FirSession
 ): ConeKotlinType = when (this) {
@@ -50,6 +65,9 @@ fun ConeKotlinType.fullyExpandedType(
     else -> this
 }
 
+/**
+ * @see fullyExpandedType
+ */
 fun ConeSimpleKotlinType.fullyExpandedType(
     useSiteSession: FirSession
 ): ConeSimpleKotlinType = when (this) {
@@ -106,7 +124,7 @@ private fun mapTypeAliasArguments(
     useSiteSession: FirSession,
 ): ConeKotlinType {
     if (typeAlias.typeParameters.isNotEmpty() && abbreviatedType.typeArguments.isEmpty()) {
-        return resultingType.lookupTag.constructClassType(emptyArray(), resultingType.isNullable)
+        return resultingType.lookupTag.constructClassType(ConeTypeProjection.EMPTY_ARRAY, resultingType.isNullable)
     }
     val typeAliasMap = typeAlias.typeParameters.map { it.symbol }.zip(abbreviatedType.typeArguments).toMap()
 
@@ -167,6 +185,16 @@ private fun mapTypeAliasArguments(
     return substitutor.substituteOrSelf(resultingType)
 }
 
+/**
+ * @see fullyExpandedType
+ */
 fun FirTypeAlias.fullyExpandedConeType(useSiteSession: FirSession): ConeClassLikeType? {
     return expandedConeType?.fullyExpandedType(useSiteSession)
+}
+
+/**
+ * @see fullyExpandedType
+ */
+fun FirTypeAlias.fullyExpandedClass(session: FirSession): FirClassLikeDeclaration? {
+    return fullyExpandedConeType(session)?.toSymbol(session)?.fir
 }

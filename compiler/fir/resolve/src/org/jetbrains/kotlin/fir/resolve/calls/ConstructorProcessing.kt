@@ -8,22 +8,15 @@ package org.jetbrains.kotlin.fir.resolve.calls
 import org.jetbrains.kotlin.descriptors.ClassKind
 import org.jetbrains.kotlin.fir.FirSession
 import org.jetbrains.kotlin.fir.declarations.*
-import org.jetbrains.kotlin.fir.declarations.builder.buildConstructedClassTypeParameterRef
-import org.jetbrains.kotlin.fir.declarations.builder.buildConstructorCopy
-import org.jetbrains.kotlin.fir.declarations.builder.buildReceiverParameter
 import org.jetbrains.kotlin.fir.declarations.utils.isInner
-import org.jetbrains.kotlin.fir.languageVersionSettings
 import org.jetbrains.kotlin.fir.resolve.*
 import org.jetbrains.kotlin.fir.resolve.substitution.ConeSubstitutor
-import org.jetbrains.kotlin.fir.scopes.FakeOverrideTypeCalculator
-import org.jetbrains.kotlin.fir.scopes.FirScope
-import org.jetbrains.kotlin.fir.scopes.processClassifiersByName
-import org.jetbrains.kotlin.fir.scopes.scopeForClass
+import org.jetbrains.kotlin.fir.scopes.*
+import org.jetbrains.kotlin.fir.scopes.impl.TypeAliasConstructorsSubstitutingScope
 import org.jetbrains.kotlin.fir.symbols.impl.*
 import org.jetbrains.kotlin.fir.symbols.lazyResolveToPhase
 import org.jetbrains.kotlin.fir.types.ConeClassLikeType
 import org.jetbrains.kotlin.fir.types.coneTypeUnsafe
-import org.jetbrains.kotlin.fir.types.withReplacedConeType
 import org.jetbrains.kotlin.fir.visibilityChecker
 import org.jetbrains.kotlin.fir.whileAnalysing
 import org.jetbrains.kotlin.name.Name
@@ -80,13 +73,27 @@ fun FirScope.getSingleVisibleClassifier(
     session: FirSession,
     bodyResolveComponents: BodyResolveComponents,
     name: Name
-): FirClassifierSymbol<*>? = mutableSetOf<FirClassifierSymbol<*>>().apply {
+): FirClassifierSymbol<*>? {
+    var result: FirClassifierSymbol<*>? = null
+    var isAmbiguousResult = false
     processClassifiersByName(name) { classifierSymbol ->
         if (!classifierSymbol.fir.isInvisibleOrHidden(session, bodyResolveComponents)) {
-            this.add(classifierSymbol)
+            if (result == classifierSymbol) return@processClassifiersByName
+
+            if (result == null) {
+                result = classifierSymbol
+            } else {
+                val checkResult = checkUnambiguousClassifiers(result!!, classifierSymbol, session)
+                if (checkResult.shouldReplaceResult) {
+                    result = classifierSymbol
+                } else {
+                    isAmbiguousResult = checkResult.isAmbiguousResult
+                }
+            }
         }
     }
-}.singleOrNull()
+    return result.takeUnless { isAmbiguousResult }
+}
 
 private fun FirDeclaration.isInvisibleOrHidden(session: FirSession, bodyResolveComponents: BodyResolveComponents): Boolean {
     if (this is FirMemberDeclaration) {
@@ -132,8 +139,12 @@ private fun FirScope.getFirstClassifierOrNull(
             }
             result != null -> {
                 if (isSuccessResult == isSuccessCandidate) {
-                    // results are similar => ambiguity
-                    isAmbiguousResult = true
+                    val checkResult = checkUnambiguousClassifiers(result!!.symbol, symbol, session)
+                    if (checkResult.shouldReplaceResult) {
+                        result = SymbolWithSubstitutor(symbol, substitutor)
+                    } else {
+                        isAmbiguousResult = checkResult.isAmbiguousResult
+                    }
                 } else {
                     // ignore unsuccessful result if we have successful one
                 }
@@ -147,6 +158,41 @@ private fun FirScope.getFirstClassifierOrNull(
     }
 
     return result.takeUnless { isAmbiguousResult }
+}
+
+private data class CheckUnambiguousClassifiersResult(val shouldReplaceResult: Boolean, val isAmbiguousResult: Boolean)
+
+/**
+ * Handle special cases when classifiers don't cause ambiguity (`Throws`)
+ *
+ * The following output options are possible:
+ *   * `shouldReplaceResult = true, isAmbiguousResult = false` means successful disambiguation
+ *     but the previous result should be replaced with the new one (typically class symbol wins typealias)
+ *   * `shouldReplaceResult = false, isAmbiguousResult = false` means successful disambiguation
+ *     but the new result should be discarded
+ *   * `shouldReplaceResult = false, isAmbiguousResult = true` means unsuccessful disambiguation
+ *     and both results become irrelevant
+ */
+private fun checkUnambiguousClassifiers(
+    foundClassifierSymbol: FirClassifierSymbol<*>,
+    newClassifierSymbol: FirClassifierSymbol<*>,
+    session: FirSession,
+): CheckUnambiguousClassifiersResult {
+    val classTypealiasesThatDontCauseAmbiguity = session.platformClassMapper.classTypealiasesThatDontCauseAmbiguity
+
+    if (foundClassifierSymbol is FirTypeAliasSymbol && newClassifierSymbol is FirRegularClassSymbol &&
+        classTypealiasesThatDontCauseAmbiguity[newClassifierSymbol.classId] == foundClassifierSymbol.classId
+    ) {
+        return CheckUnambiguousClassifiersResult(shouldReplaceResult = true, isAmbiguousResult = false)
+    }
+
+    if (newClassifierSymbol is FirTypeAliasSymbol && foundClassifierSymbol is FirRegularClassSymbol &&
+        classTypealiasesThatDontCauseAmbiguity[foundClassifierSymbol.classId] == newClassifierSymbol.classId
+    ) {
+        return CheckUnambiguousClassifiersResult(shouldReplaceResult = false, isAmbiguousResult = false)
+    }
+
+    return CheckUnambiguousClassifiersResult(shouldReplaceResult = false, isAmbiguousResult = true)
 }
 
 private fun processSyntheticConstructors(
@@ -176,7 +222,7 @@ private fun processConstructors(
                 val basicScope = type.scope(
                     session,
                     bodyResolveComponents.scopeSession,
-                    FakeOverrideTypeCalculator.DoNothing,
+                    CallableCopyTypeCalculator.DoNothing,
                     requiredMembersPhase = FirResolvePhase.STATUS,
                 )
 
@@ -193,6 +239,7 @@ private fun processConstructors(
                 }
             }
             is FirClassSymbol -> {
+                @Suppress("USELESS_CAST") // K2 warning suppression, TODO: KT-62472
                 val firClass = matchedSymbol.fir as FirClass
                 when (firClass.classKind) {
                     ClassKind.INTERFACE -> null
@@ -212,58 +259,6 @@ private fun processConstructors(
                     processor(it)
 
             }
-        }
-    }
-}
-
-private class TypeAliasConstructorsSubstitutingScope(
-    private val typeAliasSymbol: FirTypeAliasSymbol,
-    private val delegatingScope: FirScope,
-    private val outerType: ConeClassLikeType?,
-) : FirScope() {
-
-    override fun processDeclaredConstructors(processor: (FirConstructorSymbol) -> Unit) {
-        delegatingScope.processDeclaredConstructors wrapper@{ originalConstructorSymbol ->
-            val typeParameters = typeAliasSymbol.fir.typeParameters
-
-            processor(
-                buildConstructorCopy(originalConstructorSymbol.fir) {
-                    symbol = FirConstructorSymbol(originalConstructorSymbol.callableId)
-                    origin = FirDeclarationOrigin.Synthetic.TypeAliasConstructor
-
-                    this.typeParameters.clear()
-                    typeParameters.mapTo(this.typeParameters) { buildConstructedClassTypeParameterRef { symbol = it.symbol } }
-
-                    if (outerType != null) {
-                        // If the matched symbol is a type alias, and the expanded type is a nested class, e.g.,
-                        //
-                        //   class Outer {
-                        //     inner class Inner
-                        //   }
-                        //   typealias OI = Outer.Inner
-                        //   fun foo() { Outer().OI() }
-                        //
-                        // the chances are that `processor` belongs to [ScopeTowerLevel] (to resolve type aliases at top-level), which treats
-                        // the explicit receiver (`Outer()`) as an extension receiver, whereas the constructor of the nested class may regard
-                        // the same explicit receiver as a dispatch receiver (hence inconsistent receiver).
-                        // Here, we add a copy of the nested class constructor, along with the outer type as an extension receiver, so that it
-                        // can be seen as if resolving:
-                        //
-                        //   fun Outer.OI(): OI = ...
-                        //
-                        //
-                        receiverParameter = originalConstructorSymbol.fir.returnTypeRef.withReplacedConeType(outerType).let {
-                            buildReceiverParameter {
-                                typeRef = it
-                            }
-                        }
-                    }
-
-                }.apply {
-                    originalConstructorIfTypeAlias = originalConstructorSymbol.fir
-                    typeAliasForConstructor = typeAliasSymbol
-                }.symbol
-            )
         }
     }
 }

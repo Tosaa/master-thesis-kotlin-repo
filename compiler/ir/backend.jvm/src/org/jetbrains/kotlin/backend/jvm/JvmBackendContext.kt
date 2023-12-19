@@ -111,7 +111,7 @@ class JvmBackendContext(
 
     override val mapping: Mapping = DefaultMapping()
 
-    val ktDiagnosticReporter = KtDiagnosticReporterWithImplicitIrBasedContext(state.diagnosticReporter, state.languageVersionSettings)
+    val ktDiagnosticReporter = KtDiagnosticReporterWithImplicitIrBasedContext(state.diagnosticReporter, config.languageVersionSettings)
 
     override val ir = JvmIr(this.symbolTable)
 
@@ -199,7 +199,7 @@ class JvmBackendContext(
         }
 
         state.multiFieldValueClassUnboxInfo = lambda@{ descriptor ->
-            val irClass = symbolTable.lazyWrapper.descriptorExtension.referenceClass(descriptor).owner
+            val irClass = referenceClass(descriptor).owner
             val node = multiFieldValueClassReplacements.getRootMfvcNodeOrNull(irClass) ?: return@lambda null
             val leavesInfo =
                 node.leaves.map { Triple(defaultTypeMapper.mapType(it.type), it.fullMethodName.asString(), it.fullFieldName.asString()) }

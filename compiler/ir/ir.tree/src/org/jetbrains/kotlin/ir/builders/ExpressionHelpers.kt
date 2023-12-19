@@ -12,10 +12,7 @@ import org.jetbrains.kotlin.ir.expressions.impl.*
 import org.jetbrains.kotlin.ir.symbols.*
 import org.jetbrains.kotlin.ir.types.IrType
 import org.jetbrains.kotlin.ir.types.typeWith
-import org.jetbrains.kotlin.ir.util.isImmutable
-import org.jetbrains.kotlin.ir.util.parentAsClass
-import org.jetbrains.kotlin.ir.util.primaryConstructor
-import org.jetbrains.kotlin.ir.util.render
+import org.jetbrains.kotlin.ir.util.*
 
 val IrBuilderWithScope.parent get() = scope.getLocalDeclarationParent()
 
@@ -294,6 +291,15 @@ fun IrBuilderWithScope.irCall(callee: IrFunction, origin: IrStatementOrigin? = n
         origin, superQualifierSymbol
     )
 
+fun IrBuilderWithScope.irCallWithSubstitutedType(callee: IrFunction, typeArguments: List<IrType>): IrMemberAccessExpression<*> {
+    val argsMap = callee.typeParameters.map { it.symbol }.zip(typeArguments).toMap()
+    return irCall(callee.symbol, callee.returnType.substitute(argsMap), typeArguments)
+}
+
+fun IrBuilderWithScope.irCallWithSubstitutedType(callee: IrFunctionSymbol, typeArguments: List<IrType>): IrMemberAccessExpression<*> {
+    return irCallWithSubstitutedType(callee.owner, typeArguments)
+}
+
 fun IrBuilderWithScope.irDelegatingConstructorCall(callee: IrConstructor): IrDelegatingConstructorCall =
     IrDelegatingConstructorCallImpl(
         startOffset, endOffset, context.irBuiltIns.unitType, callee.symbol,
@@ -338,6 +344,12 @@ fun IrBuilderWithScope.irReinterpretCast(argument: IrExpression, type: IrType) =
 
 fun IrBuilderWithScope.irSamConversion(argument: IrExpression, type: IrType) =
     typeOperator(type, argument, IrTypeOperator.SAM_CONVERSION, type)
+
+fun IrBuilderWithScope.irByte(value: Byte) =
+    IrConstImpl.byte(startOffset, endOffset, context.irBuiltIns.byteType, value)
+
+fun IrBuilderWithScope.irShort(value: Short) =
+    IrConstImpl.short(startOffset, endOffset, context.irBuiltIns.shortType, value)
 
 fun IrBuilderWithScope.irInt(value: Int, type: IrType = context.irBuiltIns.intType) =
     IrConstImpl.int(startOffset, endOffset, type, value)

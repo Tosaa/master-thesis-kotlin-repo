@@ -5,27 +5,26 @@
 
 package org.jetbrains.kotlin.analysis.low.level.api.fir.api.targets
 
+import org.jetbrains.kotlin.analysis.low.level.api.fir.util.forEachDeclaration
 import org.jetbrains.kotlin.fir.FirElementWithResolveState
-import org.jetbrains.kotlin.fir.declarations.FirDeclaration
 import org.jetbrains.kotlin.fir.declarations.FirFile
 import org.jetbrains.kotlin.fir.declarations.FirRegularClass
 
 /**
  * [LLFirResolveTarget] representing a class with all class members to be resolved (this includes callables, init blocks, and classifiers)
  */
-class LLFirClassWithAllMembersResolveTarget(
+internal class LLFirClassWithAllMembersResolveTarget(
     firFile: FirFile,
-    classPath: List<FirRegularClass>,
+    containerClasses: List<FirRegularClass>,
     target: FirRegularClass,
-) : LLFirResolveTargetWithDedicatedElement<FirRegularClass>(firFile, classPath, target) {
-    override fun forEachTarget(action: (FirElementWithResolveState) -> Unit) {
-        action(target)
-        forEachMember(action)
+) : LLFirResolveTarget(firFile, containerClasses, target) {
+    override fun visitTargetElement(
+        element: FirElementWithResolveState,
+        visitor: LLFirResolveTargetVisitor,
+    ) {
+        visitor.performAction(element)
+        visitor.withRegularClass(element as FirRegularClass) {
+            element.forEachDeclaration(visitor::performAction)
+        }
     }
-
-    inline fun forEachMember(action: (FirDeclaration) -> Unit) {
-        target.declarations.forEach(action)
-    }
-
-    override fun toStringForTarget(): String = target.name.asString()
 }

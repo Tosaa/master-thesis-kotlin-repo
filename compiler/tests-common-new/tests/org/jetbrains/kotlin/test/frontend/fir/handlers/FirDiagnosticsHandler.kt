@@ -60,10 +60,15 @@ class FullDiagnosticsRenderer(private val directive: SimpleDirective) {
     private val dumper: MultiModuleInfoDumper = MultiModuleInfoDumper(moduleHeaderTemplate = "// -- Module: <%s> --")
 
     fun assertCollectedDiagnostics(testServices: TestServices, expectedExtension: String) {
-        if (dumper.isEmpty()) return
-        val resultDump = dumper.generateResultingDump()
+        if (directive !in testServices.moduleStructure.allDirectives) {
+            return
+        }
         val testDataFile = testServices.moduleStructure.originalTestDataFiles.first()
         val expectedFile = testDataFile.parentFile.resolve("${testDataFile.nameWithoutExtension.removeSuffix(".fir")}$expectedExtension")
+        if (dumper.isEmpty() && !expectedFile.exists()) {
+            return
+        }
+        val resultDump = dumper.generateResultingDump()
         testServices.assertions.assertEqualsToFile(expectedFile, resultDump)
     }
 
@@ -212,7 +217,7 @@ class FirDiagnosticsHandler(testServices: TestServices) : FirAnalysisHandler(tes
                 val calleeDeclaration = element.calleeReference.toResolvedCallableSymbol() ?: return
                 val isInvokeCallWithDynamicReceiver = calleeDeclaration.name == OperatorNameConventions.INVOKE
                         && element is FirQualifiedAccessExpression
-                        && element.dispatchReceiver.typeRef.isFunctionTypeWithDynamicReceiver(firFile.moduleData.session)
+                        && element.dispatchReceiver?.resolvedType?.isFunctionTypeWithDynamicReceiver(firFile.moduleData.session) == true
 
                 if (calleeDeclaration.origin !is FirDeclarationOrigin.DynamicScope && !isInvokeCallWithDynamicReceiver) {
                     return
@@ -293,15 +298,13 @@ class FirDiagnosticsHandler(testServices: TestServices) : FirAnalysisHandler(tes
 
     private fun DebugDiagnosticConsumer.reportExpressionTypeDiagnostic(element: FirExpression) {
         report(DebugInfoDiagnosticFactory1.EXPRESSION_TYPE, element) {
-            val originalTypeRef = (element as? FirSmartCastExpression)?.takeIf { it.isStable }?.originalExpression?.typeRef
+            val type = element.resolvedType
+            val originalType = (element as? FirSmartCastExpression)?.takeIf { it.isStable }?.originalExpression?.resolvedType
 
-            val type = element.typeRef.coneTypeSafe<ConeKotlinType>()
-            val originalType = originalTypeRef?.coneTypeSafe<ConeKotlinType>()
-
-            if (type != null && originalType != null) {
+            if (originalType != null) {
                 "${originalType.renderForDebugInfo()} & ${type.renderForDebugInfo()}"
             } else {
-                type?.renderForDebugInfo() ?: "Type is unknown"
+                type.renderForDebugInfo()
             }
         }
     }
@@ -390,9 +393,6 @@ fun List<KtDiagnostic>.diagnosticCodeMetaInfos(
     )
 }
 
-private fun FirTypeRef.isFunctionTypeWithDynamicReceiver(session: FirSession) =
-    coneTypeSafe<ConeKotlinType>()?.isFunctionTypeWithDynamicReceiver(session) == true
-
 private fun ConeKotlinType.isFunctionTypeWithDynamicReceiver(session: FirSession): Boolean {
     val hasExplicitDynamicReceiver = receiverType(session) is ConeDynamicType
     val hasImplicitDynamicReceiver = isExtensionFunctionType && this.typeArguments.firstOrNull()?.type is ConeDynamicType
@@ -454,7 +454,7 @@ private class DebugDiagnosticConsumer(
         val factory = KtDiagnosticFactory0(
             name = debugFactory.name,
             severity = debugFactory.severity,
-            defaultPositioningStrategy = AbstractSourceElementPositioningStrategy.DEFAULT,
+            defaultPositioningStrategy = SourceElementPositioningStrategies.DEFAULT,
             psiType = PsiElement::class
         )
 
@@ -495,7 +495,7 @@ private class DebugDiagnosticConsumer(
         val factory = KtDiagnosticFactory1<String>(
             name = debugFactory.name,
             severity = debugFactory.severity,
-            defaultPositioningStrategy = AbstractSourceElementPositioningStrategy.DEFAULT,
+            defaultPositioningStrategy = SourceElementPositioningStrategies.DEFAULT,
             psiType = PsiElement::class
         )
 

@@ -30,19 +30,16 @@ import org.jetbrains.kotlin.cli.common.messages.MessageCollector
 import org.jetbrains.kotlin.cli.common.modules.ModuleBuilder
 import org.jetbrains.kotlin.cli.jvm.*
 import org.jetbrains.kotlin.cli.jvm.compiler.EnvironmentConfigFiles
-import org.jetbrains.kotlin.cli.jvm.compiler.VfsBasedProjectEnvironment
 import org.jetbrains.kotlin.cli.jvm.compiler.findMainClass
 import org.jetbrains.kotlin.cli.jvm.compiler.forAllFiles
 import org.jetbrains.kotlin.cli.jvm.compiler.pipeline.*
+import org.jetbrains.kotlin.cli.jvm.compiler.writeOutputsIfNeeded
 import org.jetbrains.kotlin.cli.jvm.config.*
 import org.jetbrains.kotlin.cli.jvm.plugins.PluginCliParser
 import org.jetbrains.kotlin.config.*
-import org.jetbrains.kotlin.constant.EvaluatedConstTracker
 import org.jetbrains.kotlin.diagnostics.DiagnosticReporterFactory
-import org.jetbrains.kotlin.fir.backend.Fir2IrConfiguration
 import org.jetbrains.kotlin.fir.backend.jvm.JvmFir2IrExtensions
 import org.jetbrains.kotlin.fir.pipeline.FirResult
-import org.jetbrains.kotlin.fir.pipeline.convertToIrAndActualizeForJvm
 import org.jetbrains.kotlin.fir.session.environment.AbstractProjectFileSearchScope
 import org.jetbrains.kotlin.incremental.components.ExpectActualTracker
 import org.jetbrains.kotlin.incremental.components.InlineConstTracker
@@ -67,7 +64,7 @@ open class IncrementalFirJvmCompilerRunner(
     buildHistoryFile: File?,
     outputDirs: Collection<File>?,
     modulesApiHistory: ModulesApiHistory,
-    kotlinSourceFilesExtensions: List<String> = DEFAULT_KOTLIN_SOURCE_FILES_EXTENSIONS,
+    kotlinSourceFilesExtensions: Set<String> = DEFAULT_KOTLIN_SOURCE_FILES_EXTENSIONS,
     classpathChanges: ClasspathChanges
 ) : IncrementalJvmCompilerRunner(
     workingDir,
@@ -221,7 +218,7 @@ open class IncrementalFirJvmCompilerRunner(
                     val analysisResults =
                         compileModuleToAnalyzedFir(
                             compilerInput,
-                            compilerEnvironment,
+                            projectEnvironment,
                             emptyList(),
                             incrementalExcludesScope,
                             diagnosticsReporter,
@@ -274,20 +271,9 @@ open class IncrementalFirJvmCompilerRunner(
             performanceManager?.notifyIRTranslationStarted()
 
             val extensions = JvmFir2IrExtensions(configuration, JvmIrDeserializerImpl(), JvmIrMangler)
-            val fir2IrConfiguration = Fir2IrConfiguration(
-                languageVersionSettings = configuration.languageVersionSettings,
-                diagnosticReporter = compilerEnvironment.diagnosticsReporter,
-                linkViaSignatures = false,
-                evaluatedConstTracker = configuration
-                    .putIfAbsent(CommonConfigurationKeys.EVALUATED_CONST_TRACKER, EvaluatedConstTracker.create()),
-                inlineConstTracker = configuration[CommonConfigurationKeys.INLINE_CONST_TRACKER],
-                expectActualTracker = configuration[CommonConfigurationKeys.EXPECT_ACTUAL_TRACKER],
-                allowNonCachedDeclarations = false,
-            )
-            val irGenerationExtensions =
-                (projectEnvironment as? VfsBasedProjectEnvironment)?.project?.let { IrGenerationExtension.getInstances(it) }.orEmpty()
+            val irGenerationExtensions = projectEnvironment.project.let { IrGenerationExtension.getInstances(it) }
             val (irModuleFragment, components, pluginContext, irActualizedResult) = cycleResult.convertToIrAndActualizeForJvm(
-                extensions, fir2IrConfiguration, irGenerationExtensions,
+                extensions, configuration, compilerEnvironment.diagnosticsReporter, irGenerationExtensions,
             )
 
             performanceManager?.notifyIRTranslationFinished()
@@ -309,9 +295,10 @@ open class IncrementalFirJvmCompilerRunner(
 
             diagnosticsReporter.reportToMessageCollector(messageCollector, renderDiagnosticName)
 
-            writeOutputs(
-                projectEnvironment,
+            writeOutputsIfNeeded(
+                projectEnvironment.project,
                 configuration,
+                messageCollector,
                 listOf(codegenOutput.generationState),
                 mainClassFqName
             )

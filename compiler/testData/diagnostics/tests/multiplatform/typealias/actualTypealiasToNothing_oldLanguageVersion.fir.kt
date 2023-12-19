@@ -2,13 +2,13 @@
 // MODULE: m1-common
 // FILE: common.kt
 
-<!INCOMPATIBLE_MATCHING{JVM}!>expect class E01<!>
-<!INCOMPATIBLE_MATCHING{JVM}!>expect class E02<!>
+<!EXPECT_ACTUAL_INCOMPATIBILITY{JVM}, NO_ACTUAL_FOR_EXPECT{JVM}, NO_ACTUAL_FOR_EXPECT{JVM}, NO_ACTUAL_FOR_EXPECT{JVM}!>expect class E01<!>
+<!EXPECT_ACTUAL_INCOMPATIBILITY{JVM}, NO_ACTUAL_FOR_EXPECT{JVM}, NO_ACTUAL_FOR_EXPECT{JVM}, NO_ACTUAL_FOR_EXPECT{JVM}!>expect class E02<!>
 
 // MODULE: m1-jvm()()(m1-common)
 // FILE: jvm.kt
 
 typealias MyNothing = Nothing
 
-actual typealias E01 = Nothing
-<!ACTUAL_TYPE_ALIAS_NOT_TO_CLASS!>actual typealias E02 = MyNothing<!>
+actual typealias <!NO_ACTUAL_CLASS_MEMBER_FOR_EXPECTED_CLASS!>E01<!> = Nothing
+<!ACTUAL_TYPE_ALIAS_NOT_TO_CLASS!>actual typealias <!NO_ACTUAL_CLASS_MEMBER_FOR_EXPECTED_CLASS!>E02<!> = MyNothing<!>

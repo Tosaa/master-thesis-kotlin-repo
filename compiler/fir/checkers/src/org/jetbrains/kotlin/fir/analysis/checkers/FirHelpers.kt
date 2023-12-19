@@ -22,23 +22,27 @@ import org.jetbrains.kotlin.fir.analysis.diagnostics.FirErrors
 import org.jetbrains.kotlin.fir.analysis.getChild
 import org.jetbrains.kotlin.fir.declarations.*
 import org.jetbrains.kotlin.fir.declarations.utils.*
+import org.jetbrains.kotlin.fir.diagnostics.ConeSimpleDiagnostic
+import org.jetbrains.kotlin.fir.diagnostics.DiagnosticKind
 import org.jetbrains.kotlin.fir.expressions.*
 import org.jetbrains.kotlin.fir.expressions.impl.FirEmptyExpressionBlock
 import org.jetbrains.kotlin.fir.references.FirSuperReference
 import org.jetbrains.kotlin.fir.references.toResolvedCallableSymbol
 import org.jetbrains.kotlin.fir.resolve.*
+import org.jetbrains.kotlin.fir.resolve.providers.firProvider
 import org.jetbrains.kotlin.fir.resolve.providers.symbolProvider
-import org.jetbrains.kotlin.fir.scopes.FirTypeScope
-import org.jetbrains.kotlin.fir.scopes.getDirectOverriddenFunctions
+import org.jetbrains.kotlin.fir.scopes.*
+import org.jetbrains.kotlin.fir.scopes.impl.declaredMemberScope
 import org.jetbrains.kotlin.fir.scopes.impl.multipleDelegatesWithTheSameSignature
-import org.jetbrains.kotlin.fir.scopes.overriddenFunctions
-import org.jetbrains.kotlin.fir.scopes.unsubstitutedScope
 import org.jetbrains.kotlin.fir.symbols.ConeTypeParameterLookupTag
 import org.jetbrains.kotlin.fir.symbols.FirBasedSymbol
 import org.jetbrains.kotlin.fir.symbols.SymbolInternals
 import org.jetbrains.kotlin.fir.symbols.impl.*
 import org.jetbrains.kotlin.fir.types.*
-import org.jetbrains.kotlin.name.*
+import org.jetbrains.kotlin.name.ClassId
+import org.jetbrains.kotlin.name.FqName
+import org.jetbrains.kotlin.name.Name
+import org.jetbrains.kotlin.name.SpecialNames
 import org.jetbrains.kotlin.psi.KtParameter
 import org.jetbrains.kotlin.psi.KtParameter.VAL_VAR_TOKEN_SET
 import org.jetbrains.kotlin.resolve.AnnotationTargetList
@@ -49,6 +53,8 @@ import org.jetbrains.kotlin.types.model.TypeCheckerProviderContext
 import org.jetbrains.kotlin.util.ImplementationStatus
 import org.jetbrains.kotlin.util.OperatorNameConventions
 import org.jetbrains.kotlin.util.getChildren
+import kotlin.contracts.ExperimentalContracts
+import kotlin.contracts.contract
 
 private val INLINE_ONLY_ANNOTATION_CLASS_ID: ClassId = ClassId.topLevel(FqName("kotlin.internal.InlineOnly"))
 
@@ -65,6 +71,12 @@ fun FirClassSymbol<*>.unsubstitutedScope(context: CheckerContext): FirTypeScope 
         context.sessionHolder.session,
         context.sessionHolder.scopeSession,
         withForcedTypeCalculator = false,
+        memberRequiredPhase = FirResolvePhase.STATUS,
+    )
+
+fun FirClassSymbol<*>.declaredMemberScope(context: CheckerContext): FirContainingNamesAwareScope =
+    this.declaredMemberScope(
+        context.sessionHolder.session,
         memberRequiredPhase = FirResolvePhase.STATUS,
     )
 
@@ -150,6 +162,14 @@ fun FirBasedSymbol<*>.getContainingClassSymbol(session: FirSession): FirClassLik
     else -> null
 }
 
+/**
+ * Returns the containing class or file if the callable is top-level.
+ */
+fun FirCallableSymbol<*>.getContainingSymbol(session: FirSession): FirBasedSymbol<*>? {
+    return getContainingClassSymbol(session)
+        ?: session.firProvider.getFirCallableContainerFile(this)?.symbol
+}
+
 fun FirDeclaration.getContainingClassSymbol(session: FirSession) = symbol.getContainingClassSymbol(session)
 
 fun FirClassLikeSymbol<*>.outerClassSymbol(context: CheckerContext): FirClassLikeSymbol<*>? {
@@ -164,7 +184,7 @@ fun FirClassSymbol<*>.getContainingDeclarationSymbol(session: FirSession): FirCl
     } else {
         val parentId = classId.relativeClassName.parent()
         if (!parentId.isRoot) {
-            val containingDeclarationId = ClassId(classId.packageFqName, parentId, false)
+            val containingDeclarationId = ClassId(classId.packageFqName, parentId, isLocal = false)
             return session.symbolProvider.getClassLikeSymbolByClassId(containingDeclarationId)
         }
     }
@@ -183,6 +203,7 @@ fun CheckerContext.findClosestClassOrObject(): FirClass? {
             it is FirRegularClass ||
             it is FirAnonymousObject
         ) {
+            @Suppress("USELESS_CAST") // K2 warning suppression, TODO: KT-62472
             return it as FirClass
         }
     }
@@ -285,14 +306,27 @@ fun isSubtypeForTypeMismatch(context: ConeInferenceContext, subtype: ConeKotlinT
 }
 
 fun FirCallableDeclaration.isVisibleInClass(parentClass: FirClass): Boolean {
-    return symbol.isVisibleInClass(parentClass.symbol)
+    return symbol.isVisibleInClass(parentClass.symbol, symbol.resolvedStatus)
 }
 
-fun FirCallableSymbol<*>.isVisibleInClass(parentClassSymbol: FirClassSymbol<*>): Boolean {
+fun FirBasedSymbol<*>.isVisibleInClass(parentClassSymbol: FirClassSymbol<*>): Boolean {
+    val status = when (this) {
+        is FirCallableSymbol<*> -> resolvedStatus
+        is FirClassLikeSymbol -> resolvedStatus
+        else -> return true
+    }
+    return isVisibleInClass(parentClassSymbol, status)
+}
+
+fun FirBasedSymbol<*>.isVisibleInClass(parentClassSymbol: FirClassSymbol<*>, status: FirDeclarationStatus): Boolean {
     val classPackage = parentClassSymbol.classId.packageFqName
-    if (visibility == Visibilities.Private ||
-        !visibility.visibleFromPackage(classPackage, callableId.packageName)
-    ) return false
+    val packageName = when (this) {
+        is FirCallableSymbol<*> -> callableId.packageName
+        is FirClassLikeSymbol<*> -> classId.packageFqName
+        else -> return true
+    }
+    val visibility = status.visibility
+    if (visibility == Visibilities.Private || !visibility.visibleFromPackage(classPackage, packageName)) return false
     if (
         visibility == Visibilities.Internal &&
         (moduleData != parentClassSymbol.moduleData || parentClassSymbol.moduleData in moduleData.friendDependencies)
@@ -452,7 +486,7 @@ fun checkTypeMismatch(
     isInitializer: Boolean
 ) {
     var lValueType = lValueOriginalType
-    var rValueType = rValue.typeRef.coneType
+    var rValueType = rValue.resolvedType
     if (source.kind is KtFakeSourceElementKind.DesugaredIncrementOrDecrement) {
         if (!lValueType.isNullable && rValueType.isNullable) {
             val tempType = rValueType
@@ -512,7 +546,7 @@ fun checkTypeMismatch(
 }
 
 internal fun checkCondition(condition: FirExpression, context: CheckerContext, reporter: DiagnosticReporter) {
-    val coneType = condition.typeRef.coneType.lowerBoundIfFlexible()
+    val coneType = condition.resolvedType.lowerBoundIfFlexible()
     if (coneType !is ConeErrorType && !coneType.isSubtypeOf(context.session.typeContext, context.session.builtinTypes.booleanType.type)) {
         reporter.reportOn(
             condition.source,
@@ -607,10 +641,10 @@ fun getActualTargetList(container: FirAnnotationContainer): AnnotationTargetList
         is FirProperty -> {
             when {
                 annotated.isLocal ->
-                    if (annotated.source?.kind == KtFakeSourceElementKind.DesugaredComponentFunctionCall) {
-                        TargetLists.T_DESTRUCTURING_DECLARATION
-                    } else {
-                        TargetLists.T_LOCAL_VARIABLE
+                    when {
+                        annotated.name == SpecialNames.DESTRUCT -> TargetLists.T_DESTRUCTURING_DECLARATION
+                        annotated.isCatchParameter == true -> TargetLists.T_CATCH_PARAMETER
+                        else -> TargetLists.T_LOCAL_VARIABLE
                     }
                 annotated.isMember ->
                     if (annotated.source?.kind == KtFakeSourceElementKind.PropertyFromParameter) {
@@ -659,9 +693,7 @@ fun getActualTargetList(container: FirAnnotationContainer): AnnotationTargetList
             } else {
                 TargetLists.T_OBJECT_LITERAL
             }
-//            TODO, KT-59819: properly implement those cases
-//            is KtDestructuringDeclarationEntry -> TargetLists.T_LOCAL_VARIABLE
-//            is KtDestructuringDeclaration -> TargetLists.T_DESTRUCTURING_DECLARATION
+//            TODO, KT-59819: properly implement this case
 //            is KtLambdaExpression -> TargetLists.T_FUNCTION_LITERAL
         else -> TargetLists.EMPTY
     }
@@ -704,7 +736,7 @@ private fun findDefaultValue(source: KtLightSourceElement): KtLightSourceElement
 
 fun ConeKotlinType.getInlineClassUnderlyingType(session: FirSession): ConeKotlinType {
     require(this.isSingleFieldValueClass(session))
-    return toRegularClassSymbol(session)!!.primaryConstructorSymbol()!!.valueParameterSymbols[0].resolvedReturnTypeRef.coneType
+    return toRegularClassSymbol(session)!!.primaryConstructorSymbol(session)!!.valueParameterSymbols[0].resolvedReturnTypeRef.coneType
 }
 
 fun FirNamedFunctionSymbol.directOverriddenFunctions(session: FirSession, scopeSession: ScopeSession): List<FirNamedFunctionSymbol> {
@@ -723,6 +755,33 @@ fun FirNamedFunctionSymbol.directOverriddenFunctions(session: FirSession, scopeS
 fun FirNamedFunctionSymbol.directOverriddenFunctions(context: CheckerContext) =
     directOverriddenFunctions(context.session, context.sessionHolder.scopeSession)
 
+inline fun <C : MutableCollection<FirNamedFunctionSymbol>> FirNamedFunctionSymbol.collectOverriddenFunctionsWhere(
+    collection: C,
+    context: CheckerContext,
+    crossinline condition: (FirNamedFunctionSymbol) -> Boolean,
+) = collection.apply {
+    processOverriddenFunctions(context) {
+        if (condition(it)) {
+            add(it)
+        }
+    }
+}
+
+inline fun FirNamedFunctionSymbol.processOverriddenFunctions(
+    context: CheckerContext,
+    crossinline action: (FirNamedFunctionSymbol) -> Unit,
+) {
+    val containingClass = getContainingClassSymbol(context.session) as? FirClassSymbol ?: return
+    val firTypeScope = containingClass.unsubstitutedScope(context)
+
+    firTypeScope.processFunctionsByName(callableId.callableName) { }
+
+    firTypeScope.processOverriddenFunctions(this) {
+        action(it)
+        ProcessorAction.NEXT
+    }
+}
+
 val CheckerContext.closestNonLocal get() = containingDeclarations.takeWhile { it.isNonLocal }.lastOrNull()
 
 fun CheckerContext.closestNonLocalWith(declaration: FirDeclaration) =
@@ -740,7 +799,7 @@ fun FirDeclaration.hasAnnotationOrInsideAnnotatedClass(classId: ClassId, session
     symbol.hasAnnotationOrInsideAnnotatedClass(classId, session)
 
 fun FirBasedSymbol<*>.getAnnotationFirstArgument(classId: ClassId, session: FirSession): FirExpression? {
-    val annotation = getAnnotationByClassId(classId, session) as? FirAnnotationCall
+    val annotation = getAnnotationByClassId(classId, session)
     return annotation?.argumentMapping?.mapping?.values?.firstOrNull()
 }
 
@@ -760,31 +819,64 @@ fun FirElement.isLhsOfAssignment(context: CheckerContext): Boolean {
  */
 fun ConeKotlinType?.collectUpperBounds(): Set<ConeClassLikeType> {
     if (this == null) return emptySet()
-    return when (this) {
-        is ConeErrorType -> emptySet() // Ignore error types
-        is ConeLookupTagBasedType -> when (this) {
-            is ConeClassLikeType -> setOf(this)
-            is ConeTypeVariableType -> {
-                (lookupTag.originalTypeParameter as? ConeTypeParameterLookupTag)?.typeParameterSymbol.collectUpperBounds()
-            }
-            is ConeTypeParameterType -> lookupTag.typeParameterSymbol.collectUpperBounds()
-            else -> throw IllegalStateException("missing branch for ${javaClass.name}")
-        }
-        is ConeDefinitelyNotNullType -> original.collectUpperBounds()
-        is ConeIntersectionType -> intersectedTypes.flatMap { it.collectUpperBounds() }.toSet()
-        is ConeFlexibleType -> upperBound.collectUpperBounds()
-        is ConeCapturedType -> constructor.supertypes?.flatMap { it.collectUpperBounds() }?.toSet().orEmpty()
-        is ConeIntegerConstantOperatorType -> setOf(getApproximatedType())
-        is ConeStubType, is ConeIntegerLiteralConstantType -> throw IllegalStateException("$this should not reach here")
-    }
-}
 
-private fun FirTypeParameterSymbol?.collectUpperBounds(): Set<ConeClassLikeType> {
-    if (this == null) return emptySet()
-    return resolvedBounds.flatMap { it.coneType.collectUpperBounds() }.toSet()
+    val upperBounds = mutableSetOf<ConeClassLikeType>()
+    val seen = mutableSetOf<ConeKotlinType>()
+    fun collect(type: ConeKotlinType) {
+        if (!seen.add(type)) return // Avoid infinite recursion.
+
+        when (type) {
+            is ConeErrorType -> return // Ignore error types
+            is ConeLookupTagBasedType -> when (type) {
+                is ConeClassLikeType -> upperBounds.add(type)
+                is ConeTypeParameterType -> {
+                    val symbol = type.lookupTag.typeParameterSymbol
+                    symbol.resolvedBounds.forEach { collect(it.coneType) }
+                }
+                else -> error("missing branch for ${javaClass.name}")
+            }
+            is ConeTypeVariableType -> {
+                val symbol = (type.typeConstructor.originalTypeParameter as? ConeTypeParameterLookupTag)?.typeParameterSymbol ?: return
+                symbol.resolvedBounds.forEach { collect(it.coneType) }
+            }
+            is ConeDefinitelyNotNullType -> collect(type.original)
+            is ConeIntersectionType -> type.intersectedTypes.forEach(::collect)
+            is ConeFlexibleType -> collect(type.upperBound)
+            is ConeCapturedType -> type.constructor.supertypes?.forEach(::collect)
+            is ConeIntegerConstantOperatorType -> upperBounds.add(type.getApproximatedType())
+            is ConeStubType, is ConeIntegerLiteralConstantType -> {
+                error("$type should not reach here")
+            }
+        }
+    }
+
+    collect(this)
+    return upperBounds
 }
 
 fun ConeKotlinType.leastUpperBound(session: FirSession): ConeKotlinType {
     val upperBounds = collectUpperBounds().takeIf { it.isNotEmpty() } ?: return session.builtinTypes.nullableAnyType.type
     return ConeTypeIntersector.intersectTypes(session.typeContext, upperBounds)
+}
+
+fun ConeKotlinType.fullyExpandedClassId(session: FirSession): ClassId? {
+    return fullyExpandedType(session).classId
+}
+
+@OptIn(ExperimentalContracts::class)
+fun ConeKotlinType.hasDiagnosticKind(kind: DiagnosticKind): Boolean {
+    contract { returns(true) implies (this@hasDiagnosticKind is ConeErrorType) }
+    return this is ConeErrorType && (diagnostic as? ConeSimpleDiagnostic)?.kind == kind
+}
+
+fun FirResolvedQualifier.isStandalone(
+    context: CheckerContext,
+): Boolean {
+    val lastQualifiedAccess = context.callsOrAssignments.lastOrNull() as? FirQualifiedAccessExpression
+    // Note: qualifier isn't standalone when it's in receiver (SomeClass.foo) or getClass (SomeClass::class) position
+    if (lastQualifiedAccess?.explicitReceiver === this || lastQualifiedAccess?.dispatchReceiver === this) return false
+    val lastGetClass = context.getClassCalls.lastOrNull()
+    if (lastGetClass?.argument === this) return false
+
+    return true
 }

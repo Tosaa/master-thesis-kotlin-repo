@@ -10,6 +10,8 @@ import org.jetbrains.kotlin.gradle.InternalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.PRESETS_DEPRECATION_MESSAGE_SUFFIX
 import org.jetbrains.kotlin.gradle.dsl.KotlinSourceSetConvention.isRegisteredByKotlinSourceSetConventionAt
 import org.jetbrains.kotlin.gradle.dsl.NativeTargetShortcutTrace
+import org.jetbrains.kotlin.gradle.internal.KOTLIN_BUILD_TOOLS_API_IMPL
+import org.jetbrains.kotlin.gradle.internal.KOTLIN_MODULE_GROUP
 import org.jetbrains.kotlin.gradle.plugin.KotlinSourceSet
 import org.jetbrains.kotlin.gradle.plugin.KotlinTarget
 import org.jetbrains.kotlin.gradle.plugin.PropertiesProvider
@@ -343,10 +345,10 @@ object KotlinToolingDiagnostics {
         )
     }
 
-    object ExperimentalK2Warning : ToolingDiagnosticFactory(WARNING) {
+    object ExperimentalTryNextWarning : ToolingDiagnosticFactory(WARNING) {
         operator fun invoke() = build(
             """
-            ATTENTION: 'kotlin.experimental.tryK2' is an experimental option enabled in the project for trying out the new Kotlin K2 compiler only.
+            ATTENTION: 'kotlin.experimental.tryNext' is an experimental option enabled in the project for trying out the next Kotlin compiler language version only.
             Please refrain from using it in production code and provide feedback to the Kotlin team for any issues encountered via https://kotl.in/issue
             """.trimIndent()
         )
@@ -640,6 +642,17 @@ object KotlinToolingDiagnostics {
         )
     }
 
+    object BuildToolsApiVersionInconsistency : ToolingDiagnosticFactory(FATAL) {
+        operator fun invoke(expectedVersion: String, actualVersion: String?) = build(
+            """
+                Artifact $KOTLIN_MODULE_GROUP:$KOTLIN_BUILD_TOOLS_API_IMPL must have version aligned with the version of KGP when compilation via the Build Tools API is disabled.
+
+                Expected version: $expectedVersion
+                Actual resolved version: ${actualVersion ?: "not found"}
+            """.trimIndent(),
+        )
+    }
+
     object WasmSourceSetsNotFoundError : ToolingDiagnosticFactory(ERROR) {
         operator fun invoke(nameOfRequestedSourceSet: String) = build(
             """
@@ -664,6 +677,18 @@ object KotlinToolingDiagnostics {
                         " which means that `srcMain` and `sRcMain` are considered the same source set."
             )
         }
+    }
+
+    object IncorrectNativeDependenciesWarning : ToolingDiagnosticFactory(WARNING) {
+        operator fun invoke(targetName: String, compilationName: String, dependencies: List<String>) = build(
+            """
+                A compileOnly dependency is used in the Kotlin/Native target '${targetName}':
+                Compilation: $compilationName
+                
+                Dependencies:
+                ${dependencies.joinToString(separator = "\n")}
+            """.trimIndent()
+        )
     }
 }
 

@@ -243,14 +243,14 @@ internal class PropertyDelegationLowering(val generationState: NativeGenerationS
                     generatedClasses.add(newClass)
                     return newExpression as IrConstantValue
                 }
-                return irConstantObject(clazz, @OptIn(ExperimentalStdlibApi::class) buildMap {
+                return irConstantObject(clazz, buildMap {
                     put("name", irConstantPrimitive(name))
                     put("getter", getterCallableReference.convert())
                     if (setterCallableReference != null) {
                         put("setter", setterCallableReference.convert())
                     }
                 })
-            } else irCall(clazz.constructors.single(), receiverTypes + listOf(returnType)).apply {
+            } else irCallWithSubstitutedType(clazz.constructors.single(), receiverTypes + listOf(returnType)).apply {
                 putValueArgument(0, name)
                 putValueArgument(1, getterCallableReference)
                 if (setterCallableReference != null)
@@ -288,5 +288,7 @@ internal class PropertyDelegationLowering(val generationState: NativeGenerationS
         return type.classifier == expectedClass
     }
 
-    private object DECLARATION_ORIGIN_KPROPERTIES_FOR_DELEGATION : IrDeclarationOriginImpl("KPROPERTIES_FOR_DELEGATION")
+    private companion object {
+        private val DECLARATION_ORIGIN_KPROPERTIES_FOR_DELEGATION = IrDeclarationOriginImpl("KPROPERTIES_FOR_DELEGATION")
+    }
 }

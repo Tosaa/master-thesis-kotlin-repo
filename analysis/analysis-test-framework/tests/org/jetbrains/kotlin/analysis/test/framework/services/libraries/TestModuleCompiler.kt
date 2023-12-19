@@ -5,23 +5,18 @@
 
 package org.jetbrains.kotlin.analysis.test.framework.services.libraries
 
+import org.jetbrains.kotlin.test.directives.model.SimpleDirectivesContainer
 import org.jetbrains.kotlin.test.model.TestModule
+import org.jetbrains.kotlin.test.services.TestService
 import org.jetbrains.kotlin.test.services.TestServices
 import org.jetbrains.kotlin.test.services.sourceFileProvider
 import org.jetbrains.kotlin.test.util.KtTestUtil
-import java.io.ByteArrayInputStream
 import java.nio.file.Path
-import java.util.jar.Attributes
-import java.util.jar.JarEntry
-import java.util.jar.JarOutputStream
-import java.util.jar.Manifest
 import kotlin.io.path.createFile
 import kotlin.io.path.div
-import kotlin.io.path.outputStream
 import kotlin.io.path.writeText
 
-
-internal object TestModuleCompiler {
+abstract class TestModuleCompiler : TestService {
     fun compileTestModuleToLibrary(module: TestModule, testServices: TestServices): Path {
         val tmpDir = KtTestUtil.tmpDir("testSourcesToCompile").toPath()
         for (testFile in module.files) {
@@ -29,29 +24,15 @@ internal object TestModuleCompiler {
             val tmpSourceFile = (tmpDir / testFile.name).createFile()
             tmpSourceFile.writeText(text)
         }
-        return CompilerExecutor.compileLibrary(
-            tmpDir,
-            CompilerExecutor.parseCompilerOptionsFromTestdata(module),
-            compilationErrorExpected = CompilerExecutor.Directives.COMPILATION_ERRORS in module.directives
-        )
+        return compile(tmpDir, module, testServices)
     }
 
-    fun compileTestModuleToLibrarySources(module: TestModule, testServices: TestServices): Path {
-        val tmpDir = KtTestUtil.tmpDir("testSourcesToCompile").toPath()
-        val librarySourcesPath = tmpDir / "library-sources.jar"
-        val manifest = Manifest().apply { mainAttributes[Attributes.Name.MANIFEST_VERSION] = "1.0" }
-        JarOutputStream(librarySourcesPath.outputStream(), manifest).use { jarOutputStream ->
-            for (testFile in module.files) {
-                val text = testServices.sourceFileProvider.getContentOfSourceFile(testFile)
-                addFileToJar(testFile.relativePath, text, jarOutputStream)
-            }
-        }
-        return librarySourcesPath
-    }
+    abstract fun compile(tmpDir: Path, module: TestModule, testServices: TestServices): Path
 
-    private fun addFileToJar(path: String, text: String, jarOutputStream: JarOutputStream) {
-        jarOutputStream.putNextEntry(JarEntry(path))
-        ByteArrayInputStream(text.toByteArray()).copyTo(jarOutputStream)
-        jarOutputStream.closeEntry()
+    abstract fun compileTestModuleToLibrarySources(module: TestModule, testServices: TestServices): Path?
+
+    object Directives : SimpleDirectivesContainer() {
+        val COMPILER_ARGUMENTS by stringDirective("List of additional compiler arguments")
+        val COMPILATION_ERRORS by directive("Is compilation errors expected in the file")
     }
 }

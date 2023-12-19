@@ -1,4 +1,3 @@
-import org.gradle.internal.deprecation.DeprecatableConfiguration
 import org.jetbrains.kotlin.gradle.dsl.KotlinVersion
 import org.jetbrains.kotlin.gradle.plugin.KotlinBasePluginWrapper
 
@@ -50,6 +49,10 @@ afterEvaluate {
         val bootstrapCompilerClasspath by rootProject.buildscript.configurations
         configurations.findByName("kotlinCompilerClasspath")?.let {
             dependencies.add(it.name, files(bootstrapCompilerClasspath))
+        }
+        val bootstrapBuildToolsApiClasspath by rootProject.buildscript.configurations
+        configurations.findByName("kotlinBuildToolsApiClasspath")?.let {
+            dependencies.add(it.name, files(bootstrapBuildToolsApiClasspath))
         }
 
         configurations.findByName("kotlinCompilerPluginClasspath")
@@ -111,11 +114,15 @@ fun Project.configureJavaBasePlugin() {
     }
 }
 
+val projectsUsedInIntelliJKotlinPlugin: Array<String> by rootProject.extra
+val kotlinApiVersionForProjectsUsedInIntelliJKotlinPlugin: String by rootProject.extra
+
 fun Project.configureKotlinCompilationOptions() {
     plugins.withType<KotlinBasePluginWrapper> {
         val commonCompilerArgs = listOfNotNull(
             "-opt-in=kotlin.RequiresOptIn",
-            "-progressive".takeIf { getBooleanProperty("test.progressive.mode") ?: false }
+            "-progressive".takeIf { getBooleanProperty("test.progressive.mode") ?: false },
+            "-Xdont-warn-on-error-suppression",
         )
 
         val kotlinLanguageVersion: String by rootProject.extra
@@ -124,12 +131,36 @@ fun Project.configureKotlinCompilationOptions() {
         val useFirIC by extra(project.kotlinBuildProperties.useFirTightIC)
         val renderDiagnosticNames by extra(project.kotlinBuildProperties.renderDiagnosticNames)
 
-        @Suppress("DEPRECATION")
+        val coreLibProjects: List<String> by rootProject.extra
+        val projectsWithForced19LanguageVersion = coreLibProjects + listOf(
+            ":kotlin-stdlib-jvm-minimal-for-test",
+            ":kotlin-stdlib-js-ir-minimal-for-test",
+            ":kotlin-stdlib-wasm-js",
+            ":kotlin-stdlib-wasm-wasi",
+            ":kotlin-dom-api-compat",
+            ":kotlin-test:kotlin-test-wasm-js",
+            ":kotlin-test:kotlin-test-wasm-wasi",
+        )
+
         tasks.withType<org.jetbrains.kotlin.gradle.dsl.KotlinCompile<*>>().configureEach {
             kotlinOptions {
-                languageVersion = kotlinLanguageVersion
-                apiVersion = kotlinLanguageVersion
+
                 freeCompilerArgs += commonCompilerArgs
+                val forced19 = project.path in projectsWithForced19LanguageVersion
+                if (forced19) {
+                    languageVersion = "1.9"
+                    apiVersion = "1.9"
+                } else {
+                    languageVersion = kotlinLanguageVersion
+                    apiVersion = kotlinLanguageVersion
+                    freeCompilerArgs += "-Xskip-prerelease-check"
+                }
+                if (project.path in projectsUsedInIntelliJKotlinPlugin) {
+                    apiVersion = kotlinApiVersionForProjectsUsedInIntelliJKotlinPlugin
+                }
+                if (KotlinVersion.DEFAULT >= KotlinVersion.KOTLIN_2_0 && forced19) {
+                    options.progressiveMode.set(false)
+                }
             }
 
             val relativePathBaseArg: String? =
@@ -140,7 +171,6 @@ fun Project.configureKotlinCompilationOptions() {
             // Workaround to avoid remote build cache misses due to absolute paths in relativePathBaseArg
             doFirst {
                 if (relativePathBaseArg != null) {
-                    @Suppress("DEPRECATION")
                     kotlinOptions.freeCompilerArgs += relativePathBaseArg
                 }
             }
@@ -149,24 +179,6 @@ fun Project.configureKotlinCompilationOptions() {
         val jvmCompilerArgs = listOf(
             "-Xno-optimized-callable-references",
             "-Xno-kotlin-nothing-value-exception",
-        )
-
-        val coreLibProjects: List<String> by rootProject.extra
-        val projectsWithDisabledFirBootstrap = coreLibProjects + listOf(
-            ":kotlin-gradle-plugin",
-            ":kotlinx-metadata",
-            ":kotlinx-metadata-jvm",
-            // For some reason stdlib isn't imported correctly for this module
-            // Probably it's related to kotlin-test module usage
-            ":kotlin-gradle-statistics",
-            // Requires serialization plugin
-            ":wasm:wasm.ir",
-            // Uses multiplatform
-            ":kotlin-stdlib-jvm-minimal-for-test",
-            ":kotlin-native:endorsedLibraries:kotlinx.cli",
-            ":kotlin-native:klib",
-            // Requires serialization plugin
-            ":js:js.tests",
         )
 
         // TODO: fix remaining warnings and remove this property.
@@ -182,25 +194,6 @@ fun Project.configureKotlinCompilationOptions() {
         tasks.withType<org.jetbrains.kotlin.gradle.dsl.KotlinJvmCompile>().configureEach {
             kotlinOptions {
                 freeCompilerArgs += jvmCompilerArgs
-
-                if (useJvmFir) {
-                    if (project.path !in projectsWithDisabledFirBootstrap) {
-                        freeCompilerArgs += "-Xuse-k2"
-                        freeCompilerArgs += "-Xabi-stability=stable"
-                        if (useFirLT) {
-                            freeCompilerArgs += "-Xuse-fir-lt"
-                        }
-                        if (useFirIC) {
-                            freeCompilerArgs += "-Xuse-fir-ic"
-                        }
-                    } else {
-                        freeCompilerArgs += "-Xskip-prerelease-check"
-                    }
-                }
-                if (KotlinVersion.DEFAULT >= KotlinVersion.KOTLIN_2_0 && project.path in projectsWithDisabledFirBootstrap) {
-                    languageVersion = "1.9"
-                    options.progressiveMode.set(false)
-                }
                 if (renderDiagnosticNames) {
                     freeCompilerArgs += "-Xrender-internal-diagnostic-names"
                 }

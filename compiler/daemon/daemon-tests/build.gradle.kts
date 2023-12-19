@@ -10,9 +10,12 @@ dependencies {
     testImplementation(project(":kotlin-test:kotlin-test-jvm"))
     testImplementation(project(":kotlin-daemon"))
     testImplementation(project(":kotlin-daemon-client"))
-    testImplementation(commonDependency("junit:junit"))
+    testImplementation(libs.junit4)
+    testImplementation(libs.junit.jupiter.api)
     testImplementation(projectTests(":compiler:tests-common"))
     testImplementation(intellijCore())
+    testRuntimeOnly(libs.junit.jupiter.engine)
+    testRuntimeOnly(libs.junit.vintage.engine)
 }
 
 sourceSets {
@@ -20,9 +23,11 @@ sourceSets {
     "test" { projectDefault() }
 }
 
-projectTest(parallel = true) {
+projectTest(parallel = true, jUnitMode = JUnitMode.JUnit5) {
     dependsOn(":dist")
     workingDir = rootDir
+
+    useJUnitPlatform()
 
     val testClassesDirs = testSourceSet.output.classesDirs
     doFirst {

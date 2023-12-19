@@ -65,7 +65,7 @@ abstract class Kapt3BaseIT : KGPBaseTest() {
         }
     }
 
-    // All Kapt projects require around 3g of heap size for Kotlin daemon
+    // All Kapt projects require around 2.5g of heap size for Kotlin daemon
     @OptIn(EnvironmentalVariablesOverride::class)
     protected fun Kapt3BaseIT.project(
         projectName: String,
@@ -75,7 +75,7 @@ abstract class Kapt3BaseIT : KGPBaseTest() {
         enableBuildScan: Boolean = false,
         addHeapDumpOptions: Boolean = true,
         enableGradleDebug: Boolean = false,
-        enableKotlinDaemonMemoryLimitInMb: Int? = 3512,
+        enableKotlinDaemonMemoryLimitInMb: Int? = 2512,
         projectPathAdditionalSuffix: String = "",
         buildJdk: File? = null,
         localRepoDir: Path? = null,
@@ -221,8 +221,18 @@ open class Kapt3IT : Kapt3BaseIT() {
         }
     }
 
+    @DisplayName("Kapt is not skipped when all annotation processors are declared as indirect dependencies")
+    @GradleTest
+    fun testKaptNotSkippedWithIndirectDependencies(gradleVersion: GradleVersion) {
+        project("indirectDependencies".withPrefix, gradleVersion) {
+            build("assemble") {
+                assertTasksExecuted(":kaptGenerateStubsKotlin", ":kaptKotlin")
+            }
+        }
+    }
+
     @DisplayName("Kapt is working with newer JDKs")
-    @JdkVersions(versions = [JavaVersion.VERSION_1_10, JavaVersion.VERSION_11, JavaVersion.VERSION_16, JavaVersion.VERSION_17])
+    @JdkVersions(versions = [JavaVersion.VERSION_11, JavaVersion.VERSION_17, JavaVersion.VERSION_21])
     @GradleWithJdkTest
     fun doTestSimpleWithCustomJdk(
         gradleVersion: GradleVersion,
@@ -250,38 +260,8 @@ open class Kapt3IT : Kapt3BaseIT() {
         }
     }
 
-    // TODO: Remove as JDK 21 is supported on Java Toolchains
-    @DisplayName("Kapt is working with JDK 21")
-    @GradleTest
-    @GradleTestVersions(minVersion = TestVersions.Gradle.G_7_3)
-    @EnableOnJdk21
-    fun doTestSimpleWithJdk21(
-        gradleVersion: GradleVersion
-    ) {
-        project(
-            "simple".withPrefix,
-            gradleVersion
-        ) {
-            //language=Groovy
-            buildGradle.appendText(
-                """
-                |
-                |kotlin {
-                |    jvmToolchain(21)
-                |}
-                """.trimMargin()
-            )
-
-            build("assemble") {
-                assertTasksExecuted(":kaptGenerateStubsKotlin", ":kaptKotlin")
-                // Check added because of https://youtrack.jetbrains.com/issue/KT-33056.
-                assertOutputDoesNotContain("javaslang.match.PatternsProcessor")
-            }
-        }
-    }
-
     @DisplayName("KT-48402: Kapt worker classpath is using JRE classes from toolchain")
-    @JdkVersions(versions = [JavaVersion.VERSION_16])
+    @JdkVersions(versions = [JavaVersion.VERSION_17])
     @GradleWithJdkTest
     fun kaptClasspathJreToolchain(
         gradleVersion: GradleVersion,
@@ -413,13 +393,13 @@ open class Kapt3IT : Kapt3BaseIT() {
 
     @DisplayName("Kapt is working with incremental compilation")
     @GradleTest
-    fun testSimpleWithIC(gradleVersion: GradleVersion) {
+   open fun testSimpleWithIC(gradleVersion: GradleVersion) {
         doTestSimpleWithIC(gradleVersion)
     }
 
     @DisplayName("Kapt is working with incremental compilation, when kotlin.incremental.useClasspathSnapshot=true")
     @GradleTest
-    fun testSimpleWithIC_withClasspathSnapshot(gradleVersion: GradleVersion) {
+    open fun testSimpleWithIC_withClasspathSnapshot(gradleVersion: GradleVersion) {
         doTestSimpleWithIC(gradleVersion, useClasspathSnapshot = true)
     }
 
@@ -663,7 +643,7 @@ open class Kapt3IT : Kapt3BaseIT() {
 
     @DisplayName("KT18799: generate annotation value for constant values in documented types")
     @GradleTest
-    fun testKt18799(gradleVersion: GradleVersion) {
+    open fun testKt18799(gradleVersion: GradleVersion) {
         project("kt18799".withPrefix, gradleVersion) {
             build("kaptKotlin")
 
@@ -1087,7 +1067,7 @@ open class Kapt3IT : Kapt3BaseIT() {
             buildJdk = jdk.location
         ) {
             buildGradle.append(
-                "\nsourceCompatibility = '8'"
+                "\njava.sourceCompatibility = JavaVersion.VERSION_1_8"
             )
 
             // because Java sourceCompatibility is fixed JVM target will different with JDK 11 on Gradle 8

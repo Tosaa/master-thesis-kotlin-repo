@@ -5,7 +5,6 @@
 
 package org.jetbrains.kotlin.gradle.testbase
 
-import java.io.IOException
 import java.nio.file.*
 import java.nio.file.attribute.BasicFileAttributes
 import kotlin.io.path.*
@@ -121,3 +120,10 @@ fun Path.getSingleFileInDir(relativePath: String): Path {
     }
 }
 
+/**
+ * Get Gradle project Kotlin persistent cache.
+ *
+ * **Note**: if a test project is using composite build - [GradleProject] should point to the root project in this composite build.
+ */
+val GradleProject.projectPersistentCache: Path
+    get() = projectPath.resolve(".kotlin")

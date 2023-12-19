@@ -5,63 +5,96 @@
 
 package org.jetbrains.kotlin.fir.tree.generator.printer
 
+import org.jetbrains.kotlin.descriptors.Modality
 import org.jetbrains.kotlin.fir.tree.generator.context.AbstractFirTreeBuilder
+import org.jetbrains.kotlin.fir.tree.generator.firTransformerType
+import org.jetbrains.kotlin.fir.tree.generator.firVisitorType
 import org.jetbrains.kotlin.fir.tree.generator.model.Element
+import org.jetbrains.kotlin.fir.tree.generator.model.Field
+import org.jetbrains.kotlin.generators.tree.*
+import org.jetbrains.kotlin.generators.tree.printer.*
 import org.jetbrains.kotlin.utils.SmartPrinter
-import org.jetbrains.kotlin.utils.withIndent
-
 import java.io.File
 
-fun printTransformer(elements: List<Element>, generationPath: File): GeneratedFile {
-    val dir = File(generationPath, VISITOR_PACKAGE.replace(".", "/"))
-    val file = File(dir, "FirTransformer.kt")
-    val stringBuilder = StringBuilder()
-    SmartPrinter(stringBuilder).apply {
-        printCopyright()
-        println("package $VISITOR_PACKAGE")
-        println()
-        elements.forEach { println("import ${it.fullQualifiedName}") }
-        println()
-        printGeneratedMessage()
+private class TransformerPrinter(
+    printer: SmartPrinter,
+) : AbstractVisitorPrinter<Element, Field>(printer) {
 
-        println("abstract class FirTransformer<in D> : FirVisitor<FirElement, D>() {")
-        println()
-        withIndent {
-            println("abstract fun <E : FirElement> transformElement(element: E, data: D): E")
+    override val visitorType: ClassRef<*>
+        get() = firTransformerType
+
+    override val visitorSuperType: ClassRef<PositionTypeParameterRef>
+        get() = firVisitorType.withArgs(AbstractFirTreeBuilder.baseFirElement, visitorDataType)
+
+    override val visitorTypeParameters: List<TypeVariable>
+        get() = listOf(dataTypeVariable)
+
+    override val visitorDataType: TypeRef
+        get() = dataTypeVariable
+
+    override fun visitMethodReturnType(element: Element) = element.transformerClass
+
+    override val allowTypeParametersInVisitorMethods: Boolean
+        get() = true
+
+    context(ImportCollector)
+    override fun printMethodsForElement(element: Element) {
+        printer.run {
             println()
-            for (element in elements) {
-                if (element == AbstractFirTreeBuilder.baseFirElement) continue
-                val varName = element.safeDecapitalizedName
-                print("open fun ")
-                element.typeParameters.takeIf { it.isNotBlank() }?.let { print(it) }
-                println(
-                    "transform${element.name}($varName: ${element.typeWithArguments}, data: D): ${element.transformerType
-                        .typeWithArguments}${element.multipleUpperBoundsList()}{",
+            val elementParameterName = element.safeDecapitalizedName
+            if (element.isRootElement) {
+                val elementTP = TypeVariable("E", listOf(element))
+                printFunctionDeclaration(
+                    name = "transformElement",
+                    parameters = listOf(
+                        FunctionParameter(elementParameterName, elementTP),
+                        FunctionParameter("data", dataTypeVariable)
+                    ),
+                    returnType = elementTP,
+                    typeParameters = listOf(elementTP),
+                    modality = Modality.ABSTRACT,
                 )
-                withIndent {
-                    println("return transformElement($varName, data)")
-                }
-                println("}")
                 println()
+            } else {
+                printFunctionWithBlockBody(
+                    name = "transform" + element.name,
+                    parameters = listOf(
+                        FunctionParameter(elementParameterName, element),
+                        FunctionParameter("data", dataTypeVariable)
+                    ),
+                    returnType = visitMethodReturnType(element),
+                    typeParameters = element.params,
+                    modality = Modality.OPEN,
+                ) {
+                    println("return transformElement(", elementParameterName, ", data)")
+                }
             }
-
-            for (element in elements) {
-                val varName = element.safeDecapitalizedName
-                print("final override fun ")
-                element.typeParameters.takeIf { it.isNotBlank() }?.let { print(it) }
-
+            println()
+            printVisitMethodDeclaration(
+                element = element,
+                modality = Modality.FINAL,
+                override = true,
+            )
+            printBlock {
                 println(
-                    "visit${element.name}($varName: ${element.typeWithArguments}, data: D): ${element.transformerType
-                        .typeWithArguments}${element.multipleUpperBoundsList()}{",
+                    "return transform",
+                    element.name,
+                    "(",
+                    element.safeDecapitalizedName,
+                    ", ",
+                    "data)"
                 )
-                withIndent {
-                    println("return transform${element.name}($varName, data)")
-                }
-                println("}")
-                println()
             }
         }
-        println("}")
     }
-    return GeneratedFile(file, stringBuilder.toString())
 }
+
+fun printTransformer(elements: List<Element>, generationPath: File): GeneratedFile =
+    printGeneratedType(
+        generationPath,
+        TREE_GENERATOR_README,
+        firTransformerType.packageName,
+        firTransformerType.simpleName,
+    ) {
+        TransformerPrinter(this).printVisitor(elements)
+    }

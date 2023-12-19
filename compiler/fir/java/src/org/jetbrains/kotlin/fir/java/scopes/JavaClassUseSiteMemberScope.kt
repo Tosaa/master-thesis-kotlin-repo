@@ -9,6 +9,7 @@ import org.jetbrains.kotlin.builtins.StandardNames
 import org.jetbrains.kotlin.descriptors.Modality
 import org.jetbrains.kotlin.descriptors.Visibilities
 import org.jetbrains.kotlin.fir.*
+import org.jetbrains.kotlin.fir.analysis.checkers.isVisibleInClass
 import org.jetbrains.kotlin.fir.declarations.*
 import org.jetbrains.kotlin.fir.declarations.builder.buildSimpleFunctionCopy
 import org.jetbrains.kotlin.fir.declarations.impl.FirDeclarationStatusImpl
@@ -21,10 +22,12 @@ import org.jetbrains.kotlin.fir.java.declarations.FirJavaClass
 import org.jetbrains.kotlin.fir.java.declarations.FirJavaMethod
 import org.jetbrains.kotlin.fir.java.declarations.buildJavaMethodCopy
 import org.jetbrains.kotlin.fir.java.declarations.buildJavaValueParameterCopy
+import org.jetbrains.kotlin.fir.java.resolveIfJavaType
 import org.jetbrains.kotlin.fir.java.syntheticPropertiesStorage
 import org.jetbrains.kotlin.fir.java.symbols.FirJavaOverriddenSyntheticPropertySymbol
 import org.jetbrains.kotlin.fir.java.toConeKotlinTypeProbablyFlexible
 import org.jetbrains.kotlin.fir.resolve.defaultType
+import org.jetbrains.kotlin.fir.resolve.providers.toSymbol
 import org.jetbrains.kotlin.fir.scopes.*
 import org.jetbrains.kotlin.fir.scopes.impl.AbstractFirUseSiteMemberScope
 import org.jetbrains.kotlin.fir.scopes.impl.FirTypeIntersectionScopeContext.ResultOfIntersection
@@ -47,7 +50,7 @@ import org.jetbrains.kotlin.utils.addIfNotNull
 import org.jetbrains.kotlin.utils.addToStdlib.runIf
 
 class JavaClassUseSiteMemberScope(
-    klass: FirJavaClass,
+    private val klass: FirJavaClass,
     session: FirSession,
     superTypeScopes: List<FirTypeScope>,
     declaredMemberScope: FirContainingNamesAwareScope
@@ -151,6 +154,9 @@ class JavaClassUseSiteMemberScope(
 
     internal fun syntheticPropertyFromOverride(overriddenProperty: ResultOfIntersection<FirPropertySymbol>): FirSyntheticPropertySymbol? {
         val overrideInClass = overriddenProperty.overriddenMembers.firstNotNullOfOrNull { (symbol, _) ->
+            // We may call this function at the STATUS phase, which means that using resolved status may lead to cycle
+            // So we need to use raw status here
+            if (!symbol.isVisibleInClass(klass.symbol, symbol.rawStatus)) return@firstNotNullOfOrNull null
             symbol.createOverridePropertyIfExists(declaredMemberScope, takeModalityFromGetter = true)
                 ?: superTypeScopes.firstNotNullOfOrNull { scope ->
                     symbol.createOverridePropertyIfExists(scope, takeModalityFromGetter = false)
@@ -258,7 +264,10 @@ class JavaClassUseSiteMemberScope(
             getProperties(propertyName).any l@{ propertySymbol ->
                 // TODO: add magic overrides from LazyJavaClassMemberScope.isVisibleAsFunctionInCurrentClass
                 if (propertySymbol !is FirPropertySymbol) return@l false
-                propertySymbol.isOverriddenInClassBy(this)
+                // We may call this function at the STATUS phase, which means that using resolved status may lead to cycle
+                //   so we need to use raw status here
+                propertySymbol.isVisibleInClass(this@JavaClassUseSiteMemberScope.klass.symbol, propertySymbol.rawStatus) &&
+                        propertySymbol.isOverriddenInClassBy(this)
             }
         }
         if (hasCorrespondingProperty) return false
@@ -290,14 +299,33 @@ class JavaClassUseSiteMemberScope(
      * Examples:
      * - boolean containsKey(Object key) -> true
      * - boolean containsKey(K key) -> false // Wrong JDK method override, while it's a valid Kotlin built-in override
+     *
+     * There is a case when we shouldn't hide a function even if it overrides builtin member with value parameter erasure:
+     *   if substituted kotlin overridden has the same parameters as current java override. Such situation may happen only in
+     *   case when `Any`/`Object` is used as parameterization of supertype:
+     *
+     * // java
+     * class MySuperMap extends java.util.Map<Object, Object> {
+     *     @Override
+     *     public boolean containsKey(Object key) {...}
+     *
+     *     @Override
+     *     public boolean containsValue(Object key) {...}
+     * }
+     *
+     * In this case, the signature of override, made based on the correct kotlin signature, will be the same (because of { K -> Any, V -> Any }
+     *   substitution for both functions).
+     * And since the list of all such functions is well-known, the only case when this may happen is when value parameter types of kotlin
+     *   overridden are `Any`
      */
     private fun FirNamedFunctionSymbol.shouldBeVisibleAsOverrideOfBuiltInWithErasedValueParameters(): Boolean {
         if (!name.sameAsBuiltinMethodWithErasedValueParameters) return false
-        val candidatesToOverride = supertypeScopeContext.collectMembersGroupedByScope(name, FirScope::processFunctionsByName)
-            .flatMap { (scope, symbols) ->
-                symbols.mapNotNull {
-                    BuiltinMethodsWithSpecialGenericSignature.getOverriddenBuiltinFunctionWithErasedValueParametersInJava(it, scope)
-                }
+        val candidatesToOverride = supertypeScopeContext.collectIntersectionResultsForCallables(name, FirScope::processFunctionsByName)
+            .flatMap { it.overriddenMembers }
+            .filterNot { (member, _) ->
+                member.valueParameterSymbols.all { it.resolvedReturnType.lowerBoundIfFlexible().isAny }
+            }.mapNotNull { (member, scope) ->
+                BuiltinMethodsWithSpecialGenericSignature.getOverriddenBuiltinFunctionWithErasedValueParametersInJava(member, scope)
             }
 
         val jvmDescriptor = fir.computeJvmDescriptor()
@@ -315,8 +343,10 @@ class JavaClassUseSiteMemberScope(
 
     private fun FirNamedFunctionSymbol.createSuspendView(): FirSimpleFunction? {
         val continuationParameter = fir.valueParameters.lastOrNull() ?: return null
+        val owner = classId.toSymbol(session)?.fir as? FirJavaClass ?: return null
         val continuationParameterType = continuationParameter
             .returnTypeRef
+            .resolveIfJavaType(session, owner.javaTypeParameterStack)
             .coneTypeSafe<ConeKotlinType>()
             ?.lowerBoundIfFlexible() as? ConeClassLikeType
             ?: return null
@@ -363,19 +393,22 @@ class JavaClassUseSiteMemberScope(
         destination: MutableCollection<FirNamedFunctionSymbol>
     ) {
         val resultsOfIntersectionToSaveInCache = mutableListOf<ResultOfIntersection<FirNamedFunctionSymbol>>()
+        // The special override checker is needed for the case when we're trying to consider e.g. explicitly defined `Long toLong()`
+        // as an override of `long toLong()` which is an enhanced version of `long longValue()`. K1 in such cases used
+        // LazyJavaClassMemberScope.doesOverride, that ignores the return type, so we reproduce the behavior here.
+        // See the test testData/diagnostics/tests/j+k/kt62197.kt and the issue KT-62197 for more details.
+        // TODO: consider some more transparent approach
+        val overrideCheckerForSpecialFunctions =
+            JavaOverrideChecker(session, klass.javaTypeParameterStack, superTypeScopes, considerReturnTypeKinds = false)
         val intersectionResults =
             supertypeScopeContext.convertGroupedCallablesToIntersectionResults(functionsFromSupertypesWithRequestedName)
         for (resultOfIntersectionWithNaturalName in intersectionResults) {
             val someSymbolWithNaturalNameFromSuperType = resultOfIntersectionWithNaturalName.extractSomeSymbolFromSuperType()
             val explicitlyDeclaredFunctionWithNaturalName = explicitlyDeclaredFunctionsWithNaturalName.firstOrNull {
-                overrideChecker.isOverriddenFunction(it, someSymbolWithNaturalNameFromSuperType)
+                overrideCheckerForSpecialFunctions.isOverriddenFunction(it, someSymbolWithNaturalNameFromSuperType)
             }
-            val jvmName = resultOfIntersectionWithNaturalName.overriddenMembers.firstNotNullOfOrNull {
-                it.member.getJvmMethodNameIfSpecial(it.baseScope, session)
-            }
-            if (jvmName != null) {
-                processOverridesForFunctionsWithDifferentJvmName(
-                    jvmName,
+
+            if (processOverridesForFunctionsWithDifferentJvmName(
                     someSymbolWithNaturalNameFromSuperType,
                     explicitlyDeclaredFunctionWithNaturalName,
                     requestedName,
@@ -383,6 +416,7 @@ class JavaClassUseSiteMemberScope(
                     destination,
                     resultsOfIntersectionToSaveInCache
                 )
+            ) {
                 continue
             }
 
@@ -439,12 +473,20 @@ class JavaClassUseSiteMemberScope(
             it.hasSameJvmDescriptor(functionFromSupertypeWithErasedParameterType) && it.hasErasedParameters() &&
                     javaOverrideChecker.doesReturnTypesHaveSameKind(functionFromSupertypeWithErasedParameterType.fir, it.fir)
         } ?: return false
+        /*
+         * See the comment to shouldBeVisibleAsOverrideOfBuiltInWithErasedValueParameters function
+         * It explains why we should check value parameters for `Any` type
+         */
+        var allParametersAreAny = true
         val renamedDeclaredFunction = buildJavaMethodCopy(originalDeclaredFunction.fir as FirJavaMethod) {
             name = naturalName
             symbol = FirNamedFunctionSymbol(originalDeclaredFunction.callableId)
             this.valueParameters.clear()
             originalDeclaredFunction.fir.valueParameters.zip(overriddenMemberWithErasedValueParameters.fir.valueParameters)
                 .mapTo(this.valueParameters) { (overrideParameter, parameterFromSupertype) ->
+                    if (!parameterFromSupertype.returnTypeRef.coneType.lowerBoundIfFlexible().isAny) {
+                        allParametersAreAny = false
+                    }
                     buildJavaValueParameterCopy(overrideParameter) {
                         this@buildJavaValueParameterCopy.returnTypeRef = parameterFromSupertype.returnTypeRef
                     }
@@ -452,6 +494,10 @@ class JavaClassUseSiteMemberScope(
         }.apply {
             initialSignatureAttr = originalDeclaredFunction.fir
         }.symbol
+
+        if (allParametersAreAny) {
+            return false
+        }
 
         val hasAccidentalOverrideWithDeclaredFunction = explicitlyDeclaredFunctionsWithNaturalName.any {
             overrideChecker.isOverriddenFunction(
@@ -480,16 +526,18 @@ class JavaClassUseSiteMemberScope(
     }
 
     private fun processOverridesForFunctionsWithDifferentJvmName(
-        jvmName: Name,
+        // The JVM name of the function, e.g., byteValue or charAt
         someSymbolWithNaturalNameFromSuperType: FirNamedFunctionSymbol,
         explicitlyDeclaredFunctionWithNaturalName: FirNamedFunctionSymbol?,
+        // The Kotlin name of the function, e.g., toByte or get
         naturalName: Name,
         resultOfIntersectionWithNaturalName: ResultOfIntersection<FirNamedFunctionSymbol>,
         destination: MutableCollection<FirNamedFunctionSymbol>,
         resultsOfIntersectionToSaveInCache: MutableList<ResultOfIntersection<FirNamedFunctionSymbol>>
-    ) {
+    ): Boolean {
         /*
-         * name: toByte
+         * naturalName: toByte
+         * jvmName: byteValue
          *
          * 1. find declared byteValue (a)
          * 2. find toByte in supertypes (b)
@@ -503,7 +551,20 @@ class JavaClassUseSiteMemberScope(
          * 7.1 create renamed copies of (c): (c')
          * 7.2 save direct overrides
          */
-        val overriddenMembers = resultOfIntersectionWithNaturalName.overriddenMembers
+
+        val jvmName = resultOfIntersectionWithNaturalName.overriddenMembers.firstNotNullOfOrNull {
+            it.member.getJvmMethodNameIfSpecial(it.baseScope, session)
+        } ?: return false
+
+
+        // Among the overridden members, some can be regular members and some can be renamed from jvmName to naturalName.
+        // If we have the CharBuffer situation, the visible member will override the regular ones and the hidden member will
+        // override the renamed ones (if they exist).
+        val (overriddenByJvmName, overriddenByNaturalName) =
+            resultOfIntersectionWithNaturalName.overriddenMembers.partition {
+                it.member.getJvmMethodNameIfSpecial(it.baseScope, session) == jvmName
+            }
+
         val explicitlyDeclaredFunctionWithBuiltinJvmName = declaredMemberScope.getFunctions(jvmName).firstOrNull {
             overrideChecker.isOverriddenFunction(it, someSymbolWithNaturalNameFromSuperType)
         }
@@ -514,52 +575,110 @@ class JavaClassUseSiteMemberScope(
             )
         }
 
-        val declaredFunction = explicitlyDeclaredFunctionWithNaturalName ?: explicitlyDeclaredFunctionWithBuiltinJvmName?.let {
-            val original = it.fir as FirJavaMethod
-            buildJavaMethodCopy(original) {
-                name = naturalName
-                symbol = FirNamedFunctionSymbol(it.callableId.copy(callableName = naturalName))
-                status = original.status.copy(isOperator = true)
+        fun createCopyWithNaturalName(
+            originalSymbol: FirNamedFunctionSymbol,
+            isHidden: Boolean = false,
+            origin: FirDeclarationOrigin? = null,
+        ): FirNamedFunctionSymbol {
+            val original = originalSymbol.fir
+            val newSymbol = FirNamedFunctionSymbol(originalSymbol.callableId.copy(callableName = naturalName))
+
+            // If original is declared, it's a FirJavaMethod.
+            // If it's inherited, it's a (possibly enhanced) FirSimpleMethod.
+            return if (original is FirJavaMethod) {
+                buildJavaMethodCopy(original) {
+                    name = naturalName
+                    symbol = newSymbol
+                    dispatchReceiverType = klass.defaultType()
+
+                    // Technically, it should only be an operator if it matches an operator naming convention,
+                    // but always setting it doesn't seem to hurt.
+                    status = original.status.copy(isOperator = true)
+                }
+            } else {
+                buildSimpleFunctionCopy(original) {
+                    name = naturalName
+                    symbol = newSymbol
+                    dispatchReceiverType = klass.defaultType()
+                    origin?.let { this.origin = it }
+                }
             }.apply {
                 initialSignatureAttr = original
+                if (isHidden) {
+                    isHiddenToOvercomeSignatureClash = true
+                }
             }.symbol
         }
 
         val renamedFunctionsFromSupertypes = functionsFromSupertypesWithBuiltinJvmName?.overriddenMembers?.map {
-            val renamedFunction = buildSimpleFunctionCopy(it.member.fir) {
-                name = naturalName
-                symbol = FirNamedFunctionSymbol(it.member.callableId.copy(callableName = naturalName))
-                origin = FirDeclarationOrigin.RenamedForOverride
-            }.apply {
-                initialSignatureAttr = it.member.fir
-            }
-            it.baseScope to listOf(renamedFunction.symbol)
+            val renamedFunction = createCopyWithNaturalName(it.member, origin = FirDeclarationOrigin.RenamedForOverride)
+            it.baseScope to listOf(renamedFunction)
         }
 
-        val resultsOfIntersection = when (renamedFunctionsFromSupertypes) {
-            null -> listOf(resultOfIntersectionWithNaturalName)
+        val resultsOfIntersectionOfRenamed = when {
+            renamedFunctionsFromSupertypes == null && overriddenByNaturalName.isEmpty() -> listOf(resultOfIntersectionWithNaturalName)
             else -> {
                 val membersByScope = buildList {
-                    overriddenMembers.mapTo(this) { it.baseScope to listOf(it.member) }
-                    addAll(renamedFunctionsFromSupertypes)
+                    overriddenByJvmName.mapTo(this) { it.baseScope to listOf(it.member) }
+                    addAll(renamedFunctionsFromSupertypes.orEmpty())
                 }
                 supertypeScopeContext.convertGroupedCallablesToIntersectionResults(membersByScope)
             }
         }
 
-        if (declaredFunction != null) {
-            destination += declaredFunction
-            directOverriddenFunctions[declaredFunction] = resultsOfIntersection
-            for (resultOfIntersection in resultsOfIntersection) {
-                for (overriddenMember in resultOfIntersection.overriddenMembers) {
-                    overrideByBase[overriddenMember.member] = declaredFunction
+        val explicitlyDeclaredOrInheritedFunctionWithBuiltinJvmName =
+            // we know overriddenByJvmName is non-empty, otherwise we would have early returned in the beginning.
+            explicitlyDeclaredFunctionWithBuiltinJvmName ?: overriddenByJvmName.first().member
+
+        if (explicitlyDeclaredFunctionWithNaturalName != null || overriddenByNaturalName.isNotEmpty()) {
+            // The CharBuffer situation: both get(Int):Char and charAt(Int):Char are declared or inherited.
+
+            // CharBuffer.charAt is renamed to get, becomes hidden and overrides kotlin.CharSequence.charAt.
+            val hiddenRenamedFunction = createCopyWithNaturalName(explicitlyDeclaredOrInheritedFunctionWithBuiltinJvmName, isHidden = true)
+            destination += hiddenRenamedFunction
+            setOverrides(hiddenRenamedFunction, resultsOfIntersectionOfRenamed)
+
+            val resultOfIntersectionOfNaturalName = supertypeScopeContext.convertGroupedCallablesToIntersectionResults(
+                overriddenByNaturalName.map { it.baseScope to listOf(it.member) }
+            )
+
+            if (explicitlyDeclaredFunctionWithNaturalName != null) {
+                // CharBuffer.get is already in destination, but we need to update its overridden declarations.
+                // It mustn't override kotlin.CharSequence.charAt, but it can override different declarations with the same signature.
+                // See compiler/testData/diagnostics/tests/j+k/collectionOverrides/charBuffer.kt
+                setOverrides(explicitlyDeclaredFunctionWithNaturalName, resultOfIntersectionOfNaturalName)
+            } else {
+                // CharBuffer.get is inherited (possibly a real intersection).
+                // Add it to destination and set overridden declarations.
+                val intersectionOfNaturalName = resultOfIntersectionOfNaturalName.single()
+                destination += intersectionOfNaturalName.chosenSymbol
+                if (intersectionOfNaturalName is ResultOfIntersection.NonTrivial) {
+                    setOverrides(intersectionOfNaturalName.chosenSymbol, resultOfIntersectionOfNaturalName)
                 }
             }
         } else {
-            for (resultOfIntersection in resultsOfIntersection) {
-                destination += resultOfIntersection.chosenSymbol
+            val declaredFunction = explicitlyDeclaredFunctionWithBuiltinJvmName?.let { createCopyWithNaturalName(it) }
+
+            if (declaredFunction != null) {
+                destination += declaredFunction
+                setOverrides(declaredFunction, resultsOfIntersectionOfRenamed)
+            } else {
+                for (resultOfIntersection in resultsOfIntersectionOfRenamed) {
+                    destination += resultOfIntersection.chosenSymbol
+                }
+                resultsOfIntersectionToSaveInCache += resultsOfIntersectionOfRenamed
             }
-            resultsOfIntersectionToSaveInCache += resultsOfIntersection
+        }
+
+        return true
+    }
+
+    private fun setOverrides(override: FirNamedFunctionSymbol, overridden: List<ResultOfIntersection<FirNamedFunctionSymbol>>) {
+        directOverriddenFunctions[override] = overridden
+        for (resultOfIntersection in overridden) {
+            for (overriddenMember in resultOfIntersection.overriddenMembers) {
+                overrideByBase[overriddenMember.member] = override
+            }
         }
     }
 

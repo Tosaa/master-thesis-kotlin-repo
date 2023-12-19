@@ -5,44 +5,27 @@
 
 package org.jetbrains.kotlin.analysis.api.fir.annotations
 
-import java.lang.annotation.ElementType
-import org.jetbrains.kotlin.analysis.api.annotations.AnnotationUseSiteTargetFilter
-import org.jetbrains.kotlin.analysis.api.annotations.KtAnnotationApplicationInfo
-import org.jetbrains.kotlin.analysis.api.annotations.KtAnnotationApplicationWithArgumentsInfo
-import org.jetbrains.kotlin.analysis.api.annotations.KtArrayAnnotationValue
-import org.jetbrains.kotlin.analysis.api.annotations.KtEnumEntryAnnotationValue
-import org.jetbrains.kotlin.analysis.api.annotations.KtNamedAnnotationValue
+import org.jetbrains.kotlin.analysis.api.annotations.*
+import org.jetbrains.kotlin.analysis.api.fir.KtSymbolByFirBuilder
 import org.jetbrains.kotlin.analysis.api.fir.toKtAnnotationApplication
 import org.jetbrains.kotlin.analysis.api.fir.toKtAnnotationInfo
-import org.jetbrains.kotlin.fir.utils.exceptions.withFirEntry
-import org.jetbrains.kotlin.utils.exceptions.checkWithAttachment
 import org.jetbrains.kotlin.analysis.utils.errors.withClassEntry
 import org.jetbrains.kotlin.descriptors.annotations.KotlinTarget
 import org.jetbrains.kotlin.fir.FirAnnotationContainer
 import org.jetbrains.kotlin.fir.FirSession
 import org.jetbrains.kotlin.fir.containingClassLookupTag
-import org.jetbrains.kotlin.fir.declarations.FirResolvePhase
-import org.jetbrains.kotlin.fir.declarations.resolved
-import org.jetbrains.kotlin.fir.declarations.toAnnotationClassId
-import org.jetbrains.kotlin.fir.declarations.toAnnotationClassIdSafe
-import org.jetbrains.kotlin.fir.expressions.FirAnnotation
-import org.jetbrains.kotlin.fir.expressions.FirAnnotationCall
-import org.jetbrains.kotlin.fir.expressions.FirExpression
-import org.jetbrains.kotlin.fir.expressions.arguments
-import org.jetbrains.kotlin.fir.resolve.transformers.plugin.CompilerRequiredAnnotationsHelper
+import org.jetbrains.kotlin.fir.declarations.*
+import org.jetbrains.kotlin.fir.expressions.*
+import org.jetbrains.kotlin.fir.references.toResolvedCallableSymbol
 import org.jetbrains.kotlin.fir.symbols.FirBasedSymbol
 import org.jetbrains.kotlin.fir.symbols.resolvedAnnotationsWithArguments
 import org.jetbrains.kotlin.fir.symbols.resolvedAnnotationsWithClassIds
 import org.jetbrains.kotlin.fir.symbols.resolvedCompilerRequiredAnnotations
-import org.jetbrains.kotlin.name.ClassId
-import org.jetbrains.kotlin.name.Name
-import org.jetbrains.kotlin.fir.declarations.resolvePhase
-import org.jetbrains.kotlin.fir.expressions.FirQualifiedAccessExpression
-import org.jetbrains.kotlin.fir.expressions.unwrapAndFlattenArgument
-import org.jetbrains.kotlin.fir.references.toResolvedCallableSymbol
-import org.jetbrains.kotlin.name.CallableId
-import org.jetbrains.kotlin.name.StandardClassIds
+import org.jetbrains.kotlin.fir.utils.exceptions.withFirEntry
+import org.jetbrains.kotlin.name.*
 import org.jetbrains.kotlin.utils.addToStdlib.ifNotEmpty
+import org.jetbrains.kotlin.utils.exceptions.checkWithAttachment
+import java.lang.annotation.ElementType
 
 internal fun mapAnnotationParameters(annotation: FirAnnotation): Map<Name, FirExpression> {
     if (annotation is FirAnnotationCall && annotation.arguments.isEmpty()) return emptyMap()
@@ -50,7 +33,9 @@ internal fun mapAnnotationParameters(annotation: FirAnnotation): Map<Name, FirEx
     checkWithAttachment(annotation.resolved, { "By now the annotations argument mapping should have been resolved" }) {
         withFirEntry("annotation", annotation)
         withClassEntry("annotationTypeRef", annotation.annotationTypeRef)
-        withClassEntry("typeRef", annotation.typeRef)
+        @OptIn(UnresolvedExpressionTypeAccess::class)
+        withClassEntry("coneTypeOrNull", annotation.coneTypeOrNull)
+        annotation.calleeReference?.let { withClassEntry("calleeReference", it) }
     }
 
     return annotation.argumentMapping.mapping.mapKeys { (name, _) -> name }
@@ -60,23 +45,23 @@ internal fun annotationsByClassId(
     firSymbol: FirBasedSymbol<*>,
     classId: ClassId,
     useSiteTargetFilter: AnnotationUseSiteTargetFilter,
-    useSiteSession: FirSession,
+    builder: KtSymbolByFirBuilder,
     annotationContainer: FirAnnotationContainer = firSymbol.fir,
 ): List<KtAnnotationApplicationWithArgumentsInfo> =
-    if (classId == StandardClassIds.Annotations.Target && firSymbol.fir.resolvePhase < FirResolvePhase.ANNOTATIONS_ARGUMENTS_MAPPING) {
+    if (classId == StandardClassIds.Annotations.Target && firSymbol.fir.resolvePhase < FirResolvePhase.ANNOTATION_ARGUMENTS) {
         annotationContainer.resolvedAnnotationsWithClassIds(firSymbol)
-            .mapIndexedToAnnotationApplication(useSiteTargetFilter, useSiteSession, classId) { index, annotation ->
-                annotation.asKtAnnotationApplicationForTargetAnnotation(useSiteSession, index)
+            .mapIndexedToAnnotationApplication(useSiteTargetFilter, builder.rootSession, classId) { index, annotation ->
+                annotation.asKtAnnotationApplicationForTargetAnnotation(builder, index)
             }
-    } else if (classId == StandardClassIds.Annotations.Java.Target && firSymbol.fir.resolvePhase < FirResolvePhase.ANNOTATIONS_ARGUMENTS_MAPPING) {
+    } else if (classId == JvmStandardClassIds.Annotations.Java.Target && firSymbol.fir.resolvePhase < FirResolvePhase.ANNOTATION_ARGUMENTS) {
         annotationContainer.resolvedAnnotationsWithClassIds(firSymbol)
-            .mapIndexedToAnnotationApplication(useSiteTargetFilter, useSiteSession, classId) { index, annotation ->
-                annotation.asKtAnnotationApplicationForJavaTargetAnnotation(useSiteSession, index)
+            .mapIndexedToAnnotationApplication(useSiteTargetFilter, builder.rootSession, classId) { index, annotation ->
+                annotation.asKtAnnotationApplicationForJavaTargetAnnotation(builder, index)
             }
     } else {
         annotationContainer.resolvedAnnotationsWithArguments(firSymbol)
-            .mapIndexedToAnnotationApplication(useSiteTargetFilter, useSiteSession, classId) { index, annotation ->
-                annotation.toKtAnnotationApplication(useSiteSession, index)
+            .mapIndexedToAnnotationApplication(useSiteTargetFilter, builder.rootSession, classId) { index, annotation ->
+                annotation.toKtAnnotationApplication(builder, index)
             }
     }
 
@@ -94,7 +79,7 @@ private inline fun List<FirAnnotation>.mapIndexedToAnnotationApplication(
 }
 
 private fun FirAnnotation.asKtAnnotationApplicationForAnnotationWithEnumArgument(
-    useSiteSession: FirSession,
+    builder: KtSymbolByFirBuilder,
     index: Int,
     expectedEnumClassId: ClassId,
     annotationParameterName: Name,
@@ -123,14 +108,14 @@ private fun FirAnnotation.asKtAnnotationApplicationForAnnotationWithEnumArgument
         )
     }.orEmpty()
 
-    return toKtAnnotationApplication(useSiteSession, index, arguments)
+    return toKtAnnotationApplication(builder, index, arguments)
 }
 
 private fun FirAnnotation.asKtAnnotationApplicationForTargetAnnotation(
-    useSiteSession: FirSession,
+    builder: KtSymbolByFirBuilder,
     index: Int,
 ): KtAnnotationApplicationWithArgumentsInfo = asKtAnnotationApplicationForAnnotationWithEnumArgument(
-    useSiteSession = useSiteSession,
+    builder = builder,
     index = index,
     expectedEnumClassId = StandardClassIds.AnnotationTarget,
     annotationParameterName = StandardClassIds.Annotations.ParameterNames.targetAllowedTargets,
@@ -138,14 +123,14 @@ private fun FirAnnotation.asKtAnnotationApplicationForTargetAnnotation(
 )
 
 private fun FirAnnotation.asKtAnnotationApplicationForJavaTargetAnnotation(
-    useSiteSession: FirSession,
+    builder: KtSymbolByFirBuilder,
     index: Int,
 ): KtAnnotationApplicationWithArgumentsInfo = asKtAnnotationApplicationForAnnotationWithEnumArgument(
-    useSiteSession = useSiteSession,
+    builder = builder,
     index = index,
-    expectedEnumClassId = StandardClassIds.Annotations.Java.ElementType,
+    expectedEnumClassId = JvmStandardClassIds.Annotations.Java.ElementType,
     annotationParameterName = StandardClassIds.Annotations.ParameterNames.value,
-    nameMapper = { ElementType.values().firstOrNull { enumValue -> enumValue.name == it }?.name },
+    nameMapper = { ElementType.entries.firstOrNull { enumValue -> enumValue.name == it }?.name },
 )
 
 private fun <T> FirAnnotation.findFromRawArguments(expectedEnumClass: ClassId, transformer: (String) -> T?): Set<T> = buildSet {
@@ -159,18 +144,18 @@ private fun <T> FirAnnotation.findFromRawArguments(expectedEnumClass: ClassId, t
 
     if (this@findFromRawArguments is FirAnnotationCall) {
         for (arg in argumentList.arguments) {
-            arg.unwrapAndFlattenArgument().forEach(::addIfMatching)
+            arg.unwrapAndFlattenArgument(flattenArrays = true).forEach(::addIfMatching)
         }
     }
 }
 
 internal fun annotations(
     firSymbol: FirBasedSymbol<*>,
-    useSiteSession: FirSession,
+    builder: KtSymbolByFirBuilder,
     annotationContainer: FirAnnotationContainer = firSymbol.fir,
 ): List<KtAnnotationApplicationWithArgumentsInfo> =
     annotationContainer.resolvedAnnotationsWithArguments(firSymbol).mapIndexed { index, annotation ->
-        annotation.toKtAnnotationApplication(useSiteSession, index)
+        annotation.toKtAnnotationApplication(builder, index)
     }
 
 internal fun annotationInfos(
@@ -196,7 +181,7 @@ internal fun hasAnnotation(
     useSiteSession: FirSession,
     annotationContainer: FirAnnotationContainer = firSymbol.fir,
 ): Boolean {
-    return if (firSymbol.isFromCompilerRequiredAnnotationsPhase(classId)) {
+    return if (firSymbol.isFromCompilerRequiredAnnotationsPhase(classId, useSiteSession)) {
         // this loop by index is required to avoid possible ConcurrentModificationException
         val annotations = annotationContainer.resolvedCompilerRequiredAnnotations(firSymbol)
         for (index in annotations.indices) {
@@ -214,5 +199,7 @@ internal fun hasAnnotation(
     }
 }
 
-private fun FirBasedSymbol<*>.isFromCompilerRequiredAnnotationsPhase(classId: ClassId): Boolean =
-    fir.resolvePhase < FirResolvePhase.TYPES && classId in CompilerRequiredAnnotationsHelper.REQUIRED_ANNOTATIONS
+private fun FirBasedSymbol<*>.isFromCompilerRequiredAnnotationsPhase(classId: ClassId, session: FirSession): Boolean {
+    val requiredAnnotations = session.annotationPlatformSupport.requiredAnnotations
+    return fir.resolvePhase < FirResolvePhase.TYPES && classId in requiredAnnotations
+}

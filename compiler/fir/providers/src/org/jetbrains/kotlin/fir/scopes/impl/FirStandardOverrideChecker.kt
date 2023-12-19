@@ -8,45 +8,21 @@ package org.jetbrains.kotlin.fir.scopes.impl
 import org.jetbrains.kotlin.descriptors.Visibilities
 import org.jetbrains.kotlin.fir.FirSession
 import org.jetbrains.kotlin.fir.declarations.*
+import org.jetbrains.kotlin.fir.declarations.utils.isSuspend
 import org.jetbrains.kotlin.fir.declarations.utils.visibility
 import org.jetbrains.kotlin.fir.resolve.substitution.ConeSubstitutor
 import org.jetbrains.kotlin.fir.resolve.transformers.ensureResolvedTypeDeclaration
 import org.jetbrains.kotlin.fir.symbols.lazyResolveToPhase
 import org.jetbrains.kotlin.fir.types.*
 import org.jetbrains.kotlin.types.AbstractTypeChecker
-import org.jetbrains.kotlin.types.model.KotlinTypeMarker
-import org.jetbrains.kotlin.types.model.SimpleTypeMarker
 
 class FirStandardOverrideChecker(private val session: FirSession) : FirAbstractOverrideChecker() {
     private val context = session.typeContext
 
-    private fun isEqualTypes(substitutedCandidateType: ConeKotlinType, substitutedBaseType: ConeKotlinType): Boolean {
-        return with(context) {
-            val baseIsFlexible = substitutedBaseType.isFlexible()
-            val candidateIsFlexible = substitutedCandidateType.isFlexible()
-            if (baseIsFlexible == candidateIsFlexible) {
-                return AbstractTypeChecker.equalTypes(context, substitutedCandidateType, substitutedBaseType)
-            }
-            val lowerBound: SimpleTypeMarker
-            val upperBound: SimpleTypeMarker
-            val type: KotlinTypeMarker
-            if (baseIsFlexible) {
-                lowerBound = substitutedBaseType.lowerBoundIfFlexible()
-                upperBound = substitutedBaseType.upperBoundIfFlexible()
-                type = substitutedCandidateType
-            } else {
-                lowerBound = substitutedCandidateType.lowerBoundIfFlexible()
-                upperBound = substitutedCandidateType.upperBoundIfFlexible()
-                type = substitutedBaseType
-            }
-            AbstractTypeChecker.isSubtypeOf(context, lowerBound, type) && AbstractTypeChecker.isSubtypeOf(context, type, upperBound)
-        }
-    }
-
     private fun isEqualTypes(candidateType: ConeKotlinType, baseType: ConeKotlinType, substitutor: ConeSubstitutor): Boolean {
         val substitutedCandidateType = substitutor.substituteOrSelf(candidateType)
         val substitutedBaseType = substitutor.substituteOrSelf(baseType)
-        return isEqualTypes(substitutedCandidateType, substitutedBaseType)
+        return AbstractTypeChecker.equalTypes(context, substitutedCandidateType, substitutedBaseType)
     }
 
     fun isEqualTypes(candidateTypeRef: FirTypeRef, baseTypeRef: FirTypeRef, substitutor: ConeSubstitutor): Boolean {
@@ -80,9 +56,15 @@ class FirStandardOverrideChecker(private val session: FirSession) : FirAbstractO
         val substitutedOverrideType = substitutor.substituteOrSelf(overrideBound.coneType)
         val substitutedBaseType = substitutor.substituteOrSelf(baseBound.coneType)
 
-        if (isEqualTypes(substitutedOverrideType, substitutedBaseType)) return true
+        if (AbstractTypeChecker.equalTypes(context, substitutedOverrideType, substitutedBaseType)) return true
 
-        return overrideTypeParameter.symbol.resolvedBounds.any { bound -> isEqualTypes(bound.coneType, substitutedBaseType, substitutor) } &&
+        return overrideTypeParameter.symbol.resolvedBounds.any { bound ->
+            isEqualTypes(
+                bound.coneType,
+                substitutedBaseType,
+                substitutor
+            )
+        } &&
                 baseTypeParameter.symbol.resolvedBounds.any { bound -> isEqualTypes(bound.coneType, substitutedOverrideType, substitutor) }
     }
 
@@ -127,6 +109,7 @@ class FirStandardOverrideChecker(private val session: FirSession) : FirAbstractO
 
     fun isOverriddenFunction(overrideCandidate: FirSimpleFunction, baseDeclaration: FirSimpleFunction, ignoreVisibility: Boolean): Boolean {
         if (overrideCandidate.valueParameters.size != baseDeclaration.valueParameters.size) return false
+        if (overrideCandidate.isSuspend != baseDeclaration.isSuspend) return false
 
         val substitutor = buildTypeParametersSubstitutorIfCompatible(overrideCandidate, baseDeclaration) ?: return false
 

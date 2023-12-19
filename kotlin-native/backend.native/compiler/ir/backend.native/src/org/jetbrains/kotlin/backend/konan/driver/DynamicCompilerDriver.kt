@@ -90,7 +90,7 @@ internal class DynamicCompilerDriver : CompilerDriver() {
 
     private fun produceKlib(engine: PhaseEngine<PhaseContext>, config: KonanConfig, environment: KotlinCoreEnvironment) {
         val serializerOutput = if (environment.configuration.getBoolean(CommonConfigurationKeys.USE_FIR))
-            serializeKLibK2(engine, environment)
+            serializeKLibK2(engine, config, environment)
         else
             serializeKlibK1(engine, config, environment)
         serializerOutput?.let { engine.writeKlib(it) }
@@ -98,18 +98,26 @@ internal class DynamicCompilerDriver : CompilerDriver() {
 
     private fun serializeKLibK2(
             engine: PhaseEngine<PhaseContext>,
+            config: KonanConfig,
             environment: KotlinCoreEnvironment
     ): SerializerOutput? {
         val frontendOutput = engine.runFirFrontend(environment)
         if (frontendOutput is FirOutput.ShouldNotGenerateCode) return null
         require(frontendOutput is FirOutput.Full)
 
-        return if (environment.configuration.getBoolean(KonanConfigKeys.METADATA_KLIB)) {
+        return if (config.metadataKlib) {
             engine.runFirSerializer(frontendOutput)
         } else {
             val fir2IrOutput = engine.runFir2Ir(frontendOutput)
+
+            val headerKlibPath = config.headerKlibPath
+            if (!headerKlibPath.isNullOrEmpty()) {
+                val headerKlib = engine.runFir2IrSerializer(FirSerializerInput(fir2IrOutput, produceHeaderKlib = true))
+                engine.writeKlib(headerKlib, headerKlibPath)
+            }
+
             engine.runK2SpecialBackendChecks(fir2IrOutput)
-            engine.runFir2IrSerializer(fir2IrOutput)
+            engine.runFir2IrSerializer(FirSerializerInput(fir2IrOutput))
         }
     }
 
@@ -123,6 +131,10 @@ internal class DynamicCompilerDriver : CompilerDriver() {
             null
         } else {
             engine.runPsiToIr(frontendOutput, isProducingLibrary = true) as PsiToIrOutput.ForKlib
+        }
+        if (!config.headerKlibPath.isNullOrEmpty()) {
+            val headerKlib = engine.runSerializer(frontendOutput.moduleDescriptor, psiToIrOutput, produceHeaderKlib = true)
+            engine.writeKlib(headerKlib, config.headerKlibPath)
         }
         return engine.runSerializer(frontendOutput.moduleDescriptor, psiToIrOutput)
     }

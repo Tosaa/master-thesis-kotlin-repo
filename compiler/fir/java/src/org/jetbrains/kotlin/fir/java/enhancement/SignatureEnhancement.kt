@@ -1,11 +1,12 @@
 /*
- * Copyright 2010-2022 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Copyright 2010-2023 JetBrains s.r.o. and Kotlin Programming Language contributors.
  * Use of this source code is governed by the Apache 2.0 license that can be found in the license/LICENSE.txt file.
  */
 
 package org.jetbrains.kotlin.fir.java.enhancement
 
 import org.jetbrains.kotlin.KtFakeSourceElementKind
+import org.jetbrains.kotlin.builtins.StandardNames.DEFAULT_VALUE_PARAMETER
 import org.jetbrains.kotlin.descriptors.ClassKind
 import org.jetbrains.kotlin.descriptors.Modality
 import org.jetbrains.kotlin.fakeElement
@@ -24,8 +25,8 @@ import org.jetbrains.kotlin.fir.declarations.utils.*
 import org.jetbrains.kotlin.fir.expressions.FirAnnotation
 import org.jetbrains.kotlin.fir.expressions.FirConstExpression
 import org.jetbrains.kotlin.fir.expressions.unexpandedClassId
-import org.jetbrains.kotlin.fir.java.*
 import org.jetbrains.kotlin.fir.java.FirJavaTypeConversionMode
+import org.jetbrains.kotlin.fir.java.JavaTypeParameterStack
 import org.jetbrains.kotlin.fir.java.declarations.*
 import org.jetbrains.kotlin.fir.java.resolveIfJavaType
 import org.jetbrains.kotlin.fir.java.symbols.FirJavaOverriddenSyntheticPropertySymbol
@@ -41,9 +42,9 @@ import org.jetbrains.kotlin.fir.types.builder.buildResolvedTypeRef
 import org.jetbrains.kotlin.fir.types.impl.ConeClassLikeTypeImpl
 import org.jetbrains.kotlin.fir.types.impl.ConeTypeParameterTypeImpl
 import org.jetbrains.kotlin.fir.types.jvm.FirJavaTypeRef
-import org.jetbrains.kotlin.fir.utils.exceptions.withConeTypeEntry
 import org.jetbrains.kotlin.fir.utils.exceptions.withFirEntry
 import org.jetbrains.kotlin.load.java.AnnotationQualifierApplicabilityType
+import org.jetbrains.kotlin.load.java.AnnotationQualifierApplicabilityType.VALUE_PARAMETER
 import org.jetbrains.kotlin.load.java.FakePureImplementationsProvider
 import org.jetbrains.kotlin.load.java.JavaTypeQualifiersByElementType
 import org.jetbrains.kotlin.load.java.JvmAnnotationNames
@@ -54,8 +55,8 @@ import org.jetbrains.kotlin.types.AbstractTypeChecker
 import org.jetbrains.kotlin.types.model.KotlinTypeMarker
 import org.jetbrains.kotlin.types.model.TypeParameterMarker
 import org.jetbrains.kotlin.types.model.TypeSystemContext
-import org.jetbrains.kotlin.utils.exceptions.errorWithAttachment
 import org.jetbrains.kotlin.util.PrivateForInline
+import org.jetbrains.kotlin.utils.exceptions.errorWithAttachment
 
 class FirSignatureEnhancement(
     private val owner: FirRegularClass,
@@ -108,24 +109,21 @@ class FirSignatureEnhancement(
                     )
 
                 val newReturnTypeRef = enhanceReturnType(firElement, emptyList(), firElement.computeDefaultQualifiers(), predefinedInfo)
-                return firElement.symbol.apply {
-                    this.fir.replaceReturnTypeRef(newReturnTypeRef)
-                    session.lookupTracker?.recordTypeResolveAsLookup(newReturnTypeRef, this.fir.source, null)
-                }
+
+                return buildEnumEntryCopy(firElement) {
+                    symbol = FirEnumEntrySymbol(firElement.symbol.callableId)
+                    returnTypeRef = newReturnTypeRef
+                    origin = FirDeclarationOrigin.Enhancement
+                }.apply {
+                    session.lookupTracker?.recordTypeResolveAsLookup(newReturnTypeRef, this.source, null)
+                }.symbol
             }
             is FirField -> {
                 if (firElement.returnTypeRef !is FirJavaTypeRef) return original
                 val newReturnTypeRef = enhanceReturnType(
                     firElement, emptyList(), firElement.computeDefaultQualifiers(),
                     predefinedEnhancementInfo = null
-                ).let {
-                    val lowerBound = it.type.lowerBoundIfFlexible()
-                    if ((lowerBound.isString || lowerBound.isInt) && firElement.isStatic && firElement.initializer != null) {
-                        it.withReplacedConeType(it.type.withNullability(ConeNullability.NOT_NULL, session.typeContext))
-                    } else {
-                        it
-                    }
-                }
+                )
 
                 val symbol = FirFieldSymbol(original.callableId)
                 buildJavaField {
@@ -140,11 +138,11 @@ class FirSignatureEnhancement(
                     visibility = firElement.visibility
                     modality = firElement.modality
                     isVar = firElement.isVar
-                    isStatic = firElement.isStatic
                     annotationBuilder = { firElement.annotations }
                     status = firElement.status
                     if (firElement is FirJavaField) {
                         lazyInitializer = firElement.lazyInitializer
+                        lazyHasConstantInitializer = firElement.lazyHasConstantInitializer
                     } else {
                         initializer = firElement.initializer
                     }
@@ -158,17 +156,13 @@ class FirSignatureEnhancement(
                 val accessorSymbol = firElement.symbol
                 val getterDelegate = firElement.getter.delegate
                 val enhancedGetterSymbol = if (getterDelegate is FirJavaMethod) {
-                    enhanceMethod(
-                        getterDelegate, getterDelegate.symbol.callableId, getterDelegate.name, enhancedTypeParameters = null,
-                    )
+                    enhancementsCache.enhancedFunctions.getValue(getterDelegate.symbol, this to getterDelegate.name)
                 } else {
                     getterDelegate.symbol
                 }
                 val setterDelegate = firElement.setter?.delegate
                 val enhancedSetterSymbol = if (setterDelegate is FirJavaMethod) {
-                    enhanceMethod(
-                        setterDelegate, setterDelegate.symbol.callableId, setterDelegate.name, enhancedTypeParameters = null,
-                    )
+                    enhancementsCache.enhancedFunctions.getValue(setterDelegate.symbol, this to setterDelegate.name)
                 } else {
                     setterDelegate?.symbol
                 }
@@ -363,7 +357,7 @@ class FirSignatureEnhancement(
             }
         }.apply {
             val newValueParameters = firMethod.valueParameters.zip(enhancedValueParameterTypes) { valueParameter, enhancedReturnType ->
-                valueParameter.defaultValue?.replaceTypeRef(enhancedReturnType)
+                valueParameter.defaultValue?.replaceConeTypeOrNull(enhancedReturnType.coneType)
 
                 buildValueParameter {
                     source = valueParameter.source
@@ -660,7 +654,7 @@ class FirSignatureEnhancement(
         parameterContainer?.let {
             typeQualifierResolver.extractAndMergeDefaultQualifiers(defaultQualifiers, it.annotations)
         } ?: defaultQualifiers,
-        AnnotationQualifierApplicabilityType.VALUE_PARAMETER,
+        VALUE_PARAMETER,
         typeInSignature,
         predefined,
         forAnnotationMember
@@ -678,7 +672,14 @@ class FirSignatureEnhancement(
     ): FirResolvedTypeRef {
         val typeRef = typeInSignature.getTypeRef(this)
         val typeRefsFromOverridden = overriddenMembers.map { typeInSignature.getTypeRef(it) }
-        val mode = if (forAnnotationMember) FirJavaTypeConversionMode.ANNOTATION_MEMBER else FirJavaTypeConversionMode.DEFAULT
+        val mode = when {
+            !forAnnotationMember ->
+                FirJavaTypeConversionMode.DEFAULT
+            containerApplicabilityType == VALUE_PARAMETER && (typeContainer as? FirValueParameter)?.name == DEFAULT_VALUE_PARAMETER ->
+                FirJavaTypeConversionMode.ANNOTATION_CONSTRUCTOR_PARAMETER
+            else ->
+                FirJavaTypeConversionMode.ANNOTATION_MEMBER
+        }
         return EnhancementSignatureParts(
             session, typeQualifierResolver, typeContainer, isCovariant, forceOnlyHeadTypeConstructor = false,
             containerApplicabilityType, containerQualifiers
@@ -727,8 +728,7 @@ private class EnhancementSignatureParts(
     override val typeSystem: TypeSystemContext
         get() = session.typeContext
 
-    override fun FirAnnotation.forceWarning(unenhancedType: KotlinTypeMarker?): Boolean =
-        false // TODO: force warnings on IDEA external annotations
+    override fun FirAnnotation.forceWarning(unenhancedType: KotlinTypeMarker?): Boolean = this is FirJavaExternalAnnotation
 
     override val KotlinTypeMarker.annotations: Iterable<FirAnnotation>
         get() = (this as ConeKotlinType).attributes.customAnnotations
@@ -748,8 +748,8 @@ private class EnhancementSignatureParts(
         get() = (this as ConeTypeParameterLookupTag).symbol.fir.origin is FirDeclarationOrigin.Java
 }
 
-class FirEnhancedSymbolsStorage(val session: FirSession) : FirSessionComponent {
-    private val cachesFactory = session.firCachesFactory
+class FirEnhancedSymbolsStorage(private val cachesFactory: FirCachesFactory) : FirSessionComponent {
+    constructor(session: FirSession) : this(session.firCachesFactory)
 
     val cacheByOwner: FirCache<FirRegularClassSymbol, EnhancementSymbolsCache, Nothing?> =
         cachesFactory.createCache { _ -> EnhancementSymbolsCache(cachesFactory) }

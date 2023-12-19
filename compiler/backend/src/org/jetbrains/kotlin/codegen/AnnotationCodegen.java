@@ -21,9 +21,9 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.kotlin.codegen.state.GenerationState;
 import org.jetbrains.kotlin.codegen.state.KotlinTypeMapper;
-import org.jetbrains.kotlin.config.JVMConfigurationKeys;
 import org.jetbrains.kotlin.descriptors.*;
 import org.jetbrains.kotlin.descriptors.annotations.*;
+import org.jetbrains.kotlin.descriptors.annotations.Annotations;
 import org.jetbrains.kotlin.descriptors.impl.AnonymousFunctionDescriptor;
 import org.jetbrains.kotlin.incremental.components.NoLookupLocation;
 import org.jetbrains.kotlin.load.java.JvmAnnotationNames;
@@ -45,7 +45,7 @@ import org.jetbrains.org.objectweb.asm.*;
 import java.lang.annotation.*;
 import java.util.*;
 
-import static org.jetbrains.kotlin.name.JvmNames.*;
+import static org.jetbrains.kotlin.name.JvmStandardClassIds.*;
 import static org.jetbrains.kotlin.resolve.descriptorUtil.DescriptorUtilsKt.getAnnotationClass;
 
 public abstract class AnnotationCodegen {
@@ -714,9 +714,7 @@ public abstract class AnnotationCodegen {
     }
 
     private void generateTypeAnnotations(@NotNull Annotated annotated, @Nullable KotlinType type) {
-        if (isAccessor(annotated) ||
-            type == null ||
-            !state.getConfiguration().getBoolean(JVMConfigurationKeys.EMIT_JVM_TYPE_ANNOTATIONS)) {
+        if (isAccessor(annotated) || type == null || !state.getConfig().getEmitJvmTypeAnnotations()) {
             return;
         }
 

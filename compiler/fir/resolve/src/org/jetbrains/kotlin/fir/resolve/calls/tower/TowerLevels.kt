@@ -9,10 +9,7 @@ import org.jetbrains.kotlin.KtFakeSourceElementKind
 import org.jetbrains.kotlin.KtSourceElement
 import org.jetbrains.kotlin.fakeElement
 import org.jetbrains.kotlin.fir.*
-import org.jetbrains.kotlin.fir.declarations.ContextReceiverGroup
-import org.jetbrains.kotlin.fir.declarations.FirConstructor
-import org.jetbrains.kotlin.fir.declarations.FirResolvePhase
-import org.jetbrains.kotlin.fir.declarations.getAnnotationByClassId
+import org.jetbrains.kotlin.fir.declarations.*
 import org.jetbrains.kotlin.fir.declarations.utils.isInner
 import org.jetbrains.kotlin.fir.declarations.utils.isStatic
 import org.jetbrains.kotlin.fir.expressions.FirExpression
@@ -21,7 +18,6 @@ import org.jetbrains.kotlin.fir.expressions.builder.buildResolvedQualifier
 import org.jetbrains.kotlin.fir.resolve.*
 import org.jetbrains.kotlin.fir.resolve.calls.*
 import org.jetbrains.kotlin.fir.resolve.providers.symbolProvider
-import org.jetbrains.kotlin.fir.resolve.transformers.body.resolve.resultType
 import org.jetbrains.kotlin.fir.scopes.*
 import org.jetbrains.kotlin.fir.scopes.impl.FirDefaultStarImportingScope
 import org.jetbrains.kotlin.fir.scopes.impl.importedFromObjectOrStaticData
@@ -86,12 +82,12 @@ class MemberScopeTowerLevel(
         val scope = dispatchReceiverValue.scope(session, scopeSession) ?: return ProcessResult.SCOPE_EMPTY
         var (empty, candidates) = scope.collectCandidates(processScopeMembers)
 
-        val scopeWithoutSmartcast = getOriginalReceiverExpressionIfStableSmartCast()?.typeRef
-            ?.coneType
+        val scopeWithoutSmartcast = getOriginalReceiverExpressionIfStableSmartCast()
+            ?.resolvedType
             ?.scope(
                 session,
                 scopeSession,
-                bodyResolveComponents.returnTypeCalculator.fakeOverrideTypeCalculator,
+                bodyResolveComponents.returnTypeCalculator.callableCopyTypeCalculator,
                 requiredMembersPhase = FirResolvePhase.STATUS,
             )
 
@@ -136,7 +132,7 @@ class MemberScopeTowerLevel(
                 useSiteForSyntheticScope = typeForSyntheticScope.scope(
                     session,
                     scopeSession,
-                    FakeOverrideTypeCalculator.DoNothing,
+                    CallableCopyTypeCalculator.DoNothing,
                     requiredMembersPhase = FirResolvePhase.STATUS,
                 ) ?: errorWithAttachment("No scope for flexible type scope, while it's not null") {
                     withConeTypeEntry("dispatchReceiverType", dispatchReceiverType)
@@ -175,7 +171,10 @@ class MemberScopeTowerLevel(
             empty = false
             if (candidate.hasConsistentExtensionReceiver(givenExtensionReceiverOptions)) {
                 val fir = candidate.fir
-                if ((fir as? FirConstructor)?.isInner == false) {
+                // Calls on a dispatch receiver cannot be:
+                // - a constructor call unless it's an inner class
+                // - a SAM constructor call
+                if ((fir as? FirConstructor)?.isInner == false || fir.origin == FirDeclarationOrigin.SamConstructor) {
                     return@processScopeMembers
                 }
                 result += MemberWithBaseScope(candidate, this)
@@ -337,7 +336,7 @@ class ScopeTowerLevel(
             this.symbol = this@toResolvedQualifierExpressionReceiver
             this.source = source?.fakeElement(KtFakeSourceElementKind.ImplicitReceiver)
         }.apply {
-            resultType = bodyResolveComponents.typeForQualifier(this)
+            setTypeOfQualifier(bodyResolveComponents.session)
         }
         return ExpressionReceiverValue(resolvedQualifier)
     }
@@ -384,7 +383,7 @@ class ScopeTowerLevel(
         )
 
         return givenExtensionReceiverOptions.none { extensionReceiver ->
-            val extensionReceiverType = extensionReceiver.resultType.coneType
+            val extensionReceiverType = extensionReceiver.resolvedType
             // If some receiver is non class like, we should not skip it
             if (extensionReceiverType !is ConeClassLikeType) return@none true
 

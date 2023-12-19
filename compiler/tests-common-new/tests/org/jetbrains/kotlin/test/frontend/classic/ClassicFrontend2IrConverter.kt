@@ -14,13 +14,11 @@ import org.jetbrains.kotlin.cli.js.klib.generateIrForKlibSerialization
 import org.jetbrains.kotlin.codegen.ClassBuilderFactories
 import org.jetbrains.kotlin.codegen.CodegenFactory
 import org.jetbrains.kotlin.codegen.state.GenerationState
-import org.jetbrains.kotlin.descriptors.DeclarationDescriptor
 import org.jetbrains.kotlin.diagnostics.DiagnosticReporterFactory
 import org.jetbrains.kotlin.ir.backend.js.*
 import org.jetbrains.kotlin.ir.backend.js.lower.serialization.ir.JsManglerIr
 import org.jetbrains.kotlin.ir.backend.jvm.serialization.JvmIrMangler
 import org.jetbrains.kotlin.ir.declarations.impl.IrFactoryImpl
-import org.jetbrains.kotlin.ir.symbols.IrSymbol
 import org.jetbrains.kotlin.ir.util.SymbolTable
 import org.jetbrains.kotlin.js.config.ErrorTolerancePolicy
 import org.jetbrains.kotlin.js.config.JSConfigurationKeys
@@ -76,7 +74,6 @@ class ClassicFrontend2IrConverter(
             state,
             codegenFactory,
             conversionResult,
-            dependentIrModuleFragments = emptyList(),
             sourceFiles = emptyList(),
             descriptorMangler = conversionResult.symbolTable.signaturer.mangler,
             irMangler = JvmIrMangler,
@@ -92,7 +89,6 @@ class ClassicFrontend2IrConverter(
 
         val sourceFiles = psiFiles.values.toList()
         val icData = configuration.incrementalDataProvider?.getSerializedData(sourceFiles) ?: emptyList()
-        val expectDescriptorToSymbol = mutableMapOf<DeclarationDescriptor, IrSymbol>()
 
         val (moduleFragment, pluginContext) = generateIrForKlibSerialization(
             project,
@@ -101,7 +97,6 @@ class ClassicFrontend2IrConverter(
             analysisResult,
             sortDependencies(JsEnvironmentConfigurator.getAllDependenciesMappingFor(module, testServices)),
             icData,
-            expectDescriptorToSymbol,
             IrFactoryImpl,
             verifySignatures
         ) {
@@ -114,17 +109,15 @@ class ClassicFrontend2IrConverter(
 
         return IrBackendInput.JsIrBackendInput(
             moduleFragment,
-            dependentIrModuleFragments = emptyList(),
             pluginContext,
             sourceFiles.map(::KtPsiSourceFile),
             icData,
-            expectDescriptorToSymbol = expectDescriptorToSymbol,
             diagnosticReporter = DiagnosticReporterFactory.createReporter(),
             hasErrors,
             descriptorMangler = (pluginContext.symbolTable as SymbolTable).signaturer.mangler,
             irMangler = JsManglerIr,
             firMangler = null,
-        ) { file, _ ->
+        ) { file ->
             metadataSerializer.serializeScope(file, analysisResult.bindingContext, moduleFragment.descriptor)
         }
     }
@@ -137,7 +130,6 @@ class ClassicFrontend2IrConverter(
 
         val sourceFiles = psiFiles.values.toList()
         val icData = configuration.incrementalDataProvider?.getSerializedData(sourceFiles) ?: emptyList()
-        val expectDescriptorToSymbol = mutableMapOf<DeclarationDescriptor, IrSymbol>()
 
         val (moduleFragment, pluginContext) = generateIrForKlibSerialization(
             project,
@@ -146,7 +138,6 @@ class ClassicFrontend2IrConverter(
             analysisResult,
             sortDependencies(WasmEnvironmentConfigurator.getAllDependenciesMappingFor(module, testServices)),
             icData,
-            expectDescriptorToSymbol,
             IrFactoryImpl,
             verifySignatures
         ) {
@@ -160,17 +151,15 @@ class ClassicFrontend2IrConverter(
 
         return IrBackendInput.WasmBackendInput(
             moduleFragment,
-            dependentIrModuleFragments = emptyList(),
             pluginContext,
             sourceFiles.map(::KtPsiSourceFile),
             icData,
-            expectDescriptorToSymbol = expectDescriptorToSymbol,
             diagnosticReporter = DiagnosticReporterFactory.createReporter(),
             hasErrors,
             descriptorMangler = (pluginContext.symbolTable as SymbolTable).signaturer.mangler,
             irMangler = JsManglerIr,
             firMangler = null,
-        ) { file, _ ->
+        ) { file ->
             metadataSerializer.serializeScope(file, analysisResult.bindingContext, moduleFragment.descriptor)
         }
     }

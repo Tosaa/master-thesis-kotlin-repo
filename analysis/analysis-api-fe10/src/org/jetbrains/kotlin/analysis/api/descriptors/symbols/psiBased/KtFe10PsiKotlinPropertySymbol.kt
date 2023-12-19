@@ -105,7 +105,7 @@ internal class KtFe10PsiKotlinPropertySymbol(
         get() = withValidityAssertion { descriptor?.isExpect ?: psi.hasExpectModifier() }
 
     override val initializer: KtInitializerValue?
-        get() = withValidityAssertion { createKtInitializerValue(psi, descriptor, analysisContext) }
+        get() = withValidityAssertion { createKtInitializerValue(psi.initializer, descriptor, analysisContext) }
 
     override val isVal: Boolean
         get() = withValidityAssertion { !psi.isVar }
@@ -150,7 +150,7 @@ internal class KtFe10PsiKotlinPropertySymbol(
 
     context(KtAnalysisSession)
     override fun createPointer(): KtSymbolPointer<KtKotlinPropertySymbol> = withValidityAssertion {
-        KtPsiBasedSymbolPointer.createForSymbolFromSource(this) ?: KtFe10NeverRestoringSymbolPointer()
+        KtPsiBasedSymbolPointer.createForSymbolFromSource<KtKotlinPropertySymbol>(this) ?: KtFe10NeverRestoringSymbolPointer()
     }
 
 

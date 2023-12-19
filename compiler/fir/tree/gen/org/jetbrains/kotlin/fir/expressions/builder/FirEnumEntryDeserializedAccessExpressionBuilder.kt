@@ -3,6 +3,9 @@
  * Use of this source code is governed by the Apache 2.0 license that can be found in the license/LICENSE.txt file.
  */
 
+// This file was generated automatically. See compiler/fir/tree/tree-generator/Readme.md.
+// DO NOT MODIFY IT MANUALLY.
+
 @file:Suppress("DuplicatedCode", "unused")
 
 package org.jetbrains.kotlin.fir.expressions.builder
@@ -14,20 +17,10 @@ import org.jetbrains.kotlin.fir.builder.FirBuilderDsl
 import org.jetbrains.kotlin.fir.builder.toMutableOrEmpty
 import org.jetbrains.kotlin.fir.expressions.FirAnnotation
 import org.jetbrains.kotlin.fir.expressions.FirEnumEntryDeserializedAccessExpression
-import org.jetbrains.kotlin.fir.expressions.builder.FirExpressionBuilder
 import org.jetbrains.kotlin.fir.expressions.impl.FirEnumEntryDeserializedAccessExpressionImpl
-import org.jetbrains.kotlin.fir.types.FirTypeRef
-import org.jetbrains.kotlin.fir.types.builder.buildResolvedTypeRef
-import org.jetbrains.kotlin.fir.types.constructClassType
-import org.jetbrains.kotlin.fir.types.toLookupTag
-import org.jetbrains.kotlin.fir.visitors.*
+import org.jetbrains.kotlin.fir.types.ConeKotlinType
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.Name
-
-/*
- * This file was generated automatically
- * DO NOT MODIFY IT MANUALLY
- */
 
 @FirBuilderDsl
 class FirEnumEntryDeserializedAccessExpressionBuilder : FirAnnotationContainerBuilder, FirExpressionBuilder {
@@ -50,8 +43,8 @@ class FirEnumEntryDeserializedAccessExpressionBuilder : FirAnnotationContainerBu
             throw IllegalStateException()
         }
 
-    @Deprecated("Modification of 'typeRef' has no impact for FirEnumEntryDeserializedAccessExpressionBuilder", level = DeprecationLevel.HIDDEN)
-    override var typeRef: FirTypeRef
+    @Deprecated("Modification of 'coneTypeOrNull' has no impact for FirEnumEntryDeserializedAccessExpressionBuilder", level = DeprecationLevel.HIDDEN)
+    override var coneTypeOrNull: ConeKotlinType?
         get() = throw IllegalStateException()
         set(_) {
             throw IllegalStateException()
@@ -61,7 +54,7 @@ class FirEnumEntryDeserializedAccessExpressionBuilder : FirAnnotationContainerBu
 @OptIn(ExperimentalContracts::class)
 inline fun buildEnumEntryDeserializedAccessExpression(init: FirEnumEntryDeserializedAccessExpressionBuilder.() -> Unit): FirEnumEntryDeserializedAccessExpression {
     contract {
-        callsInPlace(init, kotlin.contracts.InvocationKind.EXACTLY_ONCE)
+        callsInPlace(init, InvocationKind.EXACTLY_ONCE)
     }
     return FirEnumEntryDeserializedAccessExpressionBuilder().apply(init).build()
 }

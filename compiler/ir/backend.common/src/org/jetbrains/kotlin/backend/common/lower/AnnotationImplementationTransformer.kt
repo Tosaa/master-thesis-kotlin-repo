@@ -28,7 +28,7 @@ import org.jetbrains.kotlin.ir.visitors.transformChildrenVoid
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.utils.filterIsInstanceAnd
 
-val ANNOTATION_IMPLEMENTATION = object : IrDeclarationOriginImpl("ANNOTATION_IMPLEMENTATION", isSynthetic = true) {}
+val ANNOTATION_IMPLEMENTATION by IrDeclarationOriginImpl.Synthetic
 
 class AnnotationImplementationLowering(
     val transformer: (IrFile) -> AnnotationImplementationTransformer
@@ -270,6 +270,10 @@ class AnnotationImplementationMemberGenerator(
         val propertyNameHashCode = getHashCodeOf(backendContext.irBuiltIns.stringType, irString(property.name.toString()))
         val multiplied = irCallOp(context.irBuiltIns.intTimesSymbol, context.irBuiltIns.intType, propertyNameHashCode, irInt(127))
         return irCallOp(context.irBuiltIns.intXorSymbol, context.irBuiltIns.intType, multiplied, propertyValueHashCode)
+    }
+
+    private fun IrBuilderWithScope.getHashCodeOf(type: IrType, irValue: IrExpression): IrExpression {
+        return getHashCodeOf(getHashCodeFunctionInfo(type), irValue)
     }
 
     // Manual implementation of equals is required for following reasons:

@@ -21,6 +21,12 @@ import java.util.regex.Pattern;
 @TestDataPath("$PROJECT_ROOT")
 public class JsIrInvalidationPerFileTestGenerated extends AbstractJsIrInvalidationPerFileTest {
     @Test
+    @TestMetadata("abstractClassWithJsExport")
+    public void testAbstractClassWithJsExport() throws Exception {
+        runTest("js/js.translator/testData/incremental/invalidation/abstractClassWithJsExport/");
+    }
+
+    @Test
     @TestMetadata("addUpdateRemoveDependentFile")
     public void testAddUpdateRemoveDependentFile() throws Exception {
         runTest("js/js.translator/testData/incremental/invalidation/addUpdateRemoveDependentFile/");
@@ -59,6 +65,18 @@ public class JsIrInvalidationPerFileTestGenerated extends AbstractJsIrInvalidati
     @TestMetadata("classFunctionsAndFields")
     public void testClassFunctionsAndFields() throws Exception {
         runTest("js/js.translator/testData/incremental/invalidation/classFunctionsAndFields/");
+    }
+
+    @Test
+    @TestMetadata("classWithJsExport")
+    public void testClassWithJsExport() throws Exception {
+        runTest("js/js.translator/testData/incremental/invalidation/classWithJsExport/");
+    }
+
+    @Test
+    @TestMetadata("companionConstVal")
+    public void testCompanionConstVal() throws Exception {
+        runTest("js/js.translator/testData/incremental/invalidation/companionConstVal/");
     }
 
     @Test
@@ -176,6 +194,12 @@ public class JsIrInvalidationPerFileTestGenerated extends AbstractJsIrInvalidati
     }
 
     @Test
+    @TestMetadata("fileNameClash")
+    public void testFileNameClash() throws Exception {
+        runTest("js/js.translator/testData/incremental/invalidation/fileNameClash/");
+    }
+
+    @Test
     @TestMetadata("friendDependency")
     public void testFriendDependency() throws Exception {
         runTest("js/js.translator/testData/incremental/invalidation/friendDependency/");
@@ -290,6 +314,12 @@ public class JsIrInvalidationPerFileTestGenerated extends AbstractJsIrInvalidati
     }
 
     @Test
+    @TestMetadata("interfaceWithJsExport")
+    public void testInterfaceWithJsExport() throws Exception {
+        runTest("js/js.translator/testData/incremental/invalidation/interfaceWithJsExport/");
+    }
+
+    @Test
     @TestMetadata("jsCode")
     public void testJsCode() throws Exception {
         runTest("js/js.translator/testData/incremental/invalidation/jsCode/");
@@ -299,6 +329,12 @@ public class JsIrInvalidationPerFileTestGenerated extends AbstractJsIrInvalidati
     @TestMetadata("jsCodeWithConstString")
     public void testJsCodeWithConstString() throws Exception {
         runTest("js/js.translator/testData/incremental/invalidation/jsCodeWithConstString/");
+    }
+
+    @Test
+    @TestMetadata("jsCodeWithConstStringFromOtherModule")
+    public void testJsCodeWithConstStringFromOtherModule() throws Exception {
+        runTest("js/js.translator/testData/incremental/invalidation/jsCodeWithConstStringFromOtherModule/");
     }
 
     @Test
@@ -332,6 +368,18 @@ public class JsIrInvalidationPerFileTestGenerated extends AbstractJsIrInvalidati
     }
 
     @Test
+    @TestMetadata("jsName")
+    public void testJsName() throws Exception {
+        runTest("js/js.translator/testData/incremental/invalidation/jsName/");
+    }
+
+    @Test
+    @TestMetadata("kotlinTest")
+    public void testKotlinTest() throws Exception {
+        runTest("js/js.translator/testData/incremental/invalidation/kotlinTest/");
+    }
+
+    @Test
     @TestMetadata("languageVersionSettings")
     public void testLanguageVersionSettings() throws Exception {
         runTest("js/js.translator/testData/incremental/invalidation/languageVersionSettings/");
@@ -347,6 +395,12 @@ public class JsIrInvalidationPerFileTestGenerated extends AbstractJsIrInvalidati
     @TestMetadata("localObjectsLeakThroughInterface")
     public void testLocalObjectsLeakThroughInterface() throws Exception {
         runTest("js/js.translator/testData/incremental/invalidation/localObjectsLeakThroughInterface/");
+    }
+
+    @Test
+    @TestMetadata("mainFunction")
+    public void testMainFunction() throws Exception {
+        runTest("js/js.translator/testData/incremental/invalidation/mainFunction/");
     }
 
     @Test
@@ -386,6 +440,18 @@ public class JsIrInvalidationPerFileTestGenerated extends AbstractJsIrInvalidati
     }
 
     @Test
+    @TestMetadata("multiPlatformClashFileNames")
+    public void testMultiPlatformClashFileNames() throws Exception {
+        runTest("js/js.translator/testData/incremental/invalidation/multiPlatformClashFileNames/");
+    }
+
+    @Test
+    @TestMetadata("multiPlatformSimple")
+    public void testMultiPlatformSimple() throws Exception {
+        runTest("js/js.translator/testData/incremental/invalidation/multiPlatformSimple/");
+    }
+
+    @Test
     @TestMetadata("nestedClass")
     public void testNestedClass() throws Exception {
         runTest("js/js.translator/testData/incremental/invalidation/nestedClass/");
@@ -395,6 +461,12 @@ public class JsIrInvalidationPerFileTestGenerated extends AbstractJsIrInvalidati
     @TestMetadata("nonInlineBecomeInline")
     public void testNonInlineBecomeInline() throws Exception {
         runTest("js/js.translator/testData/incremental/invalidation/nonInlineBecomeInline/");
+    }
+
+    @Test
+    @TestMetadata("openClassWithInternalField")
+    public void testOpenClassWithInternalField() throws Exception {
+        runTest("js/js.translator/testData/incremental/invalidation/openClassWithInternalField/");
     }
 
     @Test

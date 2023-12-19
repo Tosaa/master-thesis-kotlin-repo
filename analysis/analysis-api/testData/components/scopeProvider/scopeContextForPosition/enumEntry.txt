@@ -4,7 +4,7 @@ implicit receivers:
     annotationsList: []
     ownTypeArguments: []
     type: <anonymous>
-  owner symbol: KtFirAnonymousObjectSymbol
+  owner symbol: KtFirEnumEntryInitializerSymbol
 
   type: KtUsualClassType:
     annotationsList: []
@@ -519,6 +519,7 @@ scopes:
         callableIdIfNonLocal: /E.A
         containingEnumClassIdIfNonLocal: E
         contextReceivers: []
+        enumEntryInitializer: KtAnonymousObjectSymbol(<local>/<no name provided>)
         isExtension: false
         name: A
         origin: SOURCE
@@ -892,6 +893,5 @@ scopes:
     callables: 0
     constructors: 0
 
-  DefaultSimpleImportingScope, index = 11
+  DefaultStarImportingScope, index = 11
 
-  DefaultStarImportingScope, index = 12

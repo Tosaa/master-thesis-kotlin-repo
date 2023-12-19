@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2022 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Copyright 2010-2023 JetBrains s.r.o. and Kotlin Programming Language contributors.
  * Use of this source code is governed by the Apache 2.0 license that can be found in the license/LICENSE.txt file.
  */
 
@@ -19,7 +19,10 @@ import org.jetbrains.kotlin.analysis.api.symbols.KtEnumEntrySymbol
 import org.jetbrains.kotlin.analysis.api.symbols.pointers.KtPsiBasedSymbolPointer
 import org.jetbrains.kotlin.analysis.api.symbols.pointers.KtSymbolPointer
 import org.jetbrains.kotlin.analysis.api.types.KtType
+import org.jetbrains.kotlin.fir.declarations.FirResolvePhase
+import org.jetbrains.kotlin.fir.expressions.FirAnonymousObjectExpression
 import org.jetbrains.kotlin.fir.symbols.impl.FirEnumEntrySymbol
+import org.jetbrains.kotlin.fir.symbols.lazyResolveToPhase
 import org.jetbrains.kotlin.name.CallableId
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.Name
@@ -32,7 +35,7 @@ internal class KtFirEnumEntrySymbol(
 
     override val annotationsList: KtAnnotationsList
         get() = withValidityAssertion {
-            KtFirAnnotationListForDeclaration.create(firSymbol, analysisSession.useSiteSession, token)
+            KtFirAnnotationListForDeclaration.create(firSymbol, builder)
         }
 
     override val name: Name get() = withValidityAssertion { firSymbol.name }
@@ -41,9 +44,26 @@ internal class KtFirEnumEntrySymbol(
 
     override val callableIdIfNonLocal: CallableId? get() = withValidityAssertion { firSymbol.getCallableIdIfNonLocal() }
 
+    override val enumEntryInitializer: KtFirEnumEntryInitializerSymbol? by cached {
+        if (firSymbol.fir.initializer == null) {
+            return@cached null
+        }
+
+        firSymbol.fir.lazyResolveToPhase(FirResolvePhase.BODY_RESOLVE)
+
+        val initializerExpression = firSymbol.fir.initializer
+        check(initializerExpression is FirAnonymousObjectExpression) {
+            "Unexpected enum entry initializer: ${initializerExpression?.javaClass}"
+        }
+
+        val classifierBuilder = analysisSession.firSymbolBuilder.classifierBuilder
+        classifierBuilder.buildAnonymousObjectSymbol(initializerExpression.anonymousObject.symbol) as? KtFirEnumEntryInitializerSymbol
+            ?: error("The anonymous object symbol for an enum entry initializer should be a ${KtFirEnumEntryInitializerSymbol::class.simpleName}")
+    }
+
     context(KtAnalysisSession)
     override fun createPointer(): KtSymbolPointer<KtEnumEntrySymbol> = withValidityAssertion {
-        KtPsiBasedSymbolPointer.createForSymbolFromSource(this) ?: KtFirEnumEntrySymbolPointer(requireOwnerPointer(), firSymbol.name)
+        KtPsiBasedSymbolPointer.createForSymbolFromSource<KtEnumEntrySymbol>(this) ?: KtFirEnumEntrySymbolPointer(requireOwnerPointer(), firSymbol.name)
     }
 
     override fun equals(other: Any?): Boolean = symbolEquals(other)
