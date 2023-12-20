@@ -27,6 +27,7 @@ linkerOpts.osx = \
     -Wl,-exported_symbols_list,llvm.list \
     -lLLVMMipsDisassembler -lLLVMMipsCodeGen -lLLVMMipsAsmParser -lLLVMMipsDesc -lLLVMMipsInfo -lLLVMX86Disassembler -lLLVMX86AsmParser \
     -lLLVMX86CodeGen -lLLVMX86Desc -lLLVMX86Info -lLLVMWebAssemblyDisassembler -lLLVMWebAssemblyCodeGen -lLLVMWebAssemblyDesc \
+    -lLLVMRISCVCodeGen -lLLVMRISCVAsmParser -lLLVMRISCVMCTargetDesc -lLLVMRISCVUtils -lLLVMRISCVInfo \
     -lLLVMWebAssemblyAsmParser -lLLVMWebAssemblyInfo -lLLVMAArch64Disassembler -lLLVMAArch64CodeGen -lLLVMAArch64AsmParser -lLLVMAArch64Desc \
     -lLLVMAArch64Utils -lLLVMAArch64Info -lLLVMARMDisassembler -lLLVMARMCodeGen -lLLVMCFGuard -lLLVMGlobalISel -lLLVMSelectionDAG \
     -lLLVMAsmPrinter -lLLVMDebugInfoDWARF -lLLVMARMAsmParser -lLLVMARMDesc -lLLVMMCDisassembler -lLLVMARMUtils -lLLVMARMInfo -lLLVMLTO \
@@ -45,6 +46,7 @@ linkerOpts.linux = \
     -lrt -ldl -lpthread -lz -lm \
     -lLLVMMipsDisassembler -lLLVMMipsCodeGen -lLLVMMipsAsmParser -lLLVMMipsDesc -lLLVMMipsInfo -lLLVMX86Disassembler -lLLVMX86AsmParser \
     -lLLVMX86CodeGen -lLLVMX86Desc -lLLVMX86Info -lLLVMWebAssemblyDisassembler -lLLVMWebAssemblyCodeGen -lLLVMWebAssemblyDesc \
+    -lLLVMRISCVCodeGen -lLLVMRISCVAsmParser -lLLVMRISCVMCTargetDesc -lLLVMRISCVUtils -lLLVMRISCVInfo \
     -lLLVMWebAssemblyAsmParser -lLLVMWebAssemblyInfo -lLLVMAArch64Disassembler -lLLVMAArch64CodeGen -lLLVMAArch64AsmParser -lLLVMAArch64Desc \
     -lLLVMAArch64Utils -lLLVMAArch64Info -lLLVMARMDisassembler -lLLVMARMCodeGen -lLLVMCFGuard -lLLVMGlobalISel -lLLVMSelectionDAG \
     -lLLVMAsmPrinter -lLLVMDebugInfoDWARF -lLLVMARMAsmParser -lLLVMARMDesc -lLLVMMCDisassembler -lLLVMARMUtils -lLLVMARMInfo -lLLVMLTO \
@@ -57,6 +59,7 @@ linkerOpts.linux = \
 # ./llvm-config --libs analysis bitreader bitwriter core linker target coverage analysis ipo instrumentation lto arm aarch64 webassembly x86
 linkerOpts.mingw = \
     -lLLVMX86Disassembler -lLLVMX86AsmParser -lLLVMX86CodeGen -lLLVMX86Desc -lLLVMX86Info -lLLVMWebAssemblyDisassembler \
+    -lLLVMRISCVCodeGen -lLLVMRISCVAsmParser -lLLVMRISCVMCTargetDesc -lLLVMRISCVUtils -lLLVMRISCVInfo \
     -lLLVMWebAssemblyCodeGen -lLLVMWebAssemblyDesc -lLLVMWebAssemblyAsmParser -lLLVMWebAssemblyInfo -lLLVMAArch64Disassembler \
     -lLLVMAArch64CodeGen -lLLVMAArch64AsmParser -lLLVMAArch64Desc -lLLVMAArch64Utils -lLLVMAArch64Info -lLLVMARMDisassembler \
     -lLLVMARMCodeGen -lLLVMCFGuard -lLLVMGlobalISel -lLLVMSelectionDAG -lLLVMAsmPrinter -lLLVMDebugInfoDWARF -lLLVMARMAsmParser -lLLVMARMDesc \

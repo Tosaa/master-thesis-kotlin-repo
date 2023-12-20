@@ -183,6 +183,7 @@ abstract class LlvmOptimizationPipeline(
         val target = arena.alloc<LLVMTargetRefVar>()
         val foundLlvmTarget = LLVMGetTargetFromTriple(config.targetTriple, target.ptr, null) == 0
         check(foundLlvmTarget) { "Cannot get target from triple ${config.targetTriple}." }
+        println("LlvmOptimizationPipeline.targetMachineDelegate(): config.targetTriple = ${config.targetTriple}")
         LLVMCreateTargetMachine(
                 target.value,
                 config.targetTriple,
@@ -250,6 +251,7 @@ abstract class LlvmOptimizationPipeline(
 
         private fun initLLVMTargets() {
             memScoped {
+                println("OptimizationPipeline.initLLVMTargets()")
                 LLVMKotlinInitializeTargets()
             }
         }
