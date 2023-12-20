@@ -28,8 +28,11 @@ plugins {
 val targetsWithoutZlib: List<KonanTarget> by project
 
 // region: Util functions.
+fun platformDirectory(family : Family, architecture: org.jetbrains.kotlin.konan.target.Architecture) = "src/platform/${family.visibleName}" + if(architecture.toString().contains("RISCV")) "2" else ""
+
+
 fun KonanTarget.defFiles() =
-    project.fileTree("src/platform/${family.visibleName}")
+    project.fileTree(platformDirectory(family, architecture))
             .filter { it.name.endsWith(".def") }
             // The libz.a/libz.so and zlib.h are missing in MIPS sysroots.
             // Just workaround it until we have sysroots corrected.
