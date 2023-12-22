@@ -198,9 +198,13 @@ abstract class LlvmOptimizationPipeline(
 
 
     fun execute(llvmModule: LLVMModuleRef) {
+        println( "execute" )
+        println( "LLVMCreatePassManager" )
         val passManager = LLVMCreatePassManager()!!
+        println( "LLVMPassManagerBuilderCreate" )
         val passBuilder = LLVMPassManagerBuilderCreate()!!
         try {
+            println( "initLLVMOnce" )
             initLLVMOnce()
             LLVMPassManagerBuilderSetOptLevel(passBuilder, config.optimizationLevel.value)
             LLVMPassManagerBuilderSetSizeLevel(passBuilder, config.sizeLevel.value)
@@ -217,7 +221,7 @@ abstract class LlvmOptimizationPipeline(
             configurePipeline(config, passManager, passBuilder)
             executeCustomPreprocessing(config, llvmModule)
             // TODO: how to log content of pass manager?
-            logger?.log {
+            println(
                 """
                     Running ${pipelineName} with the following parameters:
                     target_triple: ${config.targetTriple}
@@ -227,14 +231,16 @@ abstract class LlvmOptimizationPipeline(
                     size_level: ${config.sizeLevel.value}
                     inline_threshold: ${config.inlineThreshold ?: "default"}
                 """.trimIndent()
-            }
+            )
             LLVMRunPassManager(passManager, llvmModule)
             if (config.timePasses) {
                 LLVMPrintAllTimersToStdOut()
                 LLVMClearAllTimers()
             }
         } finally {
+            println( "LLVMPassManagerBuilderDispose" )
             LLVMPassManagerBuilderDispose(passBuilder)
+            println( "LLVMDisposePassManager" )
             LLVMDisposePassManager(passManager)
         }
     }
