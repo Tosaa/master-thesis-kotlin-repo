@@ -135,4 +135,8 @@ open class Command(initialCommand: List<String>, val redirectInputFile: File? = 
     private fun log() {
         if (logger != null) logger!! { command.joinToString(" ") }
     }
+
+    override fun toString(): String {
+        return command.joinToString(" ")
+    }
 }

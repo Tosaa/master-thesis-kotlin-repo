@@ -300,6 +300,7 @@ internal fun <C : PhaseContext> PhaseEngine<C>.compileAndLink(
             cacheBinaries,
             isCoverageEnabled = isCoverageEnabled
     )
+    // Todo: Here the linker Phase starts which causes ld.lld error
     runPhase(LinkerPhase, linkerPhaseInput)
     if (context.config.produce.isCache) {
         runPhase(FinalizeCachePhase, outputFiles)

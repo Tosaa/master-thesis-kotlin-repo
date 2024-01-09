@@ -70,6 +70,7 @@ internal class BitcodeCompiler(
         if (configurables is AppleConfigurables && config.configuration.get(BinaryOptions.compileBitcodeWithXcodeLlvm) != false) {
             targetTool("clang++", *flags.toTypedArray(), bitcodePath, "-o", objectPath)
         } else {
+            println("backend.konan.BitcodeCompiler.clang(): ${platform.absoluteLlvmHome}/bin/clang++ ${flags.toTypedArray().joinToString(" ")} $bitcodePath -o $objectPath")
             hostLlvmTool("clang++", *flags.toTypedArray(), bitcodePath, "-o", objectPath)
         }
     }

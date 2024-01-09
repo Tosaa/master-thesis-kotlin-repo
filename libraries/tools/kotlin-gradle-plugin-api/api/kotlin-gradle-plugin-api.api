@@ -945,6 +945,7 @@ public abstract interface class org/jetbrains/kotlin/gradle/plugin/KotlinHierarc
 	public abstract fun withLinux ()V
 	public abstract fun withLinuxArm32Hfp ()V
 	public abstract fun withLinuxArm64 ()V
+	public abstract fun withLinuxRiscv64 ()V
 	public abstract fun withLinuxMips32 ()V
 	public abstract fun withLinuxMipsel32 ()V
 	public abstract fun withLinuxX64 ()V

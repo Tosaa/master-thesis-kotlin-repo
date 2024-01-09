@@ -198,7 +198,7 @@ abstract class LlvmOptimizationPipeline(
 
 
     fun execute(llvmModule: LLVMModuleRef) {
-        println( "execute" )
+        println( "OptimizationPipeline.execute" )
         println( "LLVMCreatePassManager" )
         val passManager = LLVMCreatePassManager()!!
         println( "LLVMPassManagerBuilderCreate" )

@@ -138,7 +138,7 @@ internal class Linker(
                 caches.dynamic +
                 libraryProvidedLinkerFlags + additionalLinkerArgs
 
-        return linker.finalLinkCommands(
+        val commands = linker.finalLinkCommands(
                 objectFiles = objectFiles,
                 executable = executable,
                 libraries = linker.linkStaticLibraries(includedBinaries) + caches.static,
@@ -151,12 +151,16 @@ internal class Linker(
                 mimallocEnabled = config.allocationMode == AllocationMode.MIMALLOC,
                 sanitizer = config.sanitizer
         )
+        println("""
+            backend.konan.Linker.runLinker(): ${commands.joinToString()}
+        """.trimIndent())
+        return commands
     }
 }
 
 internal fun runLinkerCommands(context: PhaseContext, commands: List<Command>, cachingInvolved: Boolean) = try {
     commands.forEach {
-        it.logWith(context::log)
+        it.logWith { println(it) }
         it.execute()
     }
 } catch (e: KonanExternalToolFailure) {
