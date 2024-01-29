@@ -33,6 +33,7 @@ internal class DynamicCompilerDriver : CompilerDriver() {
     override fun run(config: KonanConfig, environment: KotlinCoreEnvironment) {
         usingNativeMemoryAllocator {
             usingJvmCInteropCallbacks {
+                println("Trace: ${this.javaClass}.run() -> produce: ${config.produce}")
                 PhaseEngine.startTopLevel(config) { engine ->
                     if (!config.compileFromBitcode.isNullOrEmpty()) produceBinaryFromBitcode(engine, config, config.compileFromBitcode!!)
                     else when (config.produce) {
@@ -143,10 +144,14 @@ internal class DynamicCompilerDriver : CompilerDriver() {
      * Produce a single binary artifact.
      */
     private fun produceBinary(engine: PhaseEngine<PhaseContext>, config: KonanConfig, environment: KotlinCoreEnvironment) {
+        println("Trace: ${this.javaClass}.produceBinary()")
+        println("Trace: ${this.javaClass}.produceBinary() Step: runFrontend")
         val frontendOutput = engine.runFrontend(config, environment) ?: return
+        println("Trace: ${this.javaClass}.produceBinary() Step: runPsiToIr")
         val psiToIrOutput = engine.runPsiToIr(frontendOutput, isProducingLibrary = false)
         require(psiToIrOutput is PsiToIrOutput.ForBackend)
         val backendContext = createBackendContext(config, frontendOutput, psiToIrOutput)
+        println("Trace: ${this.javaClass}.produceBinary() Step: runBackend")
         engine.runBackend(backendContext, psiToIrOutput.irModule)
     }
 

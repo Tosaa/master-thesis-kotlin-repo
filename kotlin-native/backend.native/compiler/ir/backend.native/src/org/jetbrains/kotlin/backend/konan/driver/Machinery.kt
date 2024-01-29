@@ -132,7 +132,17 @@ internal class PhaseEngine<C : PhaseContext>(
             input: Input,
             disable: Boolean = false
     ): Output {
-         // println("runPhase(): ${phase.name}, disabled=$disable")
+        /*
+        if(!disable) {
+            phase.getNamedSubphases().forEach { (depth, phase) ->
+                println(
+                        "%1$-50s %2$-50s".format(
+                                "${"    ".repeat(depth)}${phase.name}", phase.description
+                        )
+                )
+            }
+        }
+        */
         if (disable) {
             return phase.outputIfNotEnabled(phaseConfig, phaserState.changePhaserStateType(), context, input)
         }

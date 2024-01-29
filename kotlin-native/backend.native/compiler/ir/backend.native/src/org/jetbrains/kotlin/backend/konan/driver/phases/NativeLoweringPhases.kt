@@ -34,6 +34,7 @@ import org.jetbrains.kotlin.backend.konan.lower.UnboxInlineLowering
 import org.jetbrains.kotlin.backend.konan.optimizations.KonanBCEForLoopBodyTransformer
 import org.jetbrains.kotlin.ir.IrElement
 import org.jetbrains.kotlin.ir.declarations.IrFunction
+import org.jetbrains.kotlin.ir.declarations.name
 import org.jetbrains.kotlin.ir.interpreter.IrInterpreterConfiguration
 import org.jetbrains.kotlin.ir.visitors.IrElementVisitorVoid
 import org.jetbrains.kotlin.ir.visitors.acceptChildrenVoid
@@ -42,6 +43,7 @@ import org.jetbrains.kotlin.ir.visitors.acceptChildrenVoid
  * Run whole IR lowering pipeline over [irModuleFragment].
  */
 internal fun PhaseEngine<NativeGenerationState>.runAllLowerings(irModuleFragment: IrModuleFragment) {
+    println("Trace: ${this.javaClass}.runAllLowerings() files = ${irModuleFragment.files.map { it.name }}")
     val lowerings = getAllLowerings()
     irModuleFragment.files.forEach { file ->
         context.fileLowerState = FileLowerState()
