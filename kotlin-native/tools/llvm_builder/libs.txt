@@ -1,0 +1,535 @@
+.
+|-- *.a
+|-- *\\.a
+`-- build
+    |-- bin
+    |-- include
+    |   |-- c++
+    |   |   `-- v1
+    |   |       |-- __algorithm
+    |   |       |   `-- pstl_backends
+    |   |       |       `-- cpu_backends
+    |   |       |-- __atomic
+    |   |       |-- __bit
+    |   |       |-- __charconv
+    |   |       |-- __chrono
+    |   |       |-- __compare
+    |   |       |-- __concepts
+    |   |       |-- __condition_variable
+    |   |       |-- __coroutine
+    |   |       |-- __debug_utils
+    |   |       |-- __exception
+    |   |       |-- __expected
+    |   |       |-- __filesystem
+    |   |       |-- __format
+    |   |       |-- __functional
+    |   |       |-- __fwd
+    |   |       |-- __ios
+    |   |       |-- __iterator
+    |   |       |-- __locale_dir
+    |   |       |   `-- locale_base_api
+    |   |       |-- __mdspan
+    |   |       |-- __memory
+    |   |       |-- __memory_resource
+    |   |       |-- __mutex
+    |   |       |-- __numeric
+    |   |       |-- __pstl
+    |   |       |   `-- internal
+    |   |       |       `-- omp
+    |   |       |-- __random
+    |   |       |-- __ranges
+    |   |       |-- __stop_token
+    |   |       |-- __string
+    |   |       |-- __support
+    |   |       |   |-- android
+    |   |       |   |-- fuchsia
+    |   |       |   |-- ibm
+    |   |       |   |-- musl
+    |   |       |   |-- newlib
+    |   |       |   |-- openbsd
+    |   |       |   |-- win32
+    |   |       |   `-- xlocale
+    |   |       |-- __system_error
+    |   |       |-- __thread
+    |   |       |-- __tuple
+    |   |       |-- __type_traits
+    |   |       |-- __utility
+    |   |       |-- __variant
+    |   |       |-- experimental
+    |   |       `-- ext
+    |   |-- clang
+    |   |   |-- APINotes
+    |   |   |-- ARCMigrate
+    |   |   |-- AST
+    |   |   |-- ASTMatchers
+    |   |   |   `-- Dynamic
+    |   |   |-- Analysis
+    |   |   |   |-- Analyses
+    |   |   |   |-- DomainSpecific
+    |   |   |   |-- FlowSensitive
+    |   |   |   |   `-- Models
+    |   |   |   `-- Support
+    |   |   |-- Basic
+    |   |   |-- CAS
+    |   |   |-- CodeGen
+    |   |   |-- Config
+    |   |   |-- CrossTU
+    |   |   |-- DirectoryWatcher
+    |   |   |-- Driver
+    |   |   |-- Edit
+    |   |   |-- ExtractAPI
+    |   |   |   `-- Serialization
+    |   |   |-- Format
+    |   |   |-- Frontend
+    |   |   |-- FrontendTool
+    |   |   |-- Index
+    |   |   |-- IndexSerialization
+    |   |   |-- Interpreter
+    |   |   |-- Lex
+    |   |   |-- Parse
+    |   |   |-- Rewrite
+    |   |   |   |-- Core
+    |   |   |   `-- Frontend
+    |   |   |-- Sema
+    |   |   |-- Serialization
+    |   |   |-- StaticAnalyzer
+    |   |   |   |-- Checkers
+    |   |   |   |-- Core
+    |   |   |   |   |-- BugReporter
+    |   |   |   |   `-- PathSensitive
+    |   |   |   `-- Frontend
+    |   |   |-- Support
+    |   |   |-- Testing
+    |   |   `-- Tooling
+    |   |       |-- ASTDiff
+    |   |       |-- Core
+    |   |       |-- DependencyScanning
+    |   |       |-- Inclusions
+    |   |       |-- Refactor
+    |   |       |-- Refactoring
+    |   |       |   |-- Extract
+    |   |       |   `-- Rename
+    |   |       |-- Syntax
+    |   |       `-- Transformer
+    |   |-- clang-c
+    |   |-- lld
+    |   |   `-- Common
+    |   |-- llvm
+    |   |   |-- ADT
+    |   |   |-- Analysis
+    |   |   |   `-- Utils
+    |   |   |-- AsmParser
+    |   |   |-- BinaryFormat
+    |   |   |   `-- ELFRelocs
+    |   |   |-- Bitcode
+    |   |   |-- Bitstream
+    |   |   |-- CAS
+    |   |   |-- CASObjectFormats
+    |   |   |-- CASUtil
+    |   |   |-- CodeGen
+    |   |   |   |-- GlobalISel
+    |   |   |   |-- MIRParser
+    |   |   |   `-- PBQP
+    |   |   |-- Config
+    |   |   |-- DWARFLinker
+    |   |   |-- DWARFLinkerParallel
+    |   |   |-- DWP
+    |   |   |-- DebugInfo
+    |   |   |   |-- BTF
+    |   |   |   |-- CodeView
+    |   |   |   |-- DWARF
+    |   |   |   |-- GSYM
+    |   |   |   |-- LogicalView
+    |   |   |   |   |-- Core
+    |   |   |   |   `-- Readers
+    |   |   |   |-- MSF
+    |   |   |   |-- PDB
+    |   |   |   |   |-- DIA
+    |   |   |   |   `-- Native
+    |   |   |   `-- Symbolize
+    |   |   |-- Debuginfod
+    |   |   |-- Demangle
+    |   |   |-- ExecutionEngine
+    |   |   |   |-- JITLink
+    |   |   |   `-- Orc
+    |   |   |       |-- Shared
+    |   |   |       `-- TargetProcess
+    |   |   |-- FileCheck
+    |   |   |-- Frontend
+    |   |   |   |-- Debug
+    |   |   |   |-- Directive
+    |   |   |   |-- HLSL
+    |   |   |   |-- OpenACC
+    |   |   |   `-- OpenMP
+    |   |   |-- FuzzMutate
+    |   |   |-- IR
+    |   |   |-- IRPrinter
+    |   |   |-- IRReader
+    |   |   |-- InterfaceStub
+    |   |   |-- LTO
+    |   |   |   `-- legacy
+    |   |   |-- LineEditor
+    |   |   |-- Linker
+    |   |   |-- MC
+    |   |   |   |-- MCDisassembler
+    |   |   |   `-- MCParser
+    |   |   |-- MCA
+    |   |   |   |-- HardwareUnits
+    |   |   |   `-- Stages
+    |   |   |-- MCCAS
+    |   |   |-- ObjCopy
+    |   |   |   |-- COFF
+    |   |   |   |-- ELF
+    |   |   |   |-- MachO
+    |   |   |   |-- XCOFF
+    |   |   |   `-- wasm
+    |   |   |-- Object
+    |   |   |-- ObjectYAML
+    |   |   |-- Option
+    |   |   |-- Passes
+    |   |   |-- ProfileData
+    |   |   |   `-- Coverage
+    |   |   |-- Remarks
+    |   |   |-- RemoteCachingService
+    |   |   |-- Support
+    |   |   |   |-- FileSystem
+    |   |   |   |-- Solaris
+    |   |   |   |   `-- sys
+    |   |   |   `-- Windows
+    |   |   |-- TableGen
+    |   |   |-- Target
+    |   |   |   `-- GlobalISel
+    |   |   |-- TargetParser
+    |   |   |-- Testing
+    |   |   |   |-- ADT
+    |   |   |   |-- Annotations
+    |   |   |   `-- Support
+    |   |   |-- TextAPI
+    |   |   |-- ToolDrivers
+    |   |   |   |-- llvm-dlltool
+    |   |   |   `-- llvm-lib
+    |   |   |-- Transforms
+    |   |   |   |-- AggressiveInstCombine
+    |   |   |   |-- Coroutines
+    |   |   |   |-- IPO
+    |   |   |   |-- InstCombine
+    |   |   |   |-- Instrumentation
+    |   |   |   |-- Scalar
+    |   |   |   |-- Utils
+    |   |   |   `-- Vectorize
+    |   |   |-- WindowsDriver
+    |   |   |-- WindowsManifest
+    |   |   |-- WindowsResource
+    |   |   `-- XRay
+    |   `-- llvm-c
+    |       |-- CAS
+    |       `-- Transforms
+    |-- lib
+    |   |-- clang
+    |   |   `-- 17
+    |   |       |-- include
+    |   |       |   |-- cuda_wrappers
+    |   |       |   |   `-- bits
+    |   |       |   |-- fuzzer
+    |   |       |   |-- llvm_libc_wrappers
+    |   |       |   |-- openmp_wrappers
+    |   |       |   |-- orc
+    |   |       |   |-- ppc_wrappers
+    |   |       |   |-- profile
+    |   |       |   |-- sanitizer
+    |   |       |   `-- xray
+    |   |       |-- lib
+    |   |       |   `-- darwin
+    |   |       |       |-- libclang_rt.asan_abi_ios.a
+    |   |       |       |-- libclang_rt.asan_abi_osx.a
+    |   |       |       |-- libclang_rt.cc_kext.a
+    |   |       |       |-- libclang_rt.cc_kext_ios.a
+    |   |       |       |-- libclang_rt.fuzzer_interceptors_ios.a
+    |   |       |       |-- libclang_rt.fuzzer_interceptors_osx.a
+    |   |       |       |-- libclang_rt.fuzzer_ios.a
+    |   |       |       |-- libclang_rt.fuzzer_no_main_ios.a
+    |   |       |       |-- libclang_rt.fuzzer_no_main_osx.a
+    |   |       |       |-- libclang_rt.fuzzer_osx.a
+    |   |       |       |-- libclang_rt.ios.a
+    |   |       |       |-- libclang_rt.iossim.a
+    |   |       |       |-- libclang_rt.osx.a
+    |   |       |       |-- libclang_rt.profile_ios.a
+    |   |       |       |-- libclang_rt.profile_osx.a
+    |   |       |       |-- libclang_rt.stats_client_ios.a
+    |   |       |       |-- libclang_rt.stats_client_osx.a
+    |   |       |       |-- libclang_rt.ubsan_minimal_ios.a
+    |   |       |       |-- libclang_rt.ubsan_minimal_osx.a
+    |   |       |       |-- libclang_rt.xray-basic_osx.a
+    |   |       |       |-- libclang_rt.xray-fdr_osx.a
+    |   |       |       |-- libclang_rt.xray-profiling_osx.a
+    |   |       |       |-- libclang_rt.xray_osx.a
+    |   |       |       |-- liborc_rt_ios.a
+    |   |       |       `-- liborc_rt_osx.a
+    |   |       `-- share
+    |   |-- cmake
+    |   |   |-- clang
+    |   |   |-- lld
+    |   |   `-- llvm
+    |   |-- libLLVMAArch64AsmParser.a
+    |   |-- libLLVMAArch64CodeGen.a
+    |   |-- libLLVMAArch64Desc.a
+    |   |-- libLLVMAArch64Disassembler.a
+    |   |-- libLLVMAArch64Info.a
+    |   |-- libLLVMAArch64Utils.a
+    |   |-- libLLVMAMDGPUAsmParser.a
+    |   |-- libLLVMAMDGPUCodeGen.a
+    |   |-- libLLVMAMDGPUDesc.a
+    |   |-- libLLVMAMDGPUDisassembler.a
+    |   |-- libLLVMAMDGPUInfo.a
+    |   |-- libLLVMAMDGPUTargetMCA.a
+    |   |-- libLLVMAMDGPUUtils.a
+    |   |-- libLLVMARMAsmParser.a
+    |   |-- libLLVMARMCodeGen.a
+    |   |-- libLLVMARMDesc.a
+    |   |-- libLLVMARMDisassembler.a
+    |   |-- libLLVMARMInfo.a
+    |   |-- libLLVMARMUtils.a
+    |   |-- libLLVMAVRAsmParser.a
+    |   |-- libLLVMAVRCodeGen.a
+    |   |-- libLLVMAVRDesc.a
+    |   |-- libLLVMAVRDisassembler.a
+    |   |-- libLLVMAVRInfo.a
+    |   |-- libLLVMAggressiveInstCombine.a
+    |   |-- libLLVMAnalysis.a
+    |   |-- libLLVMAsmParser.a
+    |   |-- libLLVMAsmPrinter.a
+    |   |-- libLLVMBPFAsmParser.a
+    |   |-- libLLVMBPFCodeGen.a
+    |   |-- libLLVMBPFDesc.a
+    |   |-- libLLVMBPFDisassembler.a
+    |   |-- libLLVMBPFInfo.a
+    |   |-- libLLVMBinaryFormat.a
+    |   |-- libLLVMBitReader.a
+    |   |-- libLLVMBitWriter.a
+    |   |-- libLLVMBitstreamReader.a
+    |   |-- libLLVMCAS.a
+    |   |-- libLLVMCASUtil.a
+    |   |-- libLLVMCFGuard.a
+    |   |-- libLLVMCFIVerify.a
+    |   |-- libLLVMCodeGen.a
+    |   |-- libLLVMCodeGenTypes.a
+    |   |-- libLLVMCore.a
+    |   |-- libLLVMCoroutines.a
+    |   |-- libLLVMCoverage.a
+    |   |-- libLLVMDWARFLinker.a
+    |   |-- libLLVMDWARFLinkerParallel.a
+    |   |-- libLLVMDWP.a
+    |   |-- libLLVMDebugInfoBTF.a
+    |   |-- libLLVMDebugInfoCodeView.a
+    |   |-- libLLVMDebugInfoDWARF.a
+    |   |-- libLLVMDebugInfoGSYM.a
+    |   |-- libLLVMDebugInfoLogicalView.a
+    |   |-- libLLVMDebugInfoMSF.a
+    |   |-- libLLVMDebugInfoPDB.a
+    |   |-- libLLVMDebuginfod.a
+    |   |-- libLLVMDemangle.a
+    |   |-- libLLVMDiff.a
+    |   |-- libLLVMDlltoolDriver.a
+    |   |-- libLLVMExecutionEngine.a
+    |   |-- libLLVMExegesis.a
+    |   |-- libLLVMExegesisAArch64.a
+    |   |-- libLLVMExegesisMips.a
+    |   |-- libLLVMExegesisPowerPC.a
+    |   |-- libLLVMExegesisX86.a
+    |   |-- libLLVMExtensions.a
+    |   |-- libLLVMFileCheck.a
+    |   |-- libLLVMFrontendHLSL.a
+    |   |-- libLLVMFrontendOpenACC.a
+    |   |-- libLLVMFrontendOpenMP.a
+    |   |-- libLLVMFuzzMutate.a
+    |   |-- libLLVMFuzzerCLI.a
+    |   |-- libLLVMGlobalISel.a
+    |   |-- libLLVMHexagonAsmParser.a
+    |   |-- libLLVMHexagonCodeGen.a
+    |   |-- libLLVMHexagonDesc.a
+    |   |-- libLLVMHexagonDisassembler.a
+    |   |-- libLLVMHexagonInfo.a
+    |   |-- libLLVMIRPrinter.a
+    |   |-- libLLVMIRReader.a
+    |   |-- libLLVMInstCombine.a
+    |   |-- libLLVMInstrumentation.a
+    |   |-- libLLVMInterfaceStub.a
+    |   |-- libLLVMInterpreter.a
+    |   |-- libLLVMJITLink.a
+    |   |-- libLLVMLTO.a
+    |   |-- libLLVMLanaiAsmParser.a
+    |   |-- libLLVMLanaiCodeGen.a
+    |   |-- libLLVMLanaiDesc.a
+    |   |-- libLLVMLanaiDisassembler.a
+    |   |-- libLLVMLanaiInfo.a
+    |   |-- libLLVMLibDriver.a
+    |   |-- libLLVMLineEditor.a
+    |   |-- libLLVMLinker.a
+    |   |-- libLLVMLoongArchAsmParser.a
+    |   |-- libLLVMLoongArchCodeGen.a
+    |   |-- libLLVMLoongArchDesc.a
+    |   |-- libLLVMLoongArchDisassembler.a
+    |   |-- libLLVMLoongArchInfo.a
+    |   |-- libLLVMMC.a
+    |   |-- libLLVMMCA.a
+    |   |-- libLLVMMCCAS.a
+    |   |-- libLLVMMCDisassembler.a
+    |   |-- libLLVMMCJIT.a
+    |   |-- libLLVMMCParser.a
+    |   |-- libLLVMMIRParser.a
+    |   |-- libLLVMMSP430AsmParser.a
+    |   |-- libLLVMMSP430CodeGen.a
+    |   |-- libLLVMMSP430Desc.a
+    |   |-- libLLVMMSP430Disassembler.a
+    |   |-- libLLVMMSP430Info.a
+    |   |-- libLLVMMipsAsmParser.a
+    |   |-- libLLVMMipsCodeGen.a
+    |   |-- libLLVMMipsDesc.a
+    |   |-- libLLVMMipsDisassembler.a
+    |   |-- libLLVMMipsInfo.a
+    |   |-- libLLVMNVPTXCodeGen.a
+    |   |-- libLLVMNVPTXDesc.a
+    |   |-- libLLVMNVPTXInfo.a
+    |   |-- libLLVMObjCARCOpts.a
+    |   |-- libLLVMObjCopy.a
+    |   |-- libLLVMObject.a
+    |   |-- libLLVMObjectYAML.a
+    |   |-- libLLVMOption.a
+    |   |-- libLLVMOrcJIT.a
+    |   |-- libLLVMOrcShared.a
+    |   |-- libLLVMOrcTargetProcess.a
+    |   |-- libLLVMPasses.a
+    |   |-- libLLVMPowerPCAsmParser.a
+    |   |-- libLLVMPowerPCCodeGen.a
+    |   |-- libLLVMPowerPCDesc.a
+    |   |-- libLLVMPowerPCDisassembler.a
+    |   |-- libLLVMPowerPCInfo.a
+    |   |-- libLLVMProfileData.a
+    |   |-- libLLVMRISCVAsmParser.a
+    |   |-- libLLVMRISCVCodeGen.a
+    |   |-- libLLVMRISCVDesc.a
+    |   |-- libLLVMRISCVDisassembler.a
+    |   |-- libLLVMRISCVInfo.a
+    |   |-- libLLVMRISCVTargetMCA.a
+    |   |-- libLLVMRemarks.a
+    |   |-- libLLVMRemoteCachingService.a
+    |   |-- libLLVMRemoteNullService.a
+    |   |-- libLLVMRuntimeDyld.a
+    |   |-- libLLVMScalarOpts.a
+    |   |-- libLLVMSelectionDAG.a
+    |   |-- libLLVMSparcAsmParser.a
+    |   |-- libLLVMSparcCodeGen.a
+    |   |-- libLLVMSparcDesc.a
+    |   |-- libLLVMSparcDisassembler.a
+    |   |-- libLLVMSparcInfo.a
+    |   |-- libLLVMSupport.a
+    |   |-- libLLVMSymbolize.a
+    |   |-- libLLVMSystemZAsmParser.a
+    |   |-- libLLVMSystemZCodeGen.a
+    |   |-- libLLVMSystemZDesc.a
+    |   |-- libLLVMSystemZDisassembler.a
+    |   |-- libLLVMSystemZInfo.a
+    |   |-- libLLVMTableGen.a
+    |   |-- libLLVMTableGenCommon.a
+    |   |-- libLLVMTableGenGlobalISel.a
+    |   |-- libLLVMTarget.a
+    |   |-- libLLVMTargetParser.a
+    |   |-- libLLVMTextAPI.a
+    |   |-- libLLVMTextAPIBinaryReader.a
+    |   |-- libLLVMTransformUtils.a
+    |   |-- libLLVMVEAsmParser.a
+    |   |-- libLLVMVECodeGen.a
+    |   |-- libLLVMVEDesc.a
+    |   |-- libLLVMVEDisassembler.a
+    |   |-- libLLVMVEInfo.a
+    |   |-- libLLVMVectorize.a
+    |   |-- libLLVMWebAssemblyAsmParser.a
+    |   |-- libLLVMWebAssemblyCodeGen.a
+    |   |-- libLLVMWebAssemblyDesc.a
+    |   |-- libLLVMWebAssemblyDisassembler.a
+    |   |-- libLLVMWebAssemblyInfo.a
+    |   |-- libLLVMWebAssemblyUtils.a
+    |   |-- libLLVMWindowsDriver.a
+    |   |-- libLLVMWindowsManifest.a
+    |   |-- libLLVMX86AsmParser.a
+    |   |-- libLLVMX86CodeGen.a
+    |   |-- libLLVMX86Desc.a
+    |   |-- libLLVMX86Disassembler.a
+    |   |-- libLLVMX86Info.a
+    |   |-- libLLVMX86TargetMCA.a
+    |   |-- libLLVMXCoreCodeGen.a
+    |   |-- libLLVMXCoreDesc.a
+    |   |-- libLLVMXCoreDisassembler.a
+    |   |-- libLLVMXCoreInfo.a
+    |   |-- libLLVMXRay.a
+    |   |-- libLLVMipo.a
+    |   |-- libc++.a
+    |   |-- libc++abi.a
+    |   |-- libc++experimental.a
+    |   |-- libclangAPINotes.a
+    |   |-- libclangARCMigrate.a
+    |   |-- libclangAST.a
+    |   |-- libclangASTMatchers.a
+    |   |-- libclangAnalysis.a
+    |   |-- libclangAnalysisFlowSensitive.a
+    |   |-- libclangAnalysisFlowSensitiveModels.a
+    |   |-- libclangBasic.a
+    |   |-- libclangCAS.a
+    |   |-- libclangCodeGen.a
+    |   |-- libclangCrossTU.a
+    |   |-- libclangDependencyScanning.a
+    |   |-- libclangDirectoryWatcher.a
+    |   |-- libclangDriver.a
+    |   |-- libclangDynamicASTMatchers.a
+    |   |-- libclangEdit.a
+    |   |-- libclangExtractAPI.a
+    |   |-- libclangFormat.a
+    |   |-- libclangFrontend.a
+    |   |-- libclangFrontendTool.a
+    |   |-- libclangHandleCXX.a
+    |   |-- libclangHandleLLVM.a
+    |   |-- libclangIndex.a
+    |   |-- libclangIndexDataStore.a
+    |   |-- libclangIndexSerialization.a
+    |   |-- libclangInterpreter.a
+    |   |-- libclangLex.a
+    |   |-- libclangParse.a
+    |   |-- libclangRewrite.a
+    |   |-- libclangRewriteFrontend.a
+    |   |-- libclangSema.a
+    |   |-- libclangSerialization.a
+    |   |-- libclangStaticAnalyzerCheckers.a
+    |   |-- libclangStaticAnalyzerCore.a
+    |   |-- libclangStaticAnalyzerFrontend.a
+    |   |-- libclangSupport.a
+    |   |-- libclangTooling.a
+    |   |-- libclangToolingASTDiff.a
+    |   |-- libclangToolingCore.a
+    |   |-- libclangToolingInclusions.a
+    |   |-- libclangToolingInclusionsStdlib.a
+    |   |-- libclangToolingRefactor.a
+    |   |-- libclangToolingRefactoring.a
+    |   |-- libclangToolingSyntax.a
+    |   |-- libclangTransformer.a
+    |   |-- libear
+    |   |-- liblldCOFF.a
+    |   |-- liblldCommon.a
+    |   |-- liblldELF.a
+    |   |-- liblldMachO.a
+    |   |-- liblldMinGW.a
+    |   |-- liblldWasm.a
+    |   `-- libscanbuild
+    |       `-- resources
+    |-- libexec
+    |-- local
+    |   `-- include
+    |       `-- indexstore
+    `-- share
+        |-- clang
+        |-- man
+        |   `-- man1
+        |-- opt-viewer
+        |-- scan-build
+        `-- scan-view
+
+258 directories, 274 files

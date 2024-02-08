@@ -70,13 +70,14 @@ if (libclangextIsEnabled) {
             "clangRewrite", "clangRewriteFrontend", "clangStaticAnalyzerFrontend",
             "clangStaticAnalyzerCheckers", "clangStaticAnalyzerCore", "clangSerialization",
             "clangToolingCore",
-            "clangTooling", "clangFormat", "LLVMTarget", "LLVMMC", "LLVMLinker", "LLVMTransformUtils",
-            "LLVMBitWriter", "LLVMBitReader", "LLVMAnalysis", "LLVMProfileData", "LLVMCore",
+            "clangTooling", "clangFormat", "LLVMTarget", "LLVMTargetParser", "LLVMMC", "LLVMLinker", "LLVMTransformUtils", "LLVMFrontendOpenMP",
+            "LLVMBitWriter", "LLVMBitReader", "LLVMBitstreamReader", "LLVMAnalysis", "LLVMProfileData", "LLVMCore", "LLVMScalarOpts", "LLVMRemarks",
             "LLVMSupport", "LLVMBinaryFormat", "LLVMDemangle"
     ).map { "${nativeDependencies.llvmPath}/lib/lib${it}.a" }
 
     ldflags.addAll(llvmLibs)
     ldflags.addAll(listOf("-lpthread", "-lz", "-lm", "-lcurses"))
+    ldflags.addAll(listOf("-L/usr/local/opt/zstd/lib/", "-lzstd"))
 }
 
 val solib = when{

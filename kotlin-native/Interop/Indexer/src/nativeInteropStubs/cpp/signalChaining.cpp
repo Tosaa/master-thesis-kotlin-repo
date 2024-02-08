@@ -61,6 +61,7 @@ static void checkSignalChaining() {
 
 __attribute__((constructor))
 static void initSignalChaining() {
+/*
   void** base = 0;
   Dl_info info;
 
@@ -105,6 +106,7 @@ static void initSignalChaining() {
   }
 
   checkSignalChaining();
+  */
 }
 
 #endif // defined(__linux__) || defined(__APPLE__)

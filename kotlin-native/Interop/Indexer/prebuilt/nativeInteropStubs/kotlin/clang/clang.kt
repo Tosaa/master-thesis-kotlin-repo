@@ -1129,7 +1129,25 @@ enum class CXCursorKind(value: Int) : CEnum {
     CXCursor_OMPParallelMasterDirective(285),
     CXCursor_OMPDepobjDirective(286),
     CXCursor_OMPScanDirective(287),
-    CXCursor_TranslationUnit(300),
+    CXCursor_OMPTileDirective(288),
+    CXCursor_OMPCanonicalLoop(289),
+    CXCursor_OMPInteropDirective(290),
+    CXCursor_OMPDispatchDirective(291),
+    CXCursor_OMPMaskedDirective(292),
+    CXCursor_OMPUnrollDirective(293),
+    CXCursor_OMPMetaDirective(294),
+    CXCursor_OMPGenericLoopDirective(295),
+    CXCursor_OMPTeamsGenericLoopDirective(296),
+    CXCursor_OMPTargetTeamsGenericLoopDirective(297),
+    CXCursor_OMPParallelGenericLoopDirective(298),
+    CXCursor_OMPTargetParallelGenericLoopDirective(299),
+    CXCursor_OMPParallelMaskedDirective(300),
+    CXCursor_OMPMaskedTaskLoopDirective(301),
+    CXCursor_OMPMaskedTaskLoopSimdDirective(302),
+    CXCursor_OMPParallelMaskedTaskLoopDirective(303),
+    CXCursor_OMPParallelMaskedTaskLoopSimdDirective(304),
+    CXCursor_OMPErrorDirective(305),
+    CXCursor_TranslationUnit(350),
     CXCursor_UnexposedAttr(400),
     CXCursor_IBActionAttr(401),
     CXCursor_IBOutletAttr(402),
@@ -1180,6 +1198,7 @@ enum class CXCursorKind(value: Int) : CEnum {
     CXCursor_TypeAliasTemplateDecl(601),
     CXCursor_StaticAssert(602),
     CXCursor_LastExtraDecl(603),
+    CXCursor_ConceptDecl(604),
     CXCursor_OverloadCandidate(700),
     ;
     
@@ -1240,7 +1259,7 @@ enum class CXCursorKind(value: Int) : CEnum {
             get() = CXCursor_LastExtraDecl
         
         @Deprecated("Will be removed.", ReplaceWith(""), DeprecationLevel.WARNING)
-        fun byValue(value: Int): CXCursorKind = values().find { it.value == value }!!
+        fun byValue(value: Int): CXCursorKind = values().firstOrNull { it.value == value } ?: throw IllegalArgumentException("Cannot find any CXCursorKind for $value")
     }
     
     override open val value: Int = value

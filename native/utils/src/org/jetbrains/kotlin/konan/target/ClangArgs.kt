@@ -139,7 +139,7 @@ sealed class ClangArgs(
             else -> null
         }
         if (environmentOsVersionMinRequired != null) {
-            add(listOf("-D__ENVIRONMENT_OS_VERSION_MIN_REQUIRED__=$environmentOsVersionMinRequired"))
+            // add(listOf("-D__ENVIRONMENT_OS_VERSION_MIN_REQUIRED__=$environmentOsVersionMinRequired"))
         }
     }.flatten()
 
