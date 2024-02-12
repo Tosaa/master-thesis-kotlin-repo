@@ -14,14 +14,15 @@ interface RuntimeAware {
     val runtime: Runtime
 }
 
-class Runtime(llvmContext: LLVMContextRef, bitcodeFile: String) {
+class Runtime(val llvmContext: LLVMContextRef, private val bitcodeFile: String) {
     val llvmModule: LLVMModuleRef = parseBitcodeFile(llvmContext, bitcodeFile)
     val calculatedLLVMTypes: MutableMap<IrType, LLVMTypeRef> = HashMap()
     val addedLLVMExternalFunctions: MutableMap<IrFunction, LlvmCallable> = HashMap()
 
-    private fun getStructTypeOrNull(name: String) = LLVMGetTypeByName(llvmModule, "struct.$name")
+    // Todo: Just a try, LLVMGetTypeByName2 can be removed propably again
+    private fun getStructTypeOrNull(name: String) = LLVMGetTypeByName(llvmModule, "struct.$name") ?: LLVMGetTypeByName2(llvmContext, "struct.$name")
     private fun getStructType(name: String) = getStructTypeOrNull(name)
-            ?: error("struct.$name is not found in the Runtime module.")
+            ?: error("struct.$name is not found in the Runtime module: $bitcodeFile.")
 
     val typeInfoType = getStructType("TypeInfo")
     val extendedTypeInfoType = getStructType("ExtendedTypeInfo")

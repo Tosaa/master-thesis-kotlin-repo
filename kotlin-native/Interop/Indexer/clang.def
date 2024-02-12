@@ -1,4 +1,4 @@
-headers = clang-c/Index.h clang-c/ext.h
+headers = clang-c/Index.h clang-c/ext.h clang-c/Platform.h
 
 headerFilter = clang-c/**
 
@@ -14,4 +14,4 @@ strictEnums = CXErrorCode CXCursorKind CXTypeKind CXDiagnosticSeverity CXLoadDia
     CXTokenKind CXEvalResultKind CXVisitorResult CXResult CXIdxEntityKind
 
 # These functions are not available in 11.1.0 upstream.
-excludedFunctions = clang_Cursor_getVarDeclInitializer clang_Cursor_hasVarDeclGlobalStorage clang_Cursor_hasVarDeclExternalStorage
+# excludedFunctions = clang_Cursor_getVarDeclInitializer clang_Cursor_hasVarDeclGlobalStorage clang_Cursor_hasVarDeclExternalStorage

@@ -149,7 +149,7 @@ class StubIrDriver(
 
     fun run(): Result {
         val (entryPoint, moduleName, outCFile, outKtFile) = options
-
+        println("StubIrDriver.run(): options = $options")
         val builderResult = StubIrBuilder(context).build()
         val bridgeBuilderResult = StubIrBridgeBuilder(context, builderResult).build()
 
@@ -157,7 +157,7 @@ class StubIrDriver(
             emitCFile(context, it, entryPoint, bridgeBuilderResult.nativeBridges)
         }
 
-        if (options.dumpBridges) {
+        if (options.dumpBridges || true) {
             context.log("GENERATED KOTLIN: ${bridgeBuilderResult.nativeBridges.kotlinLines.toList().size}")
             bridgeBuilderResult.nativeBridges.kotlinLines.forEach { context.log(it) }
             context.log("GENERATED NATIVE: ${bridgeBuilderResult.nativeBridges.nativeLines.toList().size}")

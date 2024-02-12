@@ -17,15 +17,16 @@ import java.io.File
 /**
  * Supposed to be true for a single LLVM module within final binary.
  */
-val KonanConfig.isFinalBinary: Boolean get() = when (this.produce) {
-    CompilerOutputKind.PROGRAM, CompilerOutputKind.DYNAMIC,
-    CompilerOutputKind.STATIC -> true
-    CompilerOutputKind.DYNAMIC_CACHE, CompilerOutputKind.STATIC_CACHE,
-    CompilerOutputKind.LIBRARY, CompilerOutputKind.BITCODE -> false
-    CompilerOutputKind.FRAMEWORK -> !omitFrameworkBinary
-    CompilerOutputKind.TEST_BUNDLE -> true
-    else -> error("not supported: ${this.produce}")
-}
+val KonanConfig.isFinalBinary: Boolean
+    get() = when (this.produce) {
+        CompilerOutputKind.PROGRAM, CompilerOutputKind.DYNAMIC,
+        CompilerOutputKind.STATIC -> true
+        CompilerOutputKind.DYNAMIC_CACHE, CompilerOutputKind.STATIC_CACHE,
+        CompilerOutputKind.LIBRARY, CompilerOutputKind.BITCODE -> false
+        CompilerOutputKind.FRAMEWORK -> !omitFrameworkBinary
+        CompilerOutputKind.TEST_BUNDLE -> true
+        else -> error("not supported: ${this.produce}")
+    }
 
 val CompilerOutputKind.isNativeLibrary: Boolean
     get() = this == CompilerOutputKind.DYNAMIC || this == CompilerOutputKind.STATIC
@@ -148,7 +149,9 @@ internal fun insertAliasToEntryPoint(context: PhaseContext, module: LLVMModuleRe
     val entryPointName = config.entryPointName
     val entryPoint = LLVMGetNamedFunction(module, entryPointName)
             ?: error("Module doesn't contain `$entryPointName`")
-    LLVMAddAlias(module, LLVMTypeOf(entryPoint)!!, entryPoint, "main")
+    // https://github.com/hdoc/llvm-project/blob/a38b25fa77bdf1437c690494ae6d61179b3bb4f8/llvm/lib/IR/Core.cpp#L2228
+    val addressSpace = LLVMGetPointerAddressSpace(entryPoint.type)
+    LLVMAddAlias2(module, LLVMTypeOf(entryPoint)!!, addressSpace, entryPoint, "main")
 }
 
 internal fun linkBitcodeDependencies(generationState: NativeGenerationState,
@@ -178,7 +181,7 @@ private fun embedAppleLinkerOptionsToBitcode(llvm: CodegenLlvmHelpers, config: K
     fun findEmbeddableOptions(options: List<String>): List<List<String>> {
         val result = mutableListOf<List<String>>()
         val iterator = options.iterator()
-        loop@while (iterator.hasNext()) {
+        loop@ while (iterator.hasNext()) {
             val option = iterator.next()
             result += when {
                 option.startsWith("-l") -> listOf(option)

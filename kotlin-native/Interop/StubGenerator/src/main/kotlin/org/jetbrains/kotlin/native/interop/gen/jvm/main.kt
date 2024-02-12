@@ -285,7 +285,7 @@ private fun processCLib(
 
     val additionalLinkerOpts = cinteropArguments.linkerOpts.value.toTypedArray() + cinteropArguments.linkerOption.value.toTypedArray() +
             cinteropArguments.linkerOptions.value.toTypedArray()
-    val verbose = cinteropArguments.verbose
+    val verbose = true //  cinteropArguments.verbose
 
     val entryPoint = def.config.entryPoints.atMostOne()
     val linkerName = cinteropArguments.linker ?: def.config.linker
@@ -344,6 +344,7 @@ private fun processCLib(
             disableExperimentalAnnotation = cinteropArguments.disableExperimentalAnnotation ?: false,
             target = target
     )
+    println("processCLib(): configuration = $configuration")
 
 
     File(nativeLibsDir).mkdirs()

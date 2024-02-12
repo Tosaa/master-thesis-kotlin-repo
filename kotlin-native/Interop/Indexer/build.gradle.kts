@@ -156,7 +156,7 @@ val nativelibs = project.tasks.register<Copy>("nativelibs") {
 kotlinNativeInterop {
     this.create("clang") {
         defFile("clang.def")
-        compilerOpts(cflags)
+        compilerOpts(cflags + "-I${nativeDependencies.llvmPath}/lib/clang/17/include/")
         linkerOpts = ldflags
         genTask.dependsOn(libclangextTask)
         genTask.inputs.dir(libclangextDir)

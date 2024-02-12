@@ -9,6 +9,10 @@ import kotlinx.cinterop.*
 import llvm.*
 import org.jetbrains.kotlin.ir.declarations.IrDeclaration
 
+// https://github.com/apple/llvm-project/blob/f1102cf0c7a064c693bf59cf35fbefddc7de5242/llvm/include/llvm-c/Core.h#L463
+internal const val LLVMAttributeFunctionIndex = -1
+internal const val LLVMAttributeReturnIndex = 0
+
 internal val LLVMValueRef.type: LLVMTypeRef
     get() = LLVMTypeOf(this)!!
 
@@ -35,7 +39,8 @@ internal fun constPointer(value: LLVMValueRef) = object : ConstPointer {
 }
 
 private class ConstGetElementPtr(llvm: CodegenLlvmHelpers, pointer: ConstPointer, index: Int) : ConstPointer {
-    override val llvm = LLVMConstInBoundsGEP(pointer.llvm, cValuesOf(llvm.int32(0), llvm.int32(index)), 2)!!
+    val elementType = LLVMGetElementType(pointer.llvm.type) ?: throw TypeCastException("cannot get LLVMElementType for ${pointer.llvm.type}")
+    override val llvm = LLVMConstInBoundsGEP2(elementType, pointer.llvm, cValuesOf(llvm.int32(0), llvm.int32(index)), 2)!!
     // TODO: squash multiple GEPs
 }
 

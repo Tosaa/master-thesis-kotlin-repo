@@ -88,7 +88,8 @@ internal class NativeGenerationState(
 
     val producedLlvmModuleContainsStdlib get() = llvmModuleSpecification.containsModule(context.stdlibModule)
 
-    private val runtimeDelegate = lazy { Runtime(llvmContext, config.distribution.compilerInterface(config.target)) }
+    // Todo: Should this be distribution.runtime or distribution.compiler_interface ?
+    private val runtimeDelegate = lazy { Runtime(llvmContext, config.distribution.runtime(config.target)) }
     private val llvmDelegate = lazy { CodegenLlvmHelpers(this, LLVMModuleCreateWithNameInContext(llvmModuleName, llvmContext)!!) }
     private val debugInfoDelegate = lazy { DebugInfo(this) }
 

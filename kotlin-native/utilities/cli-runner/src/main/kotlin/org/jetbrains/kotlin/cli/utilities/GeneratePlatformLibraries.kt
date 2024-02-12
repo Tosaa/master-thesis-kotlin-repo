@@ -264,6 +264,7 @@ private fun generateLibrary(
 
     try {
         val cinteropArgs = arrayOf(
+                "-verbose", "true",
                 "-o", tmpKlib.absolutePath,
                 "-target", target.visibleName,
                 "-def", defFile.absolutePath,
