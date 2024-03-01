@@ -125,6 +125,10 @@ struct ObjHeader {
 };
 static_assert(alignof(ObjHeader) <= kotlin::kObjectAlignment);
 
+// To not optimize them away:
+__attribute__((used))
+static struct ObjHeader usedObjHeaderInstance;
+
 // Header of value type array objects. Keep layout in sync with that of object header.
 struct ArrayHeader {
   TypeInfo* typeInfoOrMeta_;
@@ -140,6 +144,10 @@ struct ArrayHeader {
   uint32_t count_;
 };
 static_assert(alignof(ArrayHeader) <= kotlin::kObjectAlignment);
+
+// To not optimize them away:
+__attribute__((used))
+static struct ArrayHeader usedArrayHeaderInstance;
 
 namespace kotlin {
 
@@ -406,6 +414,11 @@ struct FrameOverlay {
   int32_t parameters;
   int32_t count;
 };
+
+
+// To not optimize them away:
+__attribute__((used))
+static struct FrameOverlay usedFrameOverlayInstance;
 
 // Class holding reference to an object, holding object during C++ scope.
 // TODO adopt ref accessors

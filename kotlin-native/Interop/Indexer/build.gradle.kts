@@ -90,7 +90,7 @@ val lib = if (HostManager.hostIsMingw) "lib" else "a"
 
 native {
     val obj = if (HostManager.hostIsMingw) "obj" else "o"
-    val cxxflags = listOf("-std=c++11", *cflags.toTypedArray())
+    val cxxflags = listOf("-std=c++17", *cflags.toTypedArray())
     suffixes {
         (".c" to ".$obj") {
             tool(*hostPlatform.clangForJni.clangC("").toTypedArray())
@@ -156,7 +156,7 @@ val nativelibs = project.tasks.register<Copy>("nativelibs") {
 kotlinNativeInterop {
     this.create("clang") {
         defFile("clang.def")
-        compilerOpts(cflags + "-I${nativeDependencies.llvmPath}/lib/clang/17/include/")
+        compilerOpts(cflags)
         linkerOpts = ldflags
         genTask.dependsOn(libclangextTask)
         genTask.inputs.dir(libclangextDir)

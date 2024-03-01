@@ -64,6 +64,7 @@ internal class StructStubBuilder(
         private val decl: StructDecl
 ) : StubElementBuilder {
     override fun build(): List<StubIrElement> {
+        println("StructStubBuilder.build(): ${decl.spelling}")
         val platform = context.platform
         val def = decl.def ?: return generateForwardStruct(decl)
 
@@ -75,6 +76,7 @@ internal class StructStubBuilder(
             }
         } else {
             tryRenderStructOrUnion(def)?.let {
+                println("StructStubBuilder.build(): tryRenderStructOrUninon returned: $it")
                 AnnotationStub.CStruct(it)
             }
         }
@@ -118,13 +120,18 @@ internal class StructStubBuilder(
 
         val fields: List<PropertyStub?> = def.fields.map { field ->
             try {
-                assert(field.name.isNotEmpty())
-                assert(field.offset % 8 == 0L)
+                println("handle ${field.name}")
+                assert(field.name.isNotEmpty()){"field name cannot be empty"}
+                assert(field.offset % 8 == 0L){"field offset has to be a multiple of 8"}
                 val offset = field.offset / 8
+                println("mirror: ${field.type}")
                 val fieldRefType = context.mirror(field.type)
+                println("fieldRefType = ${fieldRefType}")
                 val unwrappedFieldType = field.type.unwrapTypedefs()
+                println("received fieldName = $unwrappedFieldType")
                 val origin = StubOrigin.StructMember(field)
                 val fieldName = mangleSimple(field.name)
+                println("received fieldName = $fieldName")
                 if (unwrappedFieldType is ArrayType) {
                     val type = (fieldRefType as TypeMirror.ByValue).valueType
                     val annotations = if (platform == KotlinPlatform.JVM) {
@@ -143,6 +150,7 @@ internal class StructStubBuilder(
                     PropertyStub(fieldName, type.toStubIrType(), kind, annotations = annotations.toMutableList(), origin = origin)
                 } else {
                     val pointedType = fieldRefType.pointedType.toStubIrType()
+                    println("${field.name} is a $pointedType")
                     val pointedTypeArgument = TypeArgumentStub(pointedType)
                     if (fieldRefType is TypeMirror.ByValue) {
                         val getter: PropertyAccessor.Getter
@@ -169,6 +177,7 @@ internal class StructStubBuilder(
                     }
                 }
             } catch (e: Throwable) {
+                println("Error for field ${field.name} ($field) " + e.message)
                 null
             }
         }
@@ -364,7 +373,7 @@ internal class StructStubBuilder(
         val elementCount = when (type) {
             is ConstArrayType -> type.length
             is IncompleteArrayType -> 0L
-            else -> TODO(type.toString())
+            else -> TODO("elementCount unexpected type ${type.toString()}")
         }
 
         return elementLength * elementCount
@@ -750,11 +759,15 @@ internal class FunctionStubBuilder(
         val parameters = mutableListOf<FunctionParameterStub>()
 
         val hasStableParameterNames = buildParameters(parameters, platform)
-
+        println("get returnType")
         val returnType = when {
             func.returnsVoid() -> KotlinTypes.unit
-            else -> context.mirror(func.returnType).argType
+            else -> {
+                println("get mirror for ${func.returnType} and its 'argType'")
+                context.mirror(func.returnType).argType
+            }
         }.toStubIrType()
+        println("returnType: $returnType")
 
         if (skipOverloads && context.isOverloading(func.fullName, parameters.map { it.type }))
             return emptyList()
@@ -777,6 +790,7 @@ internal class FunctionStubBuilder(
         } else {
             func.name
         }
+        println("functionStub: $name : $returnType, parameters = ${parameters.toList()}, functionDecl = $func, external = $mustBeExternal")
         val functionStub = FunctionStub(
             name,
             returnType,

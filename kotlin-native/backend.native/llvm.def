@@ -1,4 +1,4 @@
-headers = llvm-c/Core.h llvm-c/Target.h llvm-c/Analysis.h llvm-c/BitWriter.h \
+headers = llvm-c/Core.h llvm-c/Target.h llvm-c/Analysis.h llvm-c/BitWriter.h llvm-c/Types.h \
     llvm-c/BitReader.h llvm-c/Transforms/PassBuilder.h \
     llvm-c/TargetMachine.h llvm-c/Target.h llvm-c/Linker.h \
     llvm-c/DebugInfo.h DebugInfoC.h CoverageMappingC.h CAPIExtensions.h RemoveRedundantSafepoints.h
@@ -83,6 +83,8 @@ excludedFunctions.mingw = LLVMDumpType
 # This might not be safe if the compiler is called from a daemon process.
 #
 # Also exclude the functions that rely on typed pointers as we get rid of them from the code generator.
+# See OpaquePointer usage:
+# https://releases.llvm.org/17.0.1/docs/OpaquePointers.html#frontends
 excludedFunctions = LLVMInitializeAllAsmParsers LLVMInitializeAllAsmPrinters LLVMInitializeAllDisassemblers \
     LLVMInitializeAllTargetInfos LLVMInitializeAllTargetMCs LLVMInitializeAllTargets LLVMInitializeNativeTarget \
     LLVMInitializeNativeAsmParser LLVMInitializeNativeAsmPrinter LLVMInitializeNativeDisassembler \
@@ -91,6 +93,6 @@ excludedFunctions = LLVMInitializeAllAsmParsers LLVMInitializeAllAsmPrinters LLV
     LLVMX86FP80Type LLVMFP128Type LLVMPPCFP128Type LLVMX86MMXType LLVMStructType LLVMVoidType LLVMLabelType \
     LLVMMDString LLVMMDNode LLVMConstString LLVMConstStruct LLVMAppendBasicBlock LLVMInsertBasicBlock LLVMCreateBuilder \
     LLVMParseBitcode LLVMParseBitcode2 LLVMGetBitcodeModule LLVMGetBitcodeModule2 LLVMGetGlobalContext LLVMModuleCreateWithName \
-    LLVMBuildLoad
+    LLVMBuildLoad LLVMBuildCall LLVMInvoke LLVMBuildGEP LLVMBuildInBoundsGEP LLVMBuildStructGEP LLVMBuildPtrDiff LLVMConstGEP LLVMConstInBoundsGEP LLVMAddAlias
 
 strictEnums = LLVMIntPredicate LLVMOpcode LLVMDLLStorageClass LLVMCallConv LLVMThreadLocalMode LLVMAtomicOrdering

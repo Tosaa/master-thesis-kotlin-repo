@@ -403,8 +403,9 @@ internal class RTTIGenerator(
 
     private val debugOperations: ConstValue by lazy {
         if (debugRuntimeOrNull != null) {
+            // Todo: Double check LLVMAddGlobal parameters
             val external = LLVMGetNamedGlobal(debugRuntimeOrNull, "Konan_debugOperationsList")!!
-            val local = LLVMAddGlobal(llvm.module, LLVMGetElementType(LLVMTypeOf(external)),"Konan_debugOperationsList")!!
+            val local = LLVMAddGlobal(llvm.module, external.type,"Konan_debugOperationsList")!!
             constPointer(LLVMConstBitCast(local, llvm.int8PtrPtrType)!!)
         } else {
             Zero(llvm.int8PtrPtrType)
@@ -413,8 +414,9 @@ internal class RTTIGenerator(
 
     val debugOperationsSize: ConstValue by lazy {
         if (debugRuntimeOrNull != null) {
+            // Todo: Double check LLVMGetArrayLength parameters
             val external = LLVMGetNamedGlobal(debugRuntimeOrNull, "Konan_debugOperationsList")!!
-            llvm.constInt32(LLVMGetArrayLength(LLVMGetElementType(LLVMTypeOf(external))))
+            llvm.constInt32(LLVMGetArrayLength(external.type))
         } else
             llvm.constInt32(0)
     }

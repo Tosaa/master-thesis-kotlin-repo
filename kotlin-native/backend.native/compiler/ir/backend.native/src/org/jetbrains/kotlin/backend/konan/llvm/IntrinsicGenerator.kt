@@ -592,9 +592,9 @@ internal class IntrinsicGenerator(private val environment: IntrinsicGeneratorEnv
 
         val structType = llvm.structType(llvm.int8PtrType, llvm.int8PtrType)
         val ptr = alloca(structType)
-        val structElementType = LLVMGetElementType(structType) ?: throw TypeCastException("cannot get LLVMElementType for ${structType}")
-        store(receiver, LLVMBuildGEP2(builder, structElementType, ptr, cValuesOf(llvm.kImmInt32Zero, llvm.kImmInt32Zero), 2, "")!!)
-        store(superClass, LLVMBuildGEP2(builder, structElementType, ptr, cValuesOf(llvm.kImmInt32Zero, llvm.kImmInt32One), 2, "")!!)
+        // Todo: Double check
+        store(receiver, LLVMBuildGEP2(builder, ptr.type, ptr, cValuesOf(llvm.kImmInt32Zero, llvm.kImmInt32Zero), 2, "")!!)
+        store(superClass, LLVMBuildGEP2(builder, ptr.type, ptr, cValuesOf(llvm.kImmInt32Zero, llvm.kImmInt32One), 2, "")!!)
         return bitcast(llvm.int8PtrType, ptr)
     }
 

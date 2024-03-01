@@ -40,15 +40,13 @@ class LlvmCallable(private val llvmValue: LLVMValueRef, private val attributePro
     }
 
     fun buildCall(builder: LLVMBuilderRef, args: List<LLVMValueRef>, name: String = ""): LLVMValueRef {
-        val elementType = LLVMGetElementType(llvmValue.type) ?: throw TypeCastException("cannot get LLVMElementType for ${llvmValue.type}")
-        val buildCall = LLVMBuildCall2(builder, elementType, llvmValue, args.toCValues(), args.size, name)!!
+        val buildCall = LLVMBuildCall2(builder, llvmValue.type, llvmValue, args.toCValues(), args.size, name)!!
         attributeProvider.addCallSiteAttributes(buildCall)
         return buildCall
     }
 
     fun buildInvoke(builder: LLVMBuilderRef, args: List<LLVMValueRef>, success: LLVMBasicBlockRef, catch: LLVMBasicBlockRef, name: String = ""): LLVMValueRef {
-        val elementType = LLVMGetElementType(llvmValue.type) ?: throw TypeCastException("cannot get LLVMElementType for ${llvmValue.type}")
-        val buildInvoke = LLVMBuildInvoke2(builder, elementType, llvmValue, args.toCValues(), args.size, success, catch, name)!!
+        val buildInvoke = LLVMBuildInvoke2(builder, llvmValue.type, llvmValue, args.toCValues(), args.size, success, catch, name)!!
         attributeProvider.addCallSiteAttributes(buildInvoke)
         return buildInvoke
     }

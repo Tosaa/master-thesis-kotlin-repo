@@ -445,7 +445,8 @@ class StubIrBuilder(private val context: StubIrContext) {
                     skipOverloads = func.name !in context.configuration.allowedOverloadsForCFunctions
             ).build())
         } catch (e: Throwable) {
-            context.log("Warning: cannot generate stubs for function ${func.name}")
+            println("generateStubsForFunction(): $e")
+            context.log("Warning: cannot generate stubs for function ${func.fullName}")
         }
     }
 
@@ -453,6 +454,7 @@ class StubIrBuilder(private val context: StubIrContext) {
         try {
             addStubs(StructStubBuilder(buildingContext, decl).build())
         } catch (e: Throwable) {
+            context.log("Warning: ${e.message} \n${e.stackTrace.joinToString("\n")}")
             context.log("Warning: cannot generate definition for struct ${decl.spelling}")
         }
     }
@@ -461,6 +463,7 @@ class StubIrBuilder(private val context: StubIrContext) {
         try {
             addStubs(TypedefStubBuilder(buildingContext, typedefDef).build())
         } catch (e: Throwable) {
+            context.log(" ${e.message} \n${e.stackTrace.joinToString("\n")}")
             context.log("Warning: cannot generate typedef ${typedefDef.name}")
         }
     }
@@ -469,6 +472,7 @@ class StubIrBuilder(private val context: StubIrContext) {
         try {
             addStubs(GlobalStubBuilder(buildingContext, global).build())
         } catch (e: Throwable) {
+            context.log("Warning: ${e.message} \n${e.stackTrace.joinToString("\n")}")
             context.log("Warning: cannot generate stubs for global ${global.name}")
         }
     }

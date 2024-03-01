@@ -352,16 +352,18 @@ sealed class TypeInfo {
     }
 
     class ByRef(val pointed: KotlinType) : TypeInfo() {
-        override fun argToBridged(expr: String) = error(pointed)
+        override fun argToBridged(expr: String) = error("argToBridged(): " + pointed)
         override fun argFromBridged(expr: KotlinExpression, scope: KotlinScope, nativeBacked: NativeBacked) =
-                error(pointed)
-        override val bridgedType: BridgedType get() = error(pointed)
+                error("argFromBridged(): " + pointed)
+
+        override val bridgedType: BridgedType get() = error("getBridgedType(): " + pointed)
         override fun cFromBridged(expr: NativeExpression, scope: NativeScope, nativeBacked: NativeBacked) =
-                error(pointed)
-        override fun cToBridged(expr: String) = error(pointed)
+                error("cFromBridged(): " + pointed)
+
+        override fun cToBridged(expr: String) = error("cToBridged(): " + pointed)
 
         // TODO: this method must not exist.
-        override fun constructPointedType(valueType: KotlinType): KotlinClassifierType = error(pointed)
+        override fun constructPointedType(valueType: KotlinType): KotlinClassifierType = error("constructPointedType(): " + pointed)
     }
 }
 
@@ -375,7 +377,7 @@ fun mirrorPrimitiveType(type: PrimitiveType, declarationMapper: DeclarationMappe
                 2 -> "ShortVar"
                 4 -> "IntVar"
                 8 -> "LongVar"
-                else -> TODO(type.toString())
+                else -> TODO("primitiveType (IntegerType) = ${type.toString()}")
             }
         } else {
             when (type.size) {
@@ -383,18 +385,18 @@ fun mirrorPrimitiveType(type: PrimitiveType, declarationMapper: DeclarationMappe
                 2 -> "UShortVar"
                 4 -> "UIntVar"
                 8 -> "ULongVar"
-                else -> TODO(type.toString())
+                else -> TODO("primitiveType (IntegerType) = ${type.toString()}")
             }
         }
         is FloatingType -> when (type.size) {
             4 -> "FloatVar"
             8 -> "DoubleVar"
-            else -> TODO(type.toString())
+            else -> TODO("primitiveType (FloatingType) = ${type.toString()}")
         }
         is VectorType -> {
             "Vector128Var"
         }
-        else -> TODO(type.toString())
+        else -> TODO("primitiveType = ${type.toString()}")
     }
 
     val varClass = Classifier.topLevel("kotlinx.cinterop", varClassName)
@@ -408,12 +410,12 @@ fun mirrorPrimitiveType(type: PrimitiveType, declarationMapper: DeclarationMappe
     return TypeMirror.ByValue(varClass.type, info, type.getKotlinType(declarationMapper))
 }
 
-private fun byRefTypeMirror(pointedType: KotlinClassifierType) : TypeMirror.ByRef {
-    val info = TypeInfo.ByRef(pointedType)
+private fun byRefTypeMirror(pointedType: KotlinClassifierType): TypeMirror.ByRef {
+    val info = TypeInfo.ByRef(pointedType) // These are all errors anyways.
     return TypeMirror.ByRef(pointedType, info)
 }
 
-private fun managedTypeMirror(pointedType: KotlinClassifierType) : TypeMirror.Managed {
+private fun managedTypeMirror(pointedType: KotlinClassifierType): TypeMirror.Managed {
     val info = TypeInfo.ByRef(pointedType) // These are all errors anyways.
     return TypeMirror.Managed(pointedType, info)
 }
@@ -521,7 +523,7 @@ fun mirror(declarationMapper: DeclarationMapper, type: Type): TypeMirror = when 
 
     is ObjCPointer -> objCPointerMirror(declarationMapper, type)
 
-    else -> TODO(type.toString())
+    else -> TODO("mirror "+ type.toString())
 }
 
 internal tailrec fun ObjCClass.isNSStringOrSubclass(): Boolean = when (this.name) {
@@ -562,7 +564,7 @@ private fun objCPointerMirror(declarationMapper: DeclarationMapper, type: ObjCPo
                 else -> declarationMapper.getKotlinClassFor(type.def).type
             }
         }
-        is ObjCInstanceType -> TODO(type.toString()) // Must have already been handled.
+        is ObjCInstanceType -> TODO("objCPointerMirror ObjCInstanceType ->" + type.toString()) // Must have already been handled.
         is ObjCBlockPointer -> return objCBlockPointerMirror(declarationMapper, type)
     }
 

@@ -272,6 +272,13 @@ private fun processCLib(
     if (defFile == null && cinteropArguments.pkg == null) {
         cinteropArguments.argParser.printError("-def or -pkg should be provided!")
     }
+    println("defFile = ${defFile?.path}")
+    (cinteropArguments.compilerOptions + cinteropArguments.compilerOption + cinteropArguments.compilerOpts).joinToString().let {
+        println("compilerOptions = $it")
+    }
+    (cinteropArguments.header).joinToString().let {
+        println("header = $it")
+    }
 
     val tool = prepareTool(cinteropArguments.target, flavor, runFromDaemon, parseKeyValuePairs(cinteropArguments.overrideKonanProperties), konanDataDir = cinteropArguments.konanDataDir)
 

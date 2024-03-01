@@ -242,6 +242,9 @@ class EnumConstant(val name: String, val value: Long, val isExplicitlyDefined: B
 abstract class EnumDef(val spelling: String, val baseType: Type) : TypeDeclaration {
 
     abstract val constants: List<EnumConstant>
+    override fun toString(): String {
+        return "EnumDef(spelling='$spelling', baseType=$baseType, constants=$constants, location = $location)"
+    }
 }
 
 sealed class ObjCContainer {

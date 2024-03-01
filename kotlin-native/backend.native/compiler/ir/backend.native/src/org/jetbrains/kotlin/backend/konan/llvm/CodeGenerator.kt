@@ -515,9 +515,9 @@ internal class StackLocalsManagerImpl(
                 val fieldType = LLVMStructGetTypeAtIndex(type, fieldIndex)!!
 
                 if (isObjectType(fieldType)) {
+                    // Todo: Double check
                     // https://github.com/hdoc/llvm-project/blob/a38b25fa77bdf1437c690494ae6d61179b3bb4f8/llvm/lib/IR/Core.cpp#L3679
-                    val elementtype = LLVMGetElementType(type)
-                    val fieldPtr = LLVMBuildStructGEP2(builder, elementtype, stackLocal.stackAllocationPtr, fieldIndex, "")!!
+                    val fieldPtr = LLVMBuildStructGEP2(builder, stackLocal.stackAllocationPtr.type, stackLocal.stackAllocationPtr, fieldIndex, "")!!
                     if (refsOnly)
                         storeHeapRef(kNullObjHeaderPtr, fieldPtr)
                     else
@@ -1041,13 +1041,11 @@ internal abstract class FunctionGenerationContext(
     fun intToPtr(value: LLVMValueRef?, DestTy: LLVMTypeRef, Name: String = "") = LLVMBuildIntToPtr(builder, value, DestTy, Name)!!
     fun ptrToInt(value: LLVMValueRef?, DestTy: LLVMTypeRef, Name: String = "") = LLVMBuildPtrToInt(builder, value, DestTy, Name)!!
     fun gep(base: LLVMValueRef, index: LLVMValueRef, name: String = ""): LLVMValueRef {
-        val elementType = LLVMGetElementType(base.type)
-        return LLVMBuildGEP2(builder, elementType, base, cValuesOf(index), 1, name)!!
+        return LLVMBuildGEP2(builder, base.type, base, cValuesOf(index), 1, name)!!
     }
 
     fun structGep(base: LLVMValueRef, index: Int, name: String = ""): LLVMValueRef {
-        val elementType = LLVMGetElementType(base.type)
-        return LLVMBuildStructGEP2(builder, elementType, base, index, name)!!
+        return LLVMBuildStructGEP2(builder, base.type, base, index, name)!!
     }
 
     fun extractValue(aggregate: LLVMValueRef, index: Int, name: String = ""): LLVMValueRef =

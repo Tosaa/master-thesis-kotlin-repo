@@ -349,7 +349,7 @@ public open class NativeIndexImpl(val library: NativeLibrary, val verbose: Boole
         val cursorType = clang_getCursorType(cursor)
         val typeSpelling = clang_getTypeSpelling(cursorType).convertAndDispose()
         val baseType = convertType(clang_getEnumDeclIntegerType(cursor))
-        return EnumDefImpl(typeSpelling, baseType, getLocation(cursor))
+        return EnumDefImpl(typeSpelling, baseType, getLocation(cursor)).also { println("createEnumDefImpl(): $cursor -> $it") }
     }
 
     private fun getObjCCategoryClassCursor(cursor: CValue<CXCursor>): CValue<CXCursor> {

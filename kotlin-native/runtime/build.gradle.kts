@@ -66,7 +66,7 @@ bitcode {
 
             compiler.set("clang")
             compilerArgs.set(listOfNotNull(
-                    "-std=gnu11",
+                    "-std=gnu17",
                     if (sanitizer == SanitizerKind.THREAD) { "-O1" } else { "-O3" },
                     "-DKONAN_MI_MALLOC=1",
                     "-Wno-unknown-pragmas",
@@ -115,7 +115,7 @@ bitcode {
 
             compiler.set("clang")
             compilerArgs.set(listOfNotNull(
-                    "-std=gnu11",
+                    "-std=gnu17",
                     "-funwind-tables",
                     "-W",
                     "-Wall",

@@ -34,40 +34,41 @@ class SimpleBridgeGeneratorImpl(
 
     private var nextUniqueId = 0
 
-    private val BridgedType.nativeType: String get() = when (platform) {
-        KotlinPlatform.JVM -> when (this) {
-            BridgedType.BYTE -> "jbyte"
-            BridgedType.SHORT -> "jshort"
-            BridgedType.INT -> "jint"
-            BridgedType.LONG -> "jlong"
-            BridgedType.UBYTE -> "jbyte"
-            BridgedType.USHORT -> "jshort"
-            BridgedType.UINT -> "jint"
-            BridgedType.ULONG -> "jlong"
-            BridgedType.FLOAT -> "jfloat"
-            BridgedType.DOUBLE -> "jdouble"
-            BridgedType.VECTOR128 -> TODO()
-            BridgedType.NATIVE_PTR -> "jlong"
-            BridgedType.OBJC_POINTER -> TODO()
-            BridgedType.VOID -> "void"
+    private val BridgedType.nativeType: String
+        get() = when (platform) {
+            KotlinPlatform.JVM -> when (this) {
+                BridgedType.BYTE -> "jbyte"
+                BridgedType.SHORT -> "jshort"
+                BridgedType.INT -> "jint"
+                BridgedType.LONG -> "jlong"
+                BridgedType.UBYTE -> "jbyte"
+                BridgedType.USHORT -> "jshort"
+                BridgedType.UINT -> "jint"
+                BridgedType.ULONG -> "jlong"
+                BridgedType.FLOAT -> "jfloat"
+                BridgedType.DOUBLE -> "jdouble"
+                BridgedType.VECTOR128 -> TODO()
+                BridgedType.NATIVE_PTR -> "jlong"
+                BridgedType.OBJC_POINTER -> TODO()
+                BridgedType.VOID -> "void"
+            }
+            KotlinPlatform.NATIVE -> when (this) {
+                BridgedType.BYTE -> "int8_t"
+                BridgedType.SHORT -> "int16_t"
+                BridgedType.INT -> "int32_t"
+                BridgedType.LONG -> "int64_t"
+                BridgedType.UBYTE -> "uint8_t"
+                BridgedType.USHORT -> "uint16_t"
+                BridgedType.UINT -> "uint32_t"
+                BridgedType.ULONG -> "uint64_t"
+                BridgedType.FLOAT -> "float"
+                BridgedType.DOUBLE -> "double"
+                BridgedType.VECTOR128 -> TODO() // "float __attribute__ ((__vector_size__ (16)))"
+                BridgedType.NATIVE_PTR -> "void*"
+                BridgedType.OBJC_POINTER -> "id"
+                BridgedType.VOID -> "void"
+            }
         }
-        KotlinPlatform.NATIVE -> when (this) {
-            BridgedType.BYTE -> "int8_t"
-            BridgedType.SHORT -> "int16_t"
-            BridgedType.INT -> "int32_t"
-            BridgedType.LONG -> "int64_t"
-            BridgedType.UBYTE -> "uint8_t"
-            BridgedType.USHORT -> "uint16_t"
-            BridgedType.UINT -> "uint32_t"
-            BridgedType.ULONG -> "uint64_t"
-            BridgedType.FLOAT -> "float"
-            BridgedType.DOUBLE -> "double"
-            BridgedType.VECTOR128 -> TODO() // "float __attribute__ ((__vector_size__ (16)))"
-            BridgedType.NATIVE_PTR -> "void*"
-            BridgedType.OBJC_POINTER -> "id"
-            BridgedType.VOID -> "void"
-        }
-    }
 
     private inner class NativeBridge(val kotlinLines: List<String>, val nativeLines: List<String>)
 
