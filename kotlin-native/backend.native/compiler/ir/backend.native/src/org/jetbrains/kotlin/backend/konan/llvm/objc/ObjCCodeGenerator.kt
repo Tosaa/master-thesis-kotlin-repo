@@ -7,7 +7,6 @@ package org.jetbrains.kotlin.backend.konan.llvm.objc
 
 import kotlinx.cinterop.signExtend
 import kotlinx.cinterop.toCValues
-import llvm.LLVMGetElementType
 import llvm.LLVMGetInlineAsm
 import llvm.LLVMInlineAsmDialect
 import llvm.LLVMValueRef
@@ -74,7 +73,8 @@ internal open class ObjCCodeGenerator(val codegen: CodeGenerator) {
                 ConstraintsSize = 0,
                 HasSideEffects = 1,
                 IsAlignStack = 0,
-                Dialect = LLVMInlineAsmDialect.LLVMInlineAsmDialectATT
+                Dialect = LLVMInlineAsmDialect.LLVMInlineAsmDialectATT,
+                CanThrow = 1,
         )
     }
 
@@ -90,5 +90,5 @@ internal fun FunctionGenerationContext.genObjCSelector(selector: String): LLVMVa
     val selectorRef = codegen.objCDataGenerator!!.genSelectorRef(selector)
     // TODO: clang emits it with `invariant.load` metadata.
     // TODO: Propagate the type here without using the typed pointer.
-    return load(LLVMGetElementType(selectorRef.llvmType)!!, selectorRef.llvm)
+    return load(selectorRef.llvmType, selectorRef.llvm).also{println("genObjCSelector(): $selector returned $it")}
 }

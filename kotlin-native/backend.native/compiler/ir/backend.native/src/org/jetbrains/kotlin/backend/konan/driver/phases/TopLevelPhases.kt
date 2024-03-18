@@ -30,6 +30,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
 internal fun PhaseEngine<PhaseContext>.runFrontend(config: KonanConfig, environment: KotlinCoreEnvironment): FrontendPhaseOutput.Full? {
+    println("Trace: ${this.javaClass}.runFrontend()")
     val frontendOutput = useContext(FrontendContextImpl(config)) { it.runPhase(FrontendPhase, environment) }
     return frontendOutput as? FrontendPhaseOutput.Full
 }
@@ -44,6 +45,7 @@ internal fun <T> PhaseEngine<PhaseContext>.runPsiToIr(
         isProducingLibrary: Boolean,
         produceAdditionalOutput: (PhaseEngine<out PsiToIrContext>) -> T
 ): Pair<PsiToIrOutput, T> {
+    println("Trace: ${this.javaClass}.runPsiToIr()")
     val config = this.context.config
     val psiToIrContext = PsiToIrContextImpl(config, frontendOutput.moduleDescriptor, frontendOutput.bindingContext)
     val (psiToIrOutput, additionalOutput) = useContext(psiToIrContext) { psiToIrEngine ->
@@ -57,29 +59,76 @@ internal fun <T> PhaseEngine<PhaseContext>.runPsiToIr(
     return psiToIrOutput to additionalOutput
 }
 
+
+private fun IrModuleFragment.toCustomString(): String {
+    return """
+        descriptor = $descriptor
+        name = $name
+        irBuiltins = $irBuiltins
+        files = $files
+        startOffset = $startOffset
+        endOffset = $endOffset
+    """.trimIndent()
+}
+
+private fun NativeGenerationState.toCustomString(): String {
+    return try {
+        """    inlineFunctionBodies = $inlineFunctionBodies
+    classFields = $classFields
+    eagerInitializedFiles = $eagerInitializedFiles
+    calledFromExportedInlineFunctions = $calledFromExportedInlineFunctions
+    constructedFromExportedInlineFunctions = $constructedFromExportedInlineFunctions
+    inlineFunctionOrigins = $inlineFunctionOrigins
+    fileLowerState = $fileLowerState
+    producedLlvmModuleContainsStdlib = $producedLlvmModuleContainsStdlib
+"""
+    } catch (e: Exception) {
+        """    inlineFunctionBodies = $inlineFunctionBodies
+    classFields = $classFields
+    eagerInitializedFiles = $eagerInitializedFiles
+    calledFromExportedInlineFunctions = $calledFromExportedInlineFunctions
+    constructedFromExportedInlineFunctions = $constructedFromExportedInlineFunctions
+    inlineFunctionOrigins = $inlineFunctionOrigins
+    producedLlvmModuleContainsStdlib = $producedLlvmModuleContainsStdlib
+"""
+    }.trimIndent()
+}
+
 internal fun <C : PhaseContext> PhaseEngine<C>.runBackend(backendContext: Context, irModule: IrModuleFragment) {
+    println("Trace: ${this.javaClass}.runBackend()")
     val config = context.config
     useContext(backendContext) { backendEngine ->
         backendEngine.runPhase(functionsWithoutBoundCheck)
 
         fun createGenerationStateAndRunLowerings(fragment: BackendJobFragment): NativeGenerationState {
+            println("Trace: ${this.javaClass}.createGenerationStateAndRunLowerings() - BackendJobFragment = $fragment")
             val outputPath = config.cacheSupport.tryGetImplicitOutput(fragment.cacheDeserializationStrategy) ?: config.outputPath
             val outputFiles = OutputFiles(outputPath, config.target, config.produce)
-            val generationState = NativeGenerationState(context.config, backendContext,
-                    fragment.cacheDeserializationStrategy, fragment.dependenciesTracker, fragment.llvmModuleSpecification, outputFiles,
+            val generationState = NativeGenerationState(
+                    config = context.config,
+                    context = backendContext,
+                    cacheDeserializationStrategy = fragment.cacheDeserializationStrategy,
+                    dependenciesTracker = fragment.dependenciesTracker,
+                    llvmModuleSpecification = fragment.llvmModuleSpecification,
+                    outputFiles = outputFiles,
                     llvmModuleName = "out" // TODO: Currently, all llvm modules are named as "out" which might lead to collisions.
             )
+            println("Trace: ${this.javaClass}.createGenerationStateAndRunLowerings(): before lowerModule ${generationState.toCustomString()}")
             try {
                 val module = fragment.irModule
                 newEngine(generationState) { generationStateEngine ->
                     if (context.config.produce.isCache) {
+                        println("Trace: ${this.javaClass}.createGenerationStateAndRunLowerings(): BuildAdditionalCacheInfoPhase - BackendJobFragment = $fragment")
                         generationStateEngine.runPhase(BuildAdditionalCacheInfoPhase, module)
                     }
                     if (context.config.produce == CompilerOutputKind.PROGRAM) {
+                        println("Trace: ${this.javaClass}.createGenerationStateAndRunLowerings(): EntryPointPhase - BackendJobFragment = $fragment")
+
                         generationStateEngine.runPhase(EntryPointPhase, module)
                     }
                     generationStateEngine.lowerModuleWithDependencies(module)
                 }
+                println("Trace: ${this.javaClass}.createGenerationStateAndRunLowerings(): after lowerModule ${generationState.toCustomString()}")
                 return generationState
             } catch (t: Throwable) {
                 generationState.dispose()
@@ -88,10 +137,13 @@ internal fun <C : PhaseContext> PhaseEngine<C>.runBackend(backendContext: Contex
         }
 
         fun runAfterLowerings(fragment: BackendJobFragment, generationState: NativeGenerationState) {
+            println("Trace: ${this.javaClass}.runAfterLowerings(): ${fragment.irModule.toCustomString()}")
+
             val tempFiles = createTempFiles(config, fragment.cacheDeserializationStrategy)
             val outputFiles = generationState.outputFiles
             try {
                 backendEngine.useContext(generationState) { generationStateEngine ->
+                    println("Trace: ${this.javaClass}.runAfterLowerings(): create temp .bc files for ${generationState.llvmModuleName} BackendJobFragment = $fragment")
                     val bitcodeFile = tempFiles.create(generationState.llvmModuleName, ".bc").javaFile()
                     val cExportFiles = if (config.produce.isNativeLibrary) {
                         CExportFiles(
@@ -110,6 +162,7 @@ internal fun <C : PhaseContext> PhaseEngine<C>.runBackend(backendContext: Contex
                         depsFilePath.File().writeLines(DependenciesTrackingResult.serialize(dependenciesTrackingResult))
                     }
                     val moduleCompilationOutput = ModuleCompilationOutput(bitcodeFile, dependenciesTrackingResult)
+                    println("Trace: ${this.javaClass}.runAfterLowerings(): compileAndLink, mainFileName = ${outputFiles.mainFileName} - BackendJobFragment = $fragment")
                     compileAndLink(moduleCompilationOutput, outputFiles.mainFileName, outputFiles, tempFiles, isCoverageEnabled = false)
                 }
             } finally {
@@ -118,6 +171,7 @@ internal fun <C : PhaseContext> PhaseEngine<C>.runBackend(backendContext: Contex
         }
 
         val fragments = backendEngine.splitIntoFragments(irModule)
+        println("Trace: ${this.javaClass}.runBackend(): SplitIrModule into fragments: ${irModule.name} into ${fragments.joinToString { it.irModule.toCustomString() }}")
         val threadsCount = context.config.threadsCount
         if (threadsCount == 1) {
             fragments.forEach { fragment ->
@@ -155,6 +209,7 @@ internal fun <C : PhaseContext> PhaseEngine<C>.runBackend(backendContext: Contex
 }
 
 internal fun <C : PhaseContext> PhaseEngine<C>.runBitcodeBackend(context: BitcodePostProcessingContext, dependencies: DependenciesTrackingResult) {
+    println("Trace: ${this.javaClass}.runBitcodeBackend()")
     useContext(context) { bitcodeEngine ->
         val tempFiles = createTempFiles(context.config, null)
         val bitcodeFile = tempFiles.create(context.config.shortModuleName ?: "out", ".bc").javaFile()
@@ -185,6 +240,7 @@ private data class BackendJobFragment(
 private fun PhaseEngine<out Context>.splitIntoFragments(
         input: IrModuleFragment,
 ): Sequence<BackendJobFragment> {
+    println("Trace: ${this.javaClass}.splitIntoFragments()")
     val config = context.config
     return if (context.config.producePerFileCache) {
         val files = input.files.toList()
@@ -248,6 +304,7 @@ internal data class ModuleCompilationOutput(
  * 5. Serializes it to a bitcode file.
  */
 internal fun PhaseEngine<NativeGenerationState>.compileModule(module: IrModuleFragment, bitcodeFile: java.io.File, cExportFiles: CExportFiles?) {
+    println("Trace: ${this.javaClass}.compileModule()")
     runBackendCodegen(module, cExportFiles)
     val checkExternalCalls = context.config.configuration.getBoolean(KonanConfigKeys.CHECK_EXTERNAL_CALLS)
     if (checkExternalCalls) {
@@ -271,6 +328,7 @@ internal fun <C : PhaseContext> PhaseEngine<C>.compileAndLink(
         temporaryFiles: TempFiles,
         isCoverageEnabled: Boolean,
 ) {
+    println("Trace: ${this.javaClass}.compileAndLink()")
     val compilationResult = temporaryFiles.create(File(outputFiles.nativeBinaryFile).name, ".o").javaFile()
     runPhase(ObjectFilesPhase, ObjectFilesPhaseInput(moduleCompilationOutput.bitcodeFile, compilationResult))
     val linkerOutputKind = determineLinkerOutput(context)
@@ -300,6 +358,7 @@ internal fun <C : PhaseContext> PhaseEngine<C>.compileAndLink(
             cacheBinaries,
             isCoverageEnabled = isCoverageEnabled
     )
+    // Todo: Here the linker Phase starts which causes ld.lld error
     runPhase(LinkerPhase, linkerPhaseInput)
     if (context.config.produce.isCache) {
         runPhase(FinalizeCachePhase, outputFiles)
@@ -307,17 +366,21 @@ internal fun <C : PhaseContext> PhaseEngine<C>.compileAndLink(
 }
 
 internal fun PhaseEngine<NativeGenerationState>.lowerModuleWithDependencies(module: IrModuleFragment) {
+    println("Trace: ${this.javaClass}.lowerModuleWithDependencies()")
     runAllLowerings(module)
     val dependenciesToCompile = findDependenciesToCompile()
     // TODO: KonanLibraryResolver.TopologicalLibraryOrder actually returns libraries in the reverse topological order.
     // TODO: Does the order of files really matter with the new MM? (and with lazy top-levels initialization?)
+    println("Trace: ${this.javaClass}.lowerModuleWithDependencies() dependencies = ${dependenciesToCompile.map { it.name }}")
     dependenciesToCompile.reversed().forEach { irModule ->
+        println("Trace: ${this.javaClass}.lowerModuleWithDependencies() dependency = ${irModule.name}")
         runAllLowerings(irModule)
     }
     mergeDependencies(module, dependenciesToCompile)
 }
 
 internal fun PhaseEngine<NativeGenerationState>.runBackendCodegen(module: IrModuleFragment, cExportFiles: CExportFiles?) {
+    println("Trace: ${this.javaClass}.runBackendCodegen()")
     runCodegen(module)
     val generatedBitcodeFiles = if (context.config.produce.isNativeLibrary) {
         require(cExportFiles != null)
@@ -352,6 +415,7 @@ internal fun PhaseEngine<NativeGenerationState>.runBackendCodegen(module: IrModu
  * @return absolute path to object file.
  */
 private fun PhaseEngine<NativeGenerationState>.runCodegen(module: IrModuleFragment) {
+    println("Trace: ${this.javaClass}.runCodegen()")
     val optimize = context.shouldOptimize()
     module.files.forEach {
         runPhase(ReturnsInsertionPhase, it)

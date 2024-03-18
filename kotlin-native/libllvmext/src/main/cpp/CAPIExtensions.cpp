@@ -4,7 +4,7 @@
 
 #include <CAPIExtensions.h>
 #include <llvm/ProfileData/Coverage/CoverageMapping.h>
-#include <llvm/ADT/Triple.h>
+#include <llvm/TargetParser/Triple.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/LegacyPassManager.h>
@@ -20,27 +20,25 @@ void LLVMAddObjCARCContractPass(LLVMPassManagerRef passManagerRef) {
     passManager->add(createObjCARCContractPass());
 }
 
+// Todo: add RiscV to list below: INIT_LLVM_TARGET(RiscV)
 void LLVMKotlinInitializeTargets() {
 #define INIT_LLVM_TARGET(TargetName) \
     LLVMInitialize##TargetName##TargetInfo();\
     LLVMInitialize##TargetName##Target();\
     LLVMInitialize##TargetName##TargetMC();
 #if KONAN_MACOS
-    INIT_LLVM_TARGET(RISCV)
     INIT_LLVM_TARGET(AArch64)
     INIT_LLVM_TARGET(ARM)
     INIT_LLVM_TARGET(Mips)
     INIT_LLVM_TARGET(X86)
     INIT_LLVM_TARGET(WebAssembly)
 #elif KONAN_LINUX
-    INIT_LLVM_TARGET(RISCV)
     INIT_LLVM_TARGET(AArch64)
     INIT_LLVM_TARGET(ARM)
     INIT_LLVM_TARGET(Mips)
     INIT_LLVM_TARGET(X86)
     INIT_LLVM_TARGET(WebAssembly)
 #elif KONAN_WINDOWS
-    INIT_LLVM_TARGET(RISCV)
     INIT_LLVM_TARGET(AArch64)
     INIT_LLVM_TARGET(ARM)
     INIT_LLVM_TARGET(X86)
@@ -60,7 +58,8 @@ int LLVMInlineCall(LLVMValueRef call) {
 }
 
 void LLVMAddThreadSanitizerPass(LLVMPassManagerRef PM) {
-  unwrap(PM)->add(createThreadSanitizerLegacyPassPass());
+  // Todo: Find out what should happen here. But createThreadSanitizerLegacyPassPass is no where declared in this project.
+  // unwrap(PM)->add(createThreadSanitizerLegacyPassPass());
 }
 
 void LLVMSetTimePasses(int enabled) {

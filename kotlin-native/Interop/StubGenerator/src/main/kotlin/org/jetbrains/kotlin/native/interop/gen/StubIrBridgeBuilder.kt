@@ -105,9 +105,15 @@ class StubIrBridgeBuilder(
 
         private fun tryProcessCCallAnnotation(function: FunctionStub) {
             val origin = function.origin as? StubOrigin.Function
-                    ?: return
+                    ?: run{
+                    context.log("Warning: ${function.origin} cannot be converted to StubOrigin.Function in $function")
+                    return
+                    }
             val cCallAnnotation = function.annotations.firstIsInstanceOrNull<AnnotationStub.CCall.Symbol>()
-                    ?: return
+                    ?: run{
+                    context.log("Warning: Cannot find Instance for ${function.annotations.joinToString()} in $function")
+                    return
+                    }
             val wrapper = wrapperGenerator.generateCCalleeWrapper(origin.function, cCallAnnotation.symbolName)
             simpleBridgeGenerator.insertNativeBridge(function, emptyList(), wrapper.lines)
         }

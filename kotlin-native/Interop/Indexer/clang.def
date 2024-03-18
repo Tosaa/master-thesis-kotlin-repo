@@ -1,17 +1,18 @@
-headers = clang-c/Index.h clang-c/ext.h
+headers = clang-c/Platform.h clang-c/CXSourceLocation.h clang-c/Index.h  clang-c/CXFile.h clang-c/CXDiagnostic.h  clang-c/ext.h
+# headers = clang-c/Index.h clang-c/ext.h clang-c/Platform.h
 
 headerFilter = clang-c/**
 
 compiler = clang
 
-compilerOpts = -std=c99
+compilerOpts = -std=c99 -ferror-limit=0
 linkerOpts.linux = -Wl,-z,noexecstack
 
 linker = clang++
 
 strictEnums = CXErrorCode CXCursorKind CXTypeKind CXDiagnosticSeverity CXLoadDiag_Error CXSaveError \
     CXTUResourceUsageKind CXLinkageKind CXVisibilityKind CXLanguageKind CXCallingConv CXChildVisitResult \
-    CXTokenKind CXEvalResultKind CXVisitorResult CXResult CXIdxEntityKind
+    CXTokenKind CXEvalResultKind CXVisitorResult CXResult CXIdxEntityKind CXType CXChoice CXSourceLocation
 
 # These functions are not available in 11.1.0 upstream.
-excludedFunctions = clang_Cursor_getVarDeclInitializer clang_Cursor_hasVarDeclGlobalStorage clang_Cursor_hasVarDeclExternalStorage
+# excludedFunctions = clang_Cursor_getVarDeclInitializer clang_Cursor_hasVarDeclGlobalStorage clang_Cursor_hasVarDeclExternalStorage

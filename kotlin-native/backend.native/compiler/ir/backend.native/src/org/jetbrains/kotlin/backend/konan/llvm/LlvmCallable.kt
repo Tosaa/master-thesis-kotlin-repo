@@ -39,15 +39,17 @@ class LlvmCallable(private val llvmValue: LLVMValueRef, private val attributePro
         LLVMIsConstant(llvmValue) == 1
     }
 
-    fun buildCall(builder: LLVMBuilderRef, args: List<LLVMValueRef>, name: String = "") =
-        LLVMBuildCall(builder, llvmValue, args.toCValues(), args.size, name)!!.also {
-            attributeProvider.addCallSiteAttributes(it)
-        }
+    fun buildCall(builder: LLVMBuilderRef, args: List<LLVMValueRef>, name: String = ""): LLVMValueRef {
+        val buildCall = LLVMBuildCall2(builder, llvmValue.type, llvmValue, args.toCValues(), args.size, name)!!
+        attributeProvider.addCallSiteAttributes(buildCall)
+        return buildCall
+    }
 
-    fun buildInvoke(builder: LLVMBuilderRef, args: List<LLVMValueRef>, success: LLVMBasicBlockRef, catch: LLVMBasicBlockRef, name: String = "") =
-            LLVMBuildInvoke(builder, llvmValue, args.toCValues(), args.size, success, catch, name)!!.also {
-                attributeProvider.addCallSiteAttributes(it)
-            }
+    fun buildInvoke(builder: LLVMBuilderRef, args: List<LLVMValueRef>, success: LLVMBasicBlockRef, catch: LLVMBasicBlockRef, name: String = ""): LLVMValueRef {
+        val buildInvoke = LLVMBuildInvoke2(builder, llvmValue.type, llvmValue, args.toCValues(), args.size, success, catch, name)!!
+        attributeProvider.addCallSiteAttributes(buildInvoke)
+        return buildInvoke
+    }
 
     fun buildLandingpad(builder: LLVMBuilderRef, landingpadType: LLVMTypeRef, numClauses: Int, name: String = "") =
             LLVMBuildLandingPad(builder, landingpadType, llvmValue, numClauses, name)!!
@@ -62,19 +64,19 @@ class LlvmCallable(private val llvmValue: LLVMValueRef, private val attributePro
     }
 
     fun createBridgeFunctionDebugInfo(builder: DIBuilderRef, scope: DIScopeOpaqueRef, file: DIFileRef, lineNo: Int, type: DISubroutineTypeRef, isLocal: Int, isDefinition: Int, scopeLine: Int) =
-        DICreateBridgeFunction(
-                builder = builder,
-                scope = scope,
-                function = llvmValue,
-                file = file,
-                lineNo = lineNo,
-                type = type,
-                isLocal = isLocal,
-                isDefinition = isDefinition,
-                scopeLine = scopeLine
-        )!!
+            DICreateBridgeFunction(
+                    builder = builder,
+                    scope = scope,
+                    function = llvmValue,
+                    file = file,
+                    lineNo = lineNo,
+                    type = type,
+                    isLocal = isLocal,
+                    isDefinition = isDefinition,
+                    scopeLine = scopeLine
+            )!!
 
-    fun param(i: Int) : LLVMValueRef {
+    fun param(i: Int): LLVMValueRef {
         require(i in 0 until numParams)
         return LLVMGetParam(llvmValue, i)!!
     }

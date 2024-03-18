@@ -5,8 +5,7 @@
 
 package org.jetbrains.kotlin.backend.konan.llvm
 
-import kotlinx.cinterop.toCValues
-import kotlinx.cinterop.toKString
+import kotlinx.cinterop.*
 import llvm.*
 import org.jetbrains.kotlin.backend.konan.*
 import org.jetbrains.kotlin.backend.konan.Context
@@ -255,7 +254,7 @@ internal class InitializersGenerationState {
 
     var scopeState = ScopeInitializersGenerationState()
 
-    fun reset(newState: ScopeInitializersGenerationState) : ScopeInitializersGenerationState {
+    fun reset(newState: ScopeInitializersGenerationState): ScopeInitializersGenerationState {
         val t = scopeState
         scopeState = newState
         return t
@@ -314,7 +313,7 @@ internal open class BasicLlvmHelpers(bitcodeContext: BitcodePostProcessingContex
     }
 }
 
-@Suppress("FunctionName", "PropertyName", "PrivatePropertyName")
+@Suppress("FunctionName", "PropertyName", "PrivatePropertyName", "UNCHECKED_CAST")
 internal class CodegenLlvmHelpers(private val generationState: NativeGenerationState, module: LLVMModuleRef) : BasicLlvmHelpers(generationState, module), RuntimeAware {
     private val context = generationState.context
 
@@ -327,8 +326,11 @@ internal class CodegenLlvmHelpers(private val generationState: NativeGenerationS
 
         val attributesCopier = LlvmFunctionAttributeProvider.copyFromExternal(externalFunction)
 
-        val functionType = getFunctionType(externalFunction)
-        val function = LLVMAddFunction(module, name, functionType)!!
+
+        val functionType = LLVMTypeOf(externalFunction)
+        val functionName = LLVMGetValueName2(externalFunction, cValue())?.toKString()
+                ?: error("functionName of $name cannot be found")
+        val function = LLVMAddFunction(module, functionName, functionType) ?: throw Error("function $name cannot be added")
 
         attributesCopier.addFunctionAttributes(function)
 
@@ -367,11 +369,20 @@ internal class CodegenLlvmHelpers(private val generationState: NativeGenerationS
         }
         val found = LLVMGetNamedFunction(module, llvmFunctionProto.name)
         if (found != null) {
-            require(getFunctionType(found) == llvmFunctionProto.signature.llvmFunctionType) {
-                "Expected: ${LLVMPrintTypeToString(llvmFunctionProto.signature.llvmFunctionType)!!.toKString()} " +
-                        "found: ${LLVMPrintTypeToString(getFunctionType(found))!!.toKString()}"
+            val parameterCount = LLVMCountParams(found)
+            require(parameterCount == llvmFunctionProto.signature.parameterTypes.size)
+            val foundType = found.type
+            require(foundType == llvmFunctionProto.signature.returnType.llvmType) {
+                "Require correct returnType of ${llvmFunctionProto.name}: " +
+                        "Expected: ${LLVMPrintTypeToString(llvmFunctionProto.signature.returnType.llvmType)!!.toKString()} " +
+                        "Found: ${LLVMPrintTypeToString(foundType)!!.toKString()}"
             }
-            require(LLVMGetLinkage(found) == llvmFunctionProto.linkage)
+            val foundLinkage = LLVMGetLinkage(found)
+            require(foundLinkage == llvmFunctionProto.linkage) {
+                "Require correct Linkage of ${llvmFunctionProto.name}: " +
+                        "Expected: ${llvmFunctionProto.linkage.name}"
+                "Found: ${foundLinkage.name}"
+            }
             return LlvmCallable(found, llvmFunctionProto.signature)
         } else {
             return llvmFunctionProto.createLlvmFunction(context, module)

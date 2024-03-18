@@ -150,7 +150,7 @@ open class StubsBuildingContextImpl(
 
     private val uniqFunctions = mutableSetOf<String>()
 
-    override fun isOverloading(name: String, types: List<StubType>):Boolean  {
+    override fun isOverloading(name: String, types: List<StubType>): Boolean {
         return if (configuration.library.language == Language.CPP) {
             val signature = "${name}( ${types.map { it.toString() }.joinToString(", ")}  )"
             !uniqFunctions.add(signature)
@@ -201,7 +201,7 @@ open class StubsBuildingContextImpl(
         get() = if (spelling.startsWith("enum ")) {
             spelling.substringAfter(' ')
         } else {
-            assert (!isAnonymous)
+            assert(!isAnonymous)
             spelling
         }
 
@@ -309,7 +309,7 @@ class StubIrBuilder(private val context: StubIrContext) {
     private fun addStubs(stubs: List<StubIrElement>) = stubs.forEach(this::addStub)
 
     private fun addStub(stub: StubIrElement) {
-        when(stub) {
+        when (stub) {
             is ClassStub -> classes += stub
             is FunctionStub -> functions += stub
             is PropertyStub -> globals += stub
@@ -350,6 +350,14 @@ class StubIrBuilder(private val context: StubIrContext) {
                 typealiases.toList(),
                 containers.toList()
         )
+        println("StubIrBuilder.build(): stubs = SimpleStubContainer(" +
+                "meta = " + stubs.meta + "\n" +
+                "classes = " + stubs.classes.joinToString() + "\n" +
+                "functions = " + stubs.functions.joinToString() + "\n" +
+                "properties = " + stubs.properties.joinToString() + "\n" +
+                "typealiases = " + stubs.typealiases.joinToString() + "\n" +
+                "simpleContainers = " + stubs.simpleContainers.joinToString() + "\n" +
+                ")")
 
         stubs.addExperimentalAnnotations()
 
@@ -437,7 +445,8 @@ class StubIrBuilder(private val context: StubIrContext) {
                     skipOverloads = func.name !in context.configuration.allowedOverloadsForCFunctions
             ).build())
         } catch (e: Throwable) {
-            context.log("Warning: cannot generate stubs for function ${func.name}")
+            println("generateStubsForFunction(): $e")
+            context.log("Warning: cannot generate stubs for function ${func.fullName}")
         }
     }
 
@@ -445,6 +454,7 @@ class StubIrBuilder(private val context: StubIrContext) {
         try {
             addStubs(StructStubBuilder(buildingContext, decl).build())
         } catch (e: Throwable) {
+            context.log("Warning: ${e.message} \n${e.stackTrace.joinToString("\n")}")
             context.log("Warning: cannot generate definition for struct ${decl.spelling}")
         }
     }
@@ -453,6 +463,7 @@ class StubIrBuilder(private val context: StubIrContext) {
         try {
             addStubs(TypedefStubBuilder(buildingContext, typedefDef).build())
         } catch (e: Throwable) {
+            context.log(" ${e.message} \n${e.stackTrace.joinToString("\n")}")
             context.log("Warning: cannot generate typedef ${typedefDef.name}")
         }
     }
@@ -461,6 +472,7 @@ class StubIrBuilder(private val context: StubIrContext) {
         try {
             addStubs(GlobalStubBuilder(buildingContext, global).build())
         } catch (e: Throwable) {
+            context.log("Warning: ${e.message} \n${e.stackTrace.joinToString("\n")}")
             context.log("Warning: cannot generate stubs for global ${global.name}")
         }
     }

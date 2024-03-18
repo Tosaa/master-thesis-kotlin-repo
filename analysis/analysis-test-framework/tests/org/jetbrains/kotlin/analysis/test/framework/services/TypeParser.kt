@@ -44,7 +44,7 @@ object TypeParser {
                     }
                 }
             }
-            else -> TODO(type::class.java.name)
+            else -> TODO("convertType unexpected KTTypeElement -> " + type::class.java.name)
         }
 
     private fun fullQualifier(type: KtUserType) =

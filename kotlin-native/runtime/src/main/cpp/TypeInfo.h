@@ -167,6 +167,19 @@ struct TypeInfo {
 #endif
 };
 
+// To not optimize them away:
+__attribute__((used))
+static struct TypeInfo usedTypeInfoInstance;
+
+__attribute__((used))
+static struct ExtendedTypeInfo usedExtendedTypeInfoInstance;
+
+__attribute__((used))
+static struct InterfaceTableRecord usedInterfaceTableRecordInstance;
+
+__attribute__((used))
+static struct AssociatedObjectTableRecord usedAssociatedObjectTableRecordInstance;
+
 #ifdef __cplusplus
 extern "C" {
 #endif

@@ -97,10 +97,10 @@ internal enum class ThreadState {
     Native, Runnable
 }
 
-val LLVMValueRef.name:String?
+val LLVMValueRef.name: String?
     get() = LLVMGetValueName(this)?.toKString()
 
-val LLVMValueRef.isConst:Boolean
+val LLVMValueRef.isConst: Boolean
     get() = (LLVMIsConstant(this) == 1)
 
 
@@ -155,7 +155,7 @@ internal inline fun generateFunction(
         switchToRunnable: Boolean = false,
         needSafePoint: Boolean = true,
         code: FunctionGenerationContext.() -> Unit
-) : LlvmCallable {
+): LlvmCallable {
     val function = codegen.addFunction(functionProto)
     val functionGenerationContext = DefaultFunctionGenerationContext(
             function,
@@ -178,7 +178,7 @@ internal inline fun generateFunctionNoRuntime(
         codegen: CodeGenerator,
         functionProto: LlvmFunctionProto,
         code: FunctionGenerationContext.() -> Unit,
-) : LlvmCallable {
+): LlvmCallable {
     val function = codegen.addFunction(functionProto)
     val functionGenerationContext = DefaultFunctionGenerationContext(function, codegen, null, null,
             switchToRunnable = false, needSafePoint = true)
@@ -306,7 +306,7 @@ internal object VirtualTablesLookup {
 }
 
 internal fun IrSimpleFunction.findOverriddenMethodOfAny() =
-    resolveFakeOverride().takeIf { it?.parentClassOrNull?.isAny() == true }
+        resolveFakeOverride().takeIf { it?.parentClassOrNull?.isAny() == true }
 
 /*
  * Special trampoline function to call actual virtual implementation. This helps with reducing
@@ -515,7 +515,9 @@ internal class StackLocalsManagerImpl(
                 val fieldType = LLVMStructGetTypeAtIndex(type, fieldIndex)!!
 
                 if (isObjectType(fieldType)) {
-                    val fieldPtr = LLVMBuildStructGEP(builder, stackLocal.stackAllocationPtr, fieldIndex, "")!!
+                    // Todo: Double check
+                    // https://github.com/hdoc/llvm-project/blob/a38b25fa77bdf1437c690494ae6d61179b3bb4f8/llvm/lib/IR/Core.cpp#L3679
+                    val fieldPtr = LLVMBuildStructGEP2(builder, stackLocal.stackAllocationPtr.type, stackLocal.stackAllocationPtr, fieldIndex, "")!!
                     if (refsOnly)
                         storeHeapRef(kNullObjHeaderPtr, fieldPtr)
                     else
@@ -605,6 +607,7 @@ internal abstract class FunctionGenerationContext(
             (LLVMStoreSizeOfType(llvmTargetData, runtime.frameOverlayType) / runtime.pointerSize).toInt()
     private var slotCount = frameOverlaySlotCount
     private var localAllocs = 0
+
     // TODO: remove if exactly unused.
     //private var arenaSlot: LLVMValueRef? = null
     private val slotToVariableLocation = mutableMapOf<Int, VariableDebugLocation>()
@@ -786,7 +789,7 @@ internal abstract class FunctionGenerationContext(
                           isVolatile: Boolean = false, alignment: Int? = null) {
         require(alignment == null || alignment % runtime.pointerAlignment == 0)
         if (onStack) {
-            require(!isVolatile) { "Stack ref update can't be volatile"}
+            require(!isVolatile) { "Stack ref update can't be volatile" }
             if (context.memoryModel == MemoryModel.STRICT)
                 store(value, address)
             else
@@ -828,11 +831,12 @@ internal abstract class FunctionGenerationContext(
                             llvm.int32(size),
                             llvm.int1(isVolatile)))
 
-    fun call(llvmCallable: LlvmCallable, args: List<LLVMValueRef>,
-             resultLifetime: Lifetime = Lifetime.IRRELEVANT,
-             exceptionHandler: ExceptionHandler = ExceptionHandler.None,
-             verbatim: Boolean = false,
-             resultSlot: LLVMValueRef? = null,
+    fun call(
+            llvmCallable: LlvmCallable, args: List<LLVMValueRef>,
+            resultLifetime: Lifetime = Lifetime.IRRELEVANT,
+            exceptionHandler: ExceptionHandler = ExceptionHandler.None,
+            verbatim: Boolean = false,
+            resultSlot: LLVMValueRef? = null,
     ): LLVMValueRef {
         val callArgs = if (verbatim || !isObjectType(llvmCallable.returnType)) {
             args
@@ -919,21 +923,21 @@ internal abstract class FunctionGenerationContext(
         }
     }
 
-    fun allocInstance(typeInfo: LLVMValueRef, lifetime: Lifetime, resultSlot: LLVMValueRef?) : LLVMValueRef =
+    fun allocInstance(typeInfo: LLVMValueRef, lifetime: Lifetime, resultSlot: LLVMValueRef?): LLVMValueRef =
             call(llvm.allocInstanceFunction, listOf(typeInfo), lifetime, resultSlot = resultSlot)
 
     fun allocInstance(irClass: IrClass, lifetime: Lifetime, resultSlot: LLVMValueRef?) =
-        if (lifetime == Lifetime.STACK)
-            stackLocalsManager.alloc(irClass)
-        else
-            allocInstance(codegen.typeInfoForAllocation(irClass), lifetime, resultSlot)
+            if (lifetime == Lifetime.STACK)
+                stackLocalsManager.alloc(irClass)
+            else
+                allocInstance(codegen.typeInfoForAllocation(irClass), lifetime, resultSlot)
 
     fun allocArray(
-        irClass: IrClass,
-        count: LLVMValueRef,
-        lifetime: Lifetime,
-        exceptionHandler: ExceptionHandler,
-        resultSlot: LLVMValueRef? = null
+            irClass: IrClass,
+            count: LLVMValueRef,
+            lifetime: Lifetime,
+            exceptionHandler: ExceptionHandler,
+            resultSlot: LLVMValueRef? = null
     ): LLVMValueRef {
         val typeInfo = codegen.typeInfoValue(irClass)
         return if (lifetime == Lifetime.STACK) {
@@ -1037,10 +1041,12 @@ internal abstract class FunctionGenerationContext(
     fun intToPtr(value: LLVMValueRef?, DestTy: LLVMTypeRef, Name: String = "") = LLVMBuildIntToPtr(builder, value, DestTy, Name)!!
     fun ptrToInt(value: LLVMValueRef?, DestTy: LLVMTypeRef, Name: String = "") = LLVMBuildPtrToInt(builder, value, DestTy, Name)!!
     fun gep(base: LLVMValueRef, index: LLVMValueRef, name: String = ""): LLVMValueRef {
-        return LLVMBuildGEP(builder, base, cValuesOf(index), 1, name)!!
+        return LLVMBuildGEP2(builder, base.type, base, cValuesOf(index), 1, name)!!
     }
-    fun structGep(base: LLVMValueRef, index: Int, name: String = ""): LLVMValueRef =
-            LLVMBuildStructGEP(builder, base, index, name)!!
+
+    fun structGep(base: LLVMValueRef, index: Int, name: String = ""): LLVMValueRef {
+        return LLVMBuildStructGEP2(builder, base.type, base, index, name)!!
+    }
 
     fun extractValue(aggregate: LLVMValueRef, index: Int, name: String = ""): LLVMValueRef =
             LLVMBuildExtractValue(builder, aggregate, index, name)!!
@@ -1383,7 +1389,7 @@ internal abstract class FunctionGenerationContext(
 
     internal fun prologue() {
         if (isObjectType(returnType!!)) {
-            returnSlot = function.param( function.numParams - 1)
+            returnSlot = function.param(function.numParams - 1)
         }
 
         positionAtEnd(localsInitBb)
@@ -1414,13 +1420,13 @@ internal abstract class FunctionGenerationContext(
                     val expr = longArrayOf(DwarfOp.DW_OP_plus_uconst.value,
                             runtime.pointerSize * slot.toLong()).toCValues()
                     DIInsertDeclaration(
-                            builder       = generationState.debugInfo.builder,
-                            value         = slots,
+                            builder = generationState.debugInfo.builder,
+                            value = slots,
                             localVariable = variable.localVariable,
-                            location      = variable.location,
-                            bb            = prologueBb,
-                            expr          = expr,
-                            exprCount     = 2)
+                            location = variable.location,
+                            bb = prologueBb,
+                            expr = expr,
+                            exprCount = 2)
                 }
             }
             br(localsInitBb)
@@ -1572,7 +1578,7 @@ internal abstract class FunctionGenerationContext(
 
         fun positionAtEnd(block: LLVMBasicBlockRef) {
             LLVMPositionBuilderAtEnd(builder, block)
-            basicBlockToLastLocation[block]?.let{ debugLocation(it.start, it.end) }
+            basicBlockToLastLocation[block]?.let { debugLocation(it.start, it.end) }
             val lastInstr = LLVMGetLastInstruction(block)
             isAfterTerminator = lastInstr != null && (LLVMIsATerminatorInst(lastInstr) != null)
         }

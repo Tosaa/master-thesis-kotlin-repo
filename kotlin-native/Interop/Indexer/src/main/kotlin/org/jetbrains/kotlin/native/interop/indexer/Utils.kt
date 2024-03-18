@@ -38,10 +38,11 @@ internal val CValue<CXType>.name: String get() = clang_getTypeSpelling(this).con
 internal val CXTypeKind.spelling: String get() = clang_getTypeKindSpelling(this).convertAndDispose()
 internal val CXCursorKind.spelling: String get() = clang_getCursorKindSpelling(this).convertAndDispose()
 
-internal val CValue<CXCursor>.isCxxPublic: Boolean get() {
-    val access = clang_getCXXAccessSpecifier(this)
-    return access != CX_CXXAccessSpecifier.CX_CXXProtected && access != CX_CXXAccessSpecifier.CX_CXXPrivate
-}
+internal val CValue<CXCursor>.isCxxPublic: Boolean
+    get() {
+        val access = clang_getCXXAccessSpecifier(this)
+        return access != CX_CXXAccessSpecifier.CX_CXXProtected && access != CX_CXXAccessSpecifier.CX_CXXPrivate
+    }
 
 
 /**
@@ -417,6 +418,8 @@ fun Compilation.precompileHeaders(): CompilationWithPCH = withIndex(excludeDecla
     try {
         translationUnit.ensureNoCompileErrors()
         withPrecompiledHeader(translationUnit)
+    } catch (e: Exception) {
+        error(e.stackTrace.joinToString("\n"))
     } finally {
         clang_disposeTranslationUnit(translationUnit)
     }
@@ -458,6 +461,7 @@ internal fun CXTranslationUnit.getErrorLineNumbers(): Sequence<Int> =
         getDiagnostics().filter {
             it.isError()
         }.map {
+            println("DiagnosticError $it")
             memScoped {
                 val lineNumberVar = alloc<IntVar>()
                 clang_getFileLocation(it.location, null, lineNumberVar.ptr, null, null)
@@ -501,13 +505,19 @@ fun List<List<String>>.mapFragmentIsCompilable(originalLibrary: CompilationWithP
                 fragmentsToCheck.retainAll {
                     val firstLineNumber = lastLineNumber + 1
                     lastLineNumber += it.value.size
-                    (firstLineNumber .. lastLineNumber).any { it in errorLineNumbers }
+                    (firstLineNumber..lastLineNumber).any { it in errorLineNumbers }
                 }
 
                 if (fragmentsToCheck.isNotEmpty()) {
                     // The first fragment is now known to be non-compilable.
                     val firstFragment = fragmentsToCheck.removeAt(0)
+
+                    /*
+                    Debug here and check the generated file about its content + why there is an error
+                     */
+
                     indicesOfNonCompilable.add(firstFragment.index)
+                    println("library $originalLibrary could not be compiled correctly")
                 }
 
                 // The remaining fragments was potentially influenced by the first one,

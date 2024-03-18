@@ -9,7 +9,8 @@
 #include <llvm/ProfileData/Coverage/CoverageMappingWriter.h>
 #include <llvm/IR/GlobalVariable.h>
 #include <llvm/Support/raw_ostream.h>
-#include <llvm/ADT/Triple.h>
+#include <llvm/TargetParser/Triple.h>
+#include <llvm/ADT/StringExtras.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Type.h>
@@ -71,7 +72,7 @@ LLVMFunctionCoverage* LLVMWriteCoverageRegionMapping(unsigned int *fileIdMapping
         struct LLVMCoverageRegion region = *mappingRegions[i];
         counterMappingRegions.emplace_back(createCounterMappingRegion(region));
     }
-    CoverageMappingWriter writer(ArrayRef<unsigned int>(fileIdMapping, fileIdMappingSize), None, counterMappingRegions);
+    CoverageMappingWriter writer(ArrayRef<unsigned int>(fileIdMapping, fileIdMappingSize), std::nullopt, counterMappingRegions);
     std::string CoverageMapping;
     raw_string_ostream OS(CoverageMapping);
     writer.write(OS);
@@ -89,7 +90,7 @@ static StructType *getFunctionRecordTy(LLVMContext &Ctx) {
     Type *FunctionRecordTypes[] = {
 #include "llvm/ProfileData/InstrProfData.inc"
     };
-    StructType *FunctionRecordTy = StructType::get(Ctx, makeArrayRef(FunctionRecordTypes), true);
+    StructType *FunctionRecordTy = StructType::get(Ctx, ArrayRef(FunctionRecordTypes), true);
     return FunctionRecordTy;
 }
 
@@ -101,7 +102,7 @@ static llvm::Constant *addFunctionMappingRecord(llvm::LLVMContext &Ctx, StringRe
     llvm::Constant *FunctionRecordVals[] = {
 #include "llvm/ProfileData/InstrProfData.inc"
     };
-    return llvm::ConstantStruct::get(FunctionRecordTy, makeArrayRef(FunctionRecordVals));
+    return llvm::ConstantStruct::get(FunctionRecordTy, ArrayRef(FunctionRecordVals));
 }
 
 // See https://github.com/llvm/llvm-project/blob/fa8fa044ec46b94e64971efa8852df0d58114062/clang/lib/CodeGen/CoverageMappingGen.cpp#L1284.
@@ -119,11 +120,16 @@ static llvm::GlobalVariable* emitCoverageGlobal(
         const llvm::SmallVector<StringRef, 16> &FilenameRefs,
         const std::string &RawCoverageMappings) {
 
+    llvm::SmallVector<std::string> filenameStrings;
+    for (llvm::StringRef ref : FilenameRefs) {
+        filenameStrings.push_back(ref.str());
+    }
+
     auto *Int32Ty = llvm::Type::getInt32Ty(Ctx);
 
     std::string FilenamesAndCoverageMappings;
     llvm::raw_string_ostream outputStream(FilenamesAndCoverageMappings);
-    CoverageFilenamesSectionWriter(FilenameRefs).write(outputStream);
+    CoverageFilenamesSectionWriter((llvm::ArrayRef<std::string>) filenameStrings).write(outputStream);
     outputStream << RawCoverageMappings;
     size_t CoverageMappingSize = RawCoverageMappings.size();
     size_t FilenamesSize = outputStream.str().size() - CoverageMappingSize;
@@ -150,21 +156,21 @@ static llvm::GlobalVariable* emitCoverageGlobal(
 
 #include "llvm/ProfileData/InstrProfData.inc"
     };
-    auto CovDataHeaderTy = llvm::StructType::get(Ctx, makeArrayRef(CovDataHeaderTypes));
+    auto CovDataHeaderTy = llvm::StructType::get(Ctx, ArrayRef(CovDataHeaderTypes));
     llvm::Constant *CovDataHeaderVals[] = {
 #define COVMAP_HEADER(Type, LLVMType, Name, Init) Init,
 
 #include "llvm/ProfileData/InstrProfData.inc"
     };
-    auto covDataHeaderVal = llvm::ConstantStruct::get(CovDataHeaderTy, makeArrayRef(CovDataHeaderVals));
+    auto covDataHeaderVal = llvm::ConstantStruct::get(CovDataHeaderTy, ArrayRef(CovDataHeaderVals));
 
     auto *filenamesAndMappingsVal = llvm::ConstantDataArray::getString(Ctx, outputStream.str(), false);
     // Create the coverage data record
     llvm::Type *covDataTypes[] = {CovDataHeaderTy, functionRecordsTy, filenamesAndMappingsVal->getType()};
-    auto covDataTy = llvm::StructType::get(Ctx, makeArrayRef(covDataTypes));
+    auto covDataTy = llvm::StructType::get(Ctx, ArrayRef(covDataTypes));
 
     llvm::Constant *TUDataVals[] = {covDataHeaderVal, functionRecordsVal, filenamesAndMappingsVal};
-    auto covDataVal = llvm::ConstantStruct::get(covDataTy, makeArrayRef(TUDataVals));
+    auto covDataVal = llvm::ConstantStruct::get(covDataTy, ArrayRef(TUDataVals));
     // Will be deleted when module is disposed.
     return new llvm::GlobalVariable(module, covDataTy, true, llvm::GlobalValue::InternalLinkage,
             covDataVal, llvm::getCoverageMappingVarName());
@@ -212,7 +218,7 @@ LLVMValueRef LLVMCoverageEmit(LLVMModuleRef moduleRef,
 
 LLVMValueRef LLVMInstrProfIncrement(LLVMModuleRef moduleRef) {
     Module &module = *unwrap(moduleRef);
-    return wrap(Intrinsic::getDeclaration(&module, Intrinsic::instrprof_increment, None));
+    return wrap(Intrinsic::getDeclaration(&module, Intrinsic::instrprof_increment, std::nullopt));
 }
 
 LLVMValueRef LLVMCreatePGOFunctionNameVar(LLVMValueRef llvmFunction, const char *pgoFunctionName) {
@@ -224,7 +230,9 @@ void LLVMAddInstrProfPass(LLVMPassManagerRef passManagerRef, const char* outputF
     legacy::PassManagerBase *passManager = unwrap(passManagerRef);
     InstrProfOptions options;
     options.InstrProfileOutput = outputFileName;
-    passManager->add(createInstrProfilingLegacyPass(options));
+    // passManager->add(createInstrProfilingLegacyPass(options));
+    // Function removed
+    // https://github.com/llvm/llvm-project/commit/3a42c499c2c2945104d7899e6ae8d7bd95d40f5b
 }
 
 void LLVMKotlinAddTargetLibraryInfoWrapperPass(LLVMPassManagerRef passManagerRef, const char* targetTriple) {

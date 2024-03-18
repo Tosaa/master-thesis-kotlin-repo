@@ -183,7 +183,8 @@ internal fun ObjCExportFunctionGenerationContext.callAndMaybeRetainAutoreleased(
         val result = actualCallable.buildCall(builder, actualArgs).let { callResult ->
             // Simplified version of emitAutoreleasedReturnValueMarker in Clang:
             objCExportCodegen.objcRetainAutoreleasedReturnValueMarker?.let {
-                LLVMBuildCall(arg0 = builder, Fn = it, Args = null, NumArgs = 0, Name = "")
+                // Todo: Double check what to pass to LLVMBuildCall2
+                LLVMBuildCall2(builder, it.type, Fn = it, Args = null, NumArgs = 0, Name = "")
             }
 
             call(objCExportCodegen.objcRetainAutoreleasedReturnValue, listOf(callResult)).also {

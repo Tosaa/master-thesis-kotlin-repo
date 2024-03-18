@@ -1,10 +1,10 @@
 # Disclaimer: this is a straw-man attempt to add navigation to Clion or similar tools.
 # At the moment it can't be used for real building or debugging. Feel free to contribute
 
-cmake_minimum_required(VERSION 3.14)
+cmake_minimum_required(VERSION 3.20)
 project(runtime)
 
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 
 set(SRC_DIR ${CMAKE_SOURCE_DIR}/src)
 

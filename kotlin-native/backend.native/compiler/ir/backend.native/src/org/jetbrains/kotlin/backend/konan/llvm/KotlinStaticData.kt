@@ -12,7 +12,7 @@ import org.jetbrains.kotlin.ir.declarations.IrClass
 import org.jetbrains.kotlin.ir.expressions.IrConst
 
 private fun ConstPointer.add(index: LLVMValueRef): ConstPointer {
-    return constPointer(LLVMConstGEP(llvm, cValuesOf(index), 1)!!)
+    return constPointer(LLVMConstGEP2(llvm.type, llvm, cValuesOf(index), 1)!!)
 }
 
 internal class KotlinStaticData(override val generationState: NativeGenerationState, override val llvm: CodegenLlvmHelpers, module: LLVMModuleRef) : ContextUtils, StaticData(module, llvm) {

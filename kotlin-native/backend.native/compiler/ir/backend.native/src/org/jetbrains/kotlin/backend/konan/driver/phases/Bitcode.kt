@@ -73,6 +73,7 @@ internal fun optimizationPipelinePass(name: String, description: String, pipelin
                 postactions = getDefaultLlvmModuleActions(),
         ) { context, module ->
             pipeline(context.llvmConfig, context).use {
+                println("Execute: ${it.pipelineName}")
                 it.execute(module)
             }
         }

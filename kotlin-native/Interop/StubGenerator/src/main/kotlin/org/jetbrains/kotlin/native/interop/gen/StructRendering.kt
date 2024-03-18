@@ -105,6 +105,8 @@ private fun tryRenderUnion(def: StructDef): String? {
         }
         append("}")
         if (forceAlign) append(" __attribute__((aligned(${def.align})))")
+    }.also {
+        println("StructRendering.tryRenderUnion(): ${def.size} , $${def.members.joinToString { it.name + " : " + it::class.simpleName }} returned $it")
     }
 }
 
@@ -121,7 +123,7 @@ private fun tryRenderVar(type: Type, name: String): String? = when (type) {
     is Typedef -> tryRenderVar(type.def.aliased, name)
     is ObjCPointer -> "void* $name"
     else -> null
-}
+}.also { println("tryRenderVar(): $name : $type -> $it") }
 
 private val Field.offsetBytes: Long
     get() {

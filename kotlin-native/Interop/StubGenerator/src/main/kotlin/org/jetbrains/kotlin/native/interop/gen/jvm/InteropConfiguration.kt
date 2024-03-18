@@ -22,7 +22,7 @@ import org.jetbrains.kotlin.native.interop.indexer.CompilationWithPCH
 /**
  * Describes the native library and the options for adjusting the Kotlin API to be generated for this library.
  */
-class InteropConfiguration(
+data class InteropConfiguration(
         val library: CompilationWithPCH,
         val pkgName: String,
         val excludedFunctions: Set<String>,

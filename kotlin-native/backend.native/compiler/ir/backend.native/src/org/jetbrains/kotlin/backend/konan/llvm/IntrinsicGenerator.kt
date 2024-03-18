@@ -53,6 +53,7 @@ internal enum class IntrinsicType {
     EXTRACT_ELEMENT,
     ARE_EQUAL_BY_VALUE,
     IEEE_754_EQUALS,
+
     // OBJC
     OBJC_GET_MESSENGER,
     OBJC_GET_MESSENGER_STRET,
@@ -60,6 +61,7 @@ internal enum class IntrinsicType {
     OBJC_CREATE_SUPER_STRUCT,
     OBJC_INIT_BY,
     OBJC_GET_SELECTOR,
+
     // Other
     CREATE_UNINITIALIZED_INSTANCE,
     IDENTITY,
@@ -68,13 +70,16 @@ internal enum class IntrinsicType {
     IS_SUBTYPE,
     IS_EXPERIMENTAL_MM,
     THE_UNIT_INSTANCE,
+
     // Enums
     ENUM_VALUES,
     ENUM_VALUE_OF,
     ENUM_ENTRIES,
+
     // Coroutines
     GET_CONTINUATION,
     RETURN_IF_SUSPENDED,
+
     // Interop
     INTEROP_READ_BITS,
     INTEROP_WRITE_BITS,
@@ -92,8 +97,10 @@ internal enum class IntrinsicType {
     INTEROP_STATIC_C_FUNCTION,
     INTEROP_FUNPTR_INVOKE,
     INTEROP_MEMORY_COPY,
+
     // Worker
     WORKER_EXECUTE,
+
     // Atomics
     ATOMIC_GET_FIELD,
     ATOMIC_SET_FIELD,
@@ -105,6 +112,7 @@ internal enum class IntrinsicType {
     COMPARE_AND_EXCHANGE,
     GET_AND_SET,
     GET_AND_ADD,
+
     // Atomic arrays
     ATOMIC_GET_ARRAY_ELEMENT,
     ATOMIC_SET_ARRAY_ELEMENT,
@@ -303,7 +311,7 @@ internal class IntrinsicGenerator(private val environment: IntrinsicGeneratorEnv
                     reportSpecialIntrinsic(intrinsicType)
             }
 
-    fun evaluateConstantConstructorFields(constant: IrConstantObject, args: List<ConstValue>) : List<ConstValue> {
+    fun evaluateConstantConstructorFields(constant: IrConstantObject, args: List<ConstValue>): List<ConstValue> {
         return when (val intrinsicType = getConstantConstructorIntrinsicType(constant.constructor)) {
             ConstantConstructorIntrinsicType.KCLASS_IMPL -> {
                 require(args.isEmpty())
@@ -334,7 +342,7 @@ internal class IntrinsicGenerator(private val environment: IntrinsicGeneratorEnv
             llvm.int1(context.memoryModel == MemoryModel.EXPERIMENTAL)
 
     // cmpxcgh llvm instruction return pair. idnex is index of required element of this pair
-    enum class CmpExchangeMode(val index:Int) {
+    enum class CmpExchangeMode(val index: Int) {
         SWAP(0),
         SET(1)
     }
@@ -388,12 +396,15 @@ internal class IntrinsicGenerator(private val environment: IntrinsicGeneratorEnv
     private fun FunctionGenerationContext.emitCompareAndSet(callSite: IrCall, args: List<LLVMValueRef>): LLVMValueRef {
         return emitCmpExchange(callSite, transformArgsForVolatile(callSite, args), CmpExchangeMode.SET, null)
     }
+
     private fun FunctionGenerationContext.emitCompareAndSwap(callSite: IrCall, args: List<LLVMValueRef>, resultSlot: LLVMValueRef?): LLVMValueRef {
         return emitCmpExchange(callSite, transformArgsForVolatile(callSite, args), CmpExchangeMode.SWAP, resultSlot)
     }
+
     private fun FunctionGenerationContext.emitGetAndSet(callSite: IrCall, args: List<LLVMValueRef>, resultSlot: LLVMValueRef?): LLVMValueRef {
         return emitAtomicRMW(callSite, transformArgsForVolatile(callSite, args), LLVMAtomicRMWBinOp.LLVMAtomicRMWBinOpXchg, resultSlot)
     }
+
     private fun FunctionGenerationContext.emitGetAndAdd(callSite: IrCall, args: List<LLVMValueRef>): LLVMValueRef {
         return emitAtomicRMW(callSite, transformArgsForVolatile(callSite, args), LLVMAtomicRMWBinOp.LLVMAtomicRMWBinOpAdd, null)
     }
@@ -447,7 +458,7 @@ internal class IntrinsicGenerator(private val environment: IntrinsicGeneratorEnv
             llvm.kNullInt8Ptr
 
     private fun FunctionGenerationContext.emitNativePtrPlusLong(args: List<LLVMValueRef>): LLVMValueRef =
-        gep(args[0], args[1])
+            gep(args[0], args[1])
 
     private fun FunctionGenerationContext.emitNativePtrToLong(callSite: IrCall, args: List<LLVMValueRef>): LLVMValueRef {
         val intPtrValue = ptrToInt(args.single(), codegen.intPtrType)
@@ -581,8 +592,9 @@ internal class IntrinsicGenerator(private val environment: IntrinsicGeneratorEnv
 
         val structType = llvm.structType(llvm.int8PtrType, llvm.int8PtrType)
         val ptr = alloca(structType)
-        store(receiver, LLVMBuildGEP(builder, ptr, cValuesOf(llvm.kImmInt32Zero, llvm.kImmInt32Zero), 2, "")!!)
-        store(superClass, LLVMBuildGEP(builder, ptr, cValuesOf(llvm.kImmInt32Zero, llvm.kImmInt32One), 2, "")!!)
+        // Todo: Double check
+        store(receiver, LLVMBuildGEP2(builder, ptr.type, ptr, cValuesOf(llvm.kImmInt32Zero, llvm.kImmInt32Zero), 2, "")!!)
+        store(superClass, LLVMBuildGEP2(builder, ptr.type, ptr, cValuesOf(llvm.kImmInt32Zero, llvm.kImmInt32One), 2, "")!!)
         return bitcast(llvm.int8PtrType, ptr)
     }
 
@@ -623,7 +635,7 @@ internal class IntrinsicGenerator(private val environment: IntrinsicGeneratorEnv
 
     private fun FunctionGenerationContext.emitAreEqualByValue(args: List<LLVMValueRef>): LLVMValueRef {
         val (first, second) = args
-        assert (first.type == second.type) { "Types are different: '${llvmtype2string(first.type)}' and '${llvmtype2string(second.type)}'" }
+        assert(first.type == second.type) { "Types are different: '${llvmtype2string(first.type)}' and '${llvmtype2string(second.type)}'" }
 
         return when (val typeKind = LLVMGetTypeKind(first.type)) {
             LLVMTypeKind.LLVMFloatTypeKind, LLVMTypeKind.LLVMDoubleTypeKind,
@@ -639,11 +651,11 @@ internal class IntrinsicGenerator(private val environment: IntrinsicGeneratorEnv
 
     private fun FunctionGenerationContext.emitIeee754Equals(args: List<LLVMValueRef>): LLVMValueRef {
         val (first, second) = args
-        assert (first.type == second.type)
-                { "Types are different: '${llvmtype2string(first.type)}' and '${llvmtype2string(second.type)}'" }
+        assert(first.type == second.type)
+        { "Types are different: '${llvmtype2string(first.type)}' and '${llvmtype2string(second.type)}'" }
         val type = LLVMGetTypeKind(first.type)
-        assert (type == LLVMTypeKind.LLVMFloatTypeKind || type == LLVMTypeKind.LLVMDoubleTypeKind)
-                { "Should be of floating point kind, not: '${llvmtype2string(first.type)}'"}
+        assert(type == LLVMTypeKind.LLVMFloatTypeKind || type == LLVMTypeKind.LLVMDoubleTypeKind)
+        { "Should be of floating point kind, not: '${llvmtype2string(first.type)}'" }
         return fcmpEq(first, second)
     }
 
@@ -657,7 +669,7 @@ internal class IntrinsicGenerator(private val environment: IntrinsicGeneratorEnv
 
         assert(callSite.llvmReturnType.isVectorElementType()
                 && vectorSize % elementSize == 0
-        ) { "Invalid vector element type ${LLVMGetTypeKind(callSite.llvmReturnType)}"}
+        ) { "Invalid vector element type ${LLVMGetTypeKind(callSite.llvmReturnType)}" }
 
         val elementCount = vectorSize / elementSize
         emitThrowIfOOB(index, llvm.int32((elementCount)))

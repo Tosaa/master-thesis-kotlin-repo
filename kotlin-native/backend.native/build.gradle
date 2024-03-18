@@ -77,7 +77,7 @@ kotlinNativeInterop {
         dependsOn ":kotlin-native:llvmDebugInfoC:${NativePluginKt.lib("debugInfo")}"
         dependsOn ":kotlin-native:libllvmext:${NativePluginKt.lib("llvmext")}"
         defFile 'llvm.def'
-        compilerOpts "-I$llvmDir/include", "-I${rootProject.project(':kotlin-native:llvmDebugInfoC').projectDir}/src/main/include", "-I${rootProject.project(':kotlin-native:libllvmext').projectDir}/src/main/include"
+        compilerOpts "-I$llvmDir/include", "-I$llvmDir/lib/clang/17/include/", "-I${rootProject.project(':kotlin-native:llvmDebugInfoC').projectDir}/src/main/include", "-I${rootProject.project(':kotlin-native:libllvmext').projectDir}/src/main/include"
         if (isMac()) {
             // $llvmDir/lib contains libc++.1.dylib too, and it seems to be preferred by the linker
             // over the sysroot-provided one.
@@ -96,6 +96,7 @@ kotlinNativeInterop {
         linker 'clang++'
         link configurations.commonFilesBitcode
 
+        compilerOpts "-I$llvmDir/lib/clang/17/include/"
         // TODO: These should come from some sort of commonFilesApi configuration
         headers fileTree('../common/src/files/headers') {
             include '**/*.h'
@@ -110,6 +111,7 @@ kotlinNativeInterop {
         linker 'clang++'
         link configurations.commonEnvBitcode
 
+        compilerOpts "-I$llvmDir/lib/clang/17/include/"
         // TODO: These should come from some sort of commonEnvApi configuration
         headers fileTree('../common/src/env/headers') {
             include '**/*.h'

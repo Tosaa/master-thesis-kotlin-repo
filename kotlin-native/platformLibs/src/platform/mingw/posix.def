@@ -5,10 +5,12 @@ headers = assert.h complex.h ctype.h dirent.h errno.h fcntl.h \
     setjmp.h signal.h stdint.h stdio.h stdlib.h string.h \
     time.h uchar.h unistd.h utime.h wchar.h wctype.h
 noStringConversion = send sendto recv
-compilerOpts = -DUNICODE -DWINVER=0x0601 -D_WIN32_WINNT=0x0601 -DWINAPI_FAMILY=3 -DOEMRESOURCE -D_POSIX_C_SOURCE=1
-linkerOpts = -lws2_32
+compilerOpts = -DUNICODE -DWINVER=0x0601 -D_WIN32_WINNT=0x0601 -DWINAPI_FAMILY=3 -DOEMRESOURCE -D_POSIX_C_SOURCE=199309
+linkerOpts = -lws2_32 -lresolv -lm -lpthread -lutil -lcrypt -lrt
 
 ---
+#include <winsock2.h>
+
 // Wrapper to access errno variable.
 static int posix_errno() {
     return errno;
@@ -64,7 +66,6 @@ static short posix_htons(short x) {
 #define RPC_NO_WINDOWS_H
 #define COM_NO_WINDOWS_H
 #define __INSIDE_CYGWIN__
-#include <winsock2.h>
 
 // Wrapper to access h_errno variable.
 static int posix_h_errno() {

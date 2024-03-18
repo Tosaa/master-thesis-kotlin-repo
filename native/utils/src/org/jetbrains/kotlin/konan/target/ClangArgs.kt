@@ -139,7 +139,7 @@ sealed class ClangArgs(
             else -> null
         }
         if (environmentOsVersionMinRequired != null) {
-            add(listOf("-D__ENVIRONMENT_OS_VERSION_MIN_REQUIRED__=$environmentOsVersionMinRequired"))
+            // add(listOf("-D__ENVIRONMENT_OS_VERSION_MIN_REQUIRED__=$environmentOsVersionMinRequired"))
         }
     }.flatten()
 
@@ -233,7 +233,14 @@ sealed class ClangArgs(
             // See e.g. http://lists.llvm.org/pipermail/cfe-dev/2013-November/033680.html
             // We workaround the problem with -isystem flag below.
             // TODO: Revise after update to LLVM 10.
-            listOf("-isystem", "$absoluteLlvmHome/lib/clang/${configurables.llvmVersion}/include")
+
+            listOf("-isystem",
+                   "$absoluteLlvmHome/lib/clang/${configurables.llvmVersion}/include".also{
+                       if(!File(it).exists){
+                           throw IllegalArgumentException("Cannot find path for clang: $it")
+                       }
+                   }
+                   )
 
     /**
      * libclang args for plain C and Objective-C.

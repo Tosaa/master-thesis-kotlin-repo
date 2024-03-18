@@ -9,8 +9,12 @@ import kotlinx.cinterop.*
 import llvm.*
 import org.jetbrains.kotlin.ir.declarations.IrDeclaration
 
+// https://github.com/apple/llvm-project/blob/f1102cf0c7a064c693bf59cf35fbefddc7de5242/llvm/include/llvm-c/Core.h#L463
+internal const val LLVMAttributeFunctionIndex = -1
+internal const val LLVMAttributeReturnIndex = 0
+
 internal val LLVMValueRef.type: LLVMTypeRef
-    get() = LLVMTypeOf(this)!!
+    get() = LLVMTypeOf(this) ?: error("Cannot get LLVMTypeOf() $this")
 
 /**
  * Represents the value which can be emitted as bitcode const value
@@ -35,7 +39,7 @@ internal fun constPointer(value: LLVMValueRef) = object : ConstPointer {
 }
 
 private class ConstGetElementPtr(llvm: CodegenLlvmHelpers, pointer: ConstPointer, index: Int) : ConstPointer {
-    override val llvm = LLVMConstInBoundsGEP(pointer.llvm, cValuesOf(llvm.int32(0), llvm.int32(index)), 2)!!
+    override val llvm = LLVMConstInBoundsGEP2(pointer.llvm.type, pointer.llvm, cValuesOf(llvm.int32(0), llvm.int32(index)), 2)!!
     // TODO: squash multiple GEPs
 }
 
@@ -49,6 +53,7 @@ internal class ConstArray(elementType: LLVMTypeRef?, val elements: List<ConstVal
             }
         }
     }
+
     override val llvm = LLVMConstArray(elementType, elements.map { it.llvm }.toCValues(), elements.size)!!
 }
 
@@ -79,13 +84,13 @@ internal class Zero(val type: LLVMTypeRef) : ConstValue {
     override val llvm = LLVMConstNull(type)!!
 }
 
-internal class NullPointer(pointeeType: LLVMTypeRef): ConstPointer {
+internal class NullPointer(pointeeType: LLVMTypeRef) : ConstPointer {
     override val llvm = LLVMConstNull(pointerType(pointeeType))!!
 }
 
 internal fun constValue(value: LLVMValueRef) = object : ConstValue {
     init {
-        assert (LLVMIsConstant(value) == 1)
+        assert(LLVMIsConstant(value) == 1)
     }
 
     override val llvm = value
@@ -116,10 +121,13 @@ internal val RuntimeAware.kNothingFakeValue: LLVMValueRef
 
 internal fun pointerType(pointeeType: LLVMTypeRef) = LLVMPointerType(pointeeType, 0)!!
 
-internal fun ContextUtils.numParameters(functionType: LLVMTypeRef) : Int {
+// Its unused
+/*
+internal fun ContextUtils.numParameters(functionType: LLVMTypeRef): Int {
     // Note that type is usually function pointer, so we have to dereference it.
     return LLVMCountParamTypes(LLVMGetElementType(functionType))
 }
+ */
 
 fun extractConstUnsignedInt(value: LLVMValueRef): Long {
     assert(LLVMIsConstant(value) != 0)
@@ -138,13 +146,13 @@ internal fun RuntimeAware.isObjectType(type: LLVMTypeRef): Boolean {
  * Reads [size] bytes contained in this array.
  */
 internal fun CArrayPointer<ByteVar>.getBytes(size: Long) =
-        (0 .. size-1).map { this[it] }.toByteArray()
+        (0..size - 1).map { this[it] }.toByteArray()
 
-internal fun LLVMValueRef.getAsCString() : String {
+internal fun LLVMValueRef.getAsCString(): String {
     memScoped {
         val lengthPtr = alloc<size_tVar>()
         val data = LLVMGetAsString(this@getAsCString, lengthPtr.ptr)!!
-        require(lengthPtr.value >= 1 && data[lengthPtr.value - 1] == 0.toByte()) { "Expected null-terminated string from llvm"}
+        require(lengthPtr.value >= 1 && data[lengthPtr.value - 1] == 0.toByte()) { "Expected null-terminated string from llvm" }
         return data.toKString()
     }
 }
@@ -154,9 +162,7 @@ internal fun getFunctionType(ptrToFunction: LLVMValueRef): LLVMTypeRef {
     return getGlobalType(ptrToFunction)
 }
 
-internal fun getGlobalType(ptrToGlobal: LLVMValueRef): LLVMTypeRef {
-    return LLVMGetElementType(ptrToGlobal.type)!!
-}
+internal fun getGlobalType(ptrToGlobal: LLVMValueRef): LLVMTypeRef = ptrToGlobal.type
 
 internal fun ContextUtils.addGlobal(name: String, type: LLVMTypeRef, isExported: Boolean): LLVMValueRef {
     if (isExported)
@@ -228,7 +234,7 @@ internal abstract class AddressAccess {
     abstract fun getAddress(generationContext: FunctionGenerationContext?): LLVMValueRef
 }
 
-internal class GlobalAddressAccess(private val address: LLVMValueRef): AddressAccess() {
+internal class GlobalAddressAccess(private val address: LLVMValueRef) : AddressAccess() {
     override fun getAddress(generationContext: FunctionGenerationContext?): LLVMValueRef = address
 }
 
@@ -274,8 +280,8 @@ internal fun functionType(returnType: LLVMTypeRef, isVarArg: Boolean = false, pa
 
 
 fun llvm2string(value: LLVMValueRef?): String {
-  if (value == null) return "<null>"
-  return LLVMPrintValueToString(value)!!.toKString()
+    if (value == null) return "<null>"
+    return LLVMPrintValueToString(value)!!.toKString()
 }
 
 fun llvmtype2string(type: LLVMTypeRef?): String {
