@@ -30,6 +30,7 @@ fun KonanTarget.pointerBits() = when (architecture) {
     Architecture.MIPS32 -> 32
     Architecture.MIPSEL32 -> 32
     Architecture.WASM32 -> 32
+    Architecture.RISCV64 -> 64
 }
 
 fun KonanTarget.supportsMimallocAllocator(): Boolean =
@@ -40,7 +41,8 @@ fun KonanTarget.supportsMimallocAllocator(): Boolean =
         is KonanTarget.MACOS_X64 -> true
         is KonanTarget.MACOS_ARM64 -> true
         is KonanTarget.LINUX_ARM64 -> true
-        is KonanTarget.LINUX_ARM32_HFP -> true
+         is KonanTarget.LINUX_RISCV64 -> true // Todo: figure out what minimallocAllocator is
+         is KonanTarget.LINUX_ARM32_HFP -> true
         is KonanTarget.ANDROID_X64 -> true
         is KonanTarget.ANDROID_ARM64 -> true
         is KonanTarget.IOS_ARM32 -> true
@@ -101,6 +103,7 @@ fun KonanTarget.supports64BitMulOverflow(): Boolean = when (this) {
     is KonanTarget.ZEPHYR -> false
     is KonanTarget.ANDROID_ARM32 -> false
     is KonanTarget.ANDROID_X86 -> false
+    is KonanTarget.LINUX_RISCV64 -> true
     else -> true
 }
 
@@ -123,12 +126,12 @@ fun KonanTarget.supportsIosCrashLog(): Boolean = when (this) {
  */
 fun KonanTarget.supports64BitAtomics(): Boolean = when (architecture) {
     Architecture.ARM32, Architecture.WASM32, Architecture.MIPS32, Architecture.MIPSEL32 -> false
-    Architecture.X86, Architecture.ARM64, Architecture.X64 -> true
+    Architecture.X86, Architecture.ARM64, Architecture.X64, Architecture.RISCV64 -> true
 } && this != KonanTarget.WATCHOS_ARM64 && this != KonanTarget.WATCHOS_X86
 
 fun KonanTarget.supportsUnalignedAccess(): Boolean = when (architecture) {
     Architecture.ARM32, Architecture.WASM32, Architecture.MIPS32, Architecture.MIPSEL32 -> false
-    Architecture.X86, Architecture.ARM64, Architecture.X64 -> true
+    Architecture.X86, Architecture.ARM64, Architecture.X64, Architecture.RISCV64 -> true
 } && this != KonanTarget.WATCHOS_ARM64
 
 fun KonanTarget.needSmallBinary() = when {
@@ -150,7 +153,7 @@ fun KonanTarget.supportedSanitizers(): List<SanitizerKind> =
 
 fun KonanTarget.hasAddressDependencyInMemoryModel(): Boolean =
      when (this.architecture) {
-         Architecture.X86, Architecture.X64, Architecture.ARM32, Architecture.ARM64 -> true
+         Architecture.X86, Architecture.X64, Architecture.ARM32, Architecture.ARM64, Architecture.RISCV64 -> true
          Architecture.MIPS32, Architecture.MIPSEL32, Architecture.WASM32 -> false
      }
 

@@ -51,7 +51,7 @@ class FrameworkDsymLayout(val rootDir: File) {
 
 class FrameworkLayout(
     val rootDir: File,
-    val isMacosFramework: Boolean
+    val isMacosFramework: Boolean,
 ) {
     init {
         require(rootDir.extension == "framework")
@@ -98,7 +98,7 @@ class FrameworkLayout(
 class FrameworkDescriptor(
     val file: File,
     val isStatic: Boolean,
-    val target: KonanTarget
+    val target: KonanTarget,
 ) {
     constructor(framework: Framework) : this(
         framework.outputFile,
@@ -194,6 +194,7 @@ internal constructor(
         X64("__x86_64__"),
         X86("__i386__"),
         ARM32("__arm__"),
+
         // We need to distinguish between variants of aarch64, because there are two WatchOS ARM64 targets that we support
         // watchOsArm64 that compiles to arm64_32 architecture
         // watchOsDeviceArm64 that compiles to arm64 architecture
@@ -202,16 +203,19 @@ internal constructor(
         ARM64("__ARM64_ARCH_8__"),
     }
 
-    private val KonanTarget.appleArchitecture: AppleArchitecture get() =
-        when (architecture) {
-            Architecture.X64 -> AppleArchitecture.X64
-            Architecture.X86 -> AppleArchitecture.X86
-            Architecture.ARM64 -> if (this == WATCHOS_ARM64) AppleArchitecture.ARM64_32 else AppleArchitecture.ARM64
-            Architecture.ARM32 -> AppleArchitecture.ARM32
-            Architecture.MIPS32,
-            Architecture.MIPSEL32,
-            Architecture.WASM32 -> error("Fat frameworks are not supported for target `$name`")
-        }
+    private val KonanTarget.appleArchitecture: AppleArchitecture
+        get() =
+            when (architecture) {
+                Architecture.X64 -> AppleArchitecture.X64
+                Architecture.X86 -> AppleArchitecture.X86
+                Architecture.ARM64 -> if (this == WATCHOS_ARM64) AppleArchitecture.ARM64_32 else AppleArchitecture.ARM64
+                Architecture.ARM32 -> AppleArchitecture.ARM32
+                Architecture.MIPS32,
+                Architecture.MIPSEL32,
+                Architecture.WASM32,
+                Architecture.RISCV64,
+                -> error("Fat frameworks are not supported for RISCV64 target `$name`")
+            }
 
     // region DSL methods.
     /**
@@ -278,7 +282,8 @@ internal constructor(
             is IOS_ARM32, is IOS_ARM64, is IOS_X64, is IOS_SIMULATOR_ARM64 -> "iPhoneOS"
             is TVOS_ARM64, is TVOS_X64, is TVOS_SIMULATOR_ARM64 -> "AppleTVOS"
             is WATCHOS_ARM32, is WATCHOS_ARM64, is WATCHOS_X86,
-            is WATCHOS_X64, is WATCHOS_SIMULATOR_ARM64, is WATCHOS_DEVICE_ARM64 -> "WatchOS"
+            is WATCHOS_X64, is WATCHOS_SIMULATOR_ARM64, is WATCHOS_DEVICE_ARM64,
+            -> "WatchOS"
             else -> error("Fat frameworks are not supported for platform `${target.visibleName}`")
         }
 
@@ -373,14 +378,16 @@ internal constructor(
     }
 
     private fun createModuleFile(outputFile: File, frameworkName: String) {
-        outputFile.writeText("""
+        outputFile.writeText(
+            """
             framework module $frameworkName {
                 umbrella header "$frameworkName.h"
 
                 export *
                 module * { export * }
             }
-        """.trimIndent())
+        """.trimIndent()
+        )
     }
 
     private fun mergePlists(outputFile: File, frameworkName: String) {

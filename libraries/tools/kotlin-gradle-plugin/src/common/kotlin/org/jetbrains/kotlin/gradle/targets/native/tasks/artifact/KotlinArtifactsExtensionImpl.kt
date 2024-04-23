@@ -50,6 +50,7 @@ abstract class KotlinArtifactsExtensionImpl @Inject constructor(project: Project
     val macosX64 = KonanTarget.MACOS_X64
     val macosArm64 = KonanTarget.MACOS_ARM64
     val linuxArm64 = KonanTarget.LINUX_ARM64
+    val linuxRiscV64 = KonanTarget.LINUX_RISCV64
 
 
     @Deprecated(DEPRECATED_TARGET_MESSAGE, level = DeprecationLevel.ERROR)

@@ -28,13 +28,15 @@ plugins {
 val targetsWithoutZlib: List<KonanTarget> by project
 
 // region: Util functions.
+fun platformDirectory(family : Family, architecture: org.jetbrains.kotlin.konan.target.Architecture) = "src/platform/${family.visibleName}" + if(architecture.toString().contains("RISCV")) "_for_riscv" else ""
+
 fun KonanTarget.defFiles() =
-    project.fileTree("src/platform/${family.visibleName}")
-            .filter { it.name.endsWith(".def") }
-            // The libz.a/libz.so and zlib.h are missing in MIPS sysroots.
-            // Just workaround it until we have sysroots corrected.
-            .filterNot { (this in targetsWithoutZlib) && it.name == "zlib.def" }
-            .map { DefFile(it, this) }
+        project.fileTree(platformDirectory(family, architecture))
+                .filter { it.name.endsWith(".def") }
+                // The libz.a/libz.so and zlib.h are missing in MIPS sysroots.
+                // Just workaround it until we have sysroots corrected.
+                .filterNot { (this in targetsWithoutZlib) && it.name == "zlib.def" }
+                .map { DefFile(it, this) }
 
 
 fun defFileToLibName(target: String, name: String) = "$target-$name"
@@ -50,80 +52,86 @@ val targetList: List<String> by project
 val cacheableTargets: List<KonanTarget> by project
 
 konanTargetList.forEach { target ->
-    val targetName = target.visibleName
-    val installTasks = mutableListOf<TaskProvider<out Task>>()
-    val cacheTasks = mutableListOf<TaskProvider<out Task>>()
+    try {
+        val targetName = target.visibleName
+        val installTasks = mutableListOf<TaskProvider<out Task>>()
+        val cacheTasks = mutableListOf<TaskProvider<out Task>>()
 
-    target.defFiles().forEach { df ->
-        val libName = defFileToLibName(targetName, df.name)
-        val fileNamePrefix = PlatformLibsInfo.namePrefix
-        val artifactName = "${fileNamePrefix}${df.name}"
+        target.defFiles().forEach { df ->
+            val libName = defFileToLibName(targetName, df.name)
+            val fileNamePrefix = PlatformLibsInfo.namePrefix
+            val artifactName = "${fileNamePrefix}${df.name}"
 
-        konanArtifacts {
-            interop(args = mapOf("targets" to listOf(targetName)), name = libName) {
-                df.file?.let { defFile(it) }
-                artifactName(artifactName)
-                noDefaultLibs(true)
-                noEndorsedLibs(true)
-                noPack(true)
-                libraries {
-                    klibFiles(df.config.depends.map { "$konanHome/klib/platform/$targetName/${fileNamePrefix}${it}" })
+            konanArtifacts {
+                interop(args = mapOf("targets" to listOf(targetName)), name = libName) {
+                    df.file?.let { defFile(it) }
+                    artifactName(artifactName)
+                    noDefaultLibs(true)
+                    noEndorsedLibs(true)
+                    noPack(true)
+                    libraries {
+                        klibFiles(df.config.depends.map { "$konanHome/klib/platform/$targetName/${fileNamePrefix}${it}" })
+                    }
+                    extraOpts("-Xpurge-user-libs", "-Xshort-module-name", df.name, "-Xdisable-experimental-annotation")
+                    compilerOpts("-fmodules-cache-path=${project.layout.buildDirectory.dir("clangModulesCache").get().asFile}")
                 }
-                extraOpts("-Xpurge-user-libs", "-Xshort-module-name", df.name, "-Xdisable-experimental-annotation")
-                compilerOpts("-fmodules-cache-path=${project.layout.buildDirectory.dir("clangModulesCache").get().asFile}")
+            }
+
+            @Suppress("UNCHECKED_CAST")
+            val libTask = konanArtifacts.getByName(libName).getByTarget(targetName) as TaskProvider<KonanInteropTask>
+            libTask.configure {
+                dependsOn(df.config.depends.map { defFileToLibName(targetName, it) })
+                dependsOn(":kotlin-native:${targetName}CrossDist")
+
+                enableParallel = project.findProperty("kotlin.native.platformLibs.parallel")?.toString()?.toBoolean() ?: true
+            }
+
+            val klibInstallTask = tasks.register(libName, Sync::class.java) {
+                from(libTask.map { it.artifact })
+                into("$konanHome/klib/platform/$targetName/$artifactName")
+            }
+            installTasks.add(klibInstallTask)
+
+            if (target in cacheableTargets) {
+                val cacheTask = tasks.register("${libName}Cache", KonanCacheTask::class.java) {
+                    notCompatibleWithConfigurationCache("project used in execution time")
+                    this.target = targetName
+                    originalKlib.fileProvider(libTask.map {
+                        it.artifactDirectory ?: error("Artifact wasn't set for ${it.name}")
+                    })
+                    klibUniqName = artifactName
+                    cacheRoot = file("$konanHome/klib/cache").absolutePath
+
+                    dependsOn(":kotlin-native:${targetName}StdlibCache")
+
+                    // Make it depend on platform libraries defined in def files and their caches
+                    df.config.depends.map {
+                        defFileToLibName(targetName, it)
+                    }.forEach {
+                        dependsOn(it)
+                        dependsOn("${it}Cache")
+                    }
+                }
+                cacheTasks.add(cacheTask)
             }
         }
 
-        @Suppress("UNCHECKED_CAST")
-        val libTask = konanArtifacts.getByName(libName).getByTarget(targetName) as TaskProvider<KonanInteropTask>
-        libTask.configure {
-            dependsOn(df.config.depends.map { defFileToLibName(targetName, it) })
-            dependsOn(":kotlin-native:${targetName}CrossDist")
-
-            enableParallel = project.findProperty("kotlin.native.platformLibs.parallel")?.toString()?.toBoolean() ?: true
+        tasks.register("${targetName}Install") {
+            dependsOn(installTasks)
         }
-
-        val klibInstallTask = tasks.register(libName, Sync::class.java) {
-            from(libTask.map { it.artifact })
-            into("$konanHome/klib/platform/$targetName/$artifactName")
-        }
-        installTasks.add(klibInstallTask)
 
         if (target in cacheableTargets) {
-            val cacheTask = tasks.register("${libName}Cache", KonanCacheTask::class.java) {
-                notCompatibleWithConfigurationCache("project used in execution time")
-                this.target = targetName
-                originalKlib.fileProvider(libTask.map {
-                    it.artifactDirectory ?: error("Artifact wasn't set for ${it.name}")
-                })
-                klibUniqName = artifactName
-                cacheRoot = file("$konanHome/klib/cache").absolutePath
+            tasks.register("${targetName}Cache") {
+                dependsOn(cacheTasks)
 
-                dependsOn(":kotlin-native:${targetName}StdlibCache")
-
-                // Make it depend on platform libraries defined in def files and their caches
-                df.config.depends.map {
-                    defFileToLibName(targetName, it)
-                }.forEach {
-                    dependsOn(it)
-                    dependsOn("${it}Cache")
-                }
+                group = BasePlugin.BUILD_GROUP
+                description = "Builds the compilation cache for platform: $targetName"
             }
-            cacheTasks.add(cacheTask)
         }
-    }
+    } catch (e: Exception) {
+        println("Ignore $target")
+        e.printStackTrace()
 
-    tasks.register("${targetName}Install") {
-        dependsOn(installTasks)
-    }
-
-    if (target in cacheableTargets) {
-        tasks.register("${targetName}Cache") {
-            dependsOn(cacheTasks)
-
-            group = BasePlugin.BUILD_GROUP
-            description = "Builds the compilation cache for platform: $targetName"
-        }
     }
 }
 

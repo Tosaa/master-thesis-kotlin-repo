@@ -260,6 +260,11 @@ private class KotlinHierarchyBuilderImpl(
         it is KotlinNativeTarget && it.konanTarget == KonanTarget.LINUX_ARM64
     }
 
+    override fun withLinuxRiscV64() = withTargets {
+        it is KotlinNativeTarget && it.konanTarget == KonanTarget.LINUX_RISCV64
+    }
+
+
     @Deprecated(DEPRECATED_TARGET_MESSAGE, level = DeprecationLevel.ERROR)
     override fun withWatchosX86() = withTargets {
         it is KotlinNativeTarget && it.konanTarget == KonanTarget.WATCHOS_X86

@@ -69,7 +69,8 @@ ext {
     // See also: the :distDef task, targetDefFiles in the :platformLibs project.
     targetsWithoutZlib = [
             KonanTarget.LINUX_MIPS32.INSTANCE,
-            KonanTarget.LINUX_MIPSEL32.INSTANCE
+            KonanTarget.LINUX_MIPSEL32.INSTANCE,
+            KonanTarget.LINUX_RISCV64.INSTANCE
     ]
 
     kotlinCompilerModule = project(":kotlin-compiler")

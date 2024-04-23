@@ -122,6 +122,7 @@ open class Command(initialCommand: List<String>, val redirectInputFile: File? = 
     private fun handleExitCode(code: Int, output: List<String> = emptyList()) {
         if (code != 0) throw KonanExternalToolFailure("""
             The ${command[0]} command returned non-zero exit code: $code.
+            ${command.joinToString(" ")}
             output:
             """.trimIndent() + "\n${output.joinToString("\n")}", command[0])
         // Show warnings in case of success linkage.

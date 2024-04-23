@@ -30,7 +30,7 @@ constexpr std::array<uint32_t, Exponent> DecreasingPowers(uint32_t base) {
     return result;
 }
 
-template <size_t Count>
+template <std::size_t Count>
 constexpr std::array<uint32_t, Count> RepeatingPowers(uint32_t base, uint8_t exponent) {
     std::array<uint32_t, Count> result = {};
     uint32_t value = Power(base, exponent);

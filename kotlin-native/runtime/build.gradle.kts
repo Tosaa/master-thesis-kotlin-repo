@@ -95,6 +95,7 @@ bitcode {
 
         module("libbacktrace") {
             val elfSize = when (target.architecture) {
+                TargetArchitecture.RISCV64,
                 TargetArchitecture.X64, TargetArchitecture.ARM64 -> 64
                 TargetArchitecture.X86, TargetArchitecture.ARM32,
                 TargetArchitecture.MIPS32, TargetArchitecture.MIPSEL32,

@@ -32,6 +32,7 @@ sealed class KonanTarget(override val name: String, val family: Family, val arch
     object MACOS_X64 : KonanTarget("macos_x64", Family.OSX, Architecture.X64)
     object MACOS_ARM64 : KonanTarget("macos_arm64", Family.OSX, Architecture.ARM64)
     object LINUX_ARM64 : KonanTarget("linux_arm64", Family.LINUX, Architecture.ARM64)
+    object LINUX_RISCV64 : KonanTarget("linux_riscv64", Family.LINUX, Architecture.RISCV64)
 
     // Deprecated targets. TODO: add deprecations
     // Deprecation is not declared right now because otherwise compilation of the project will fail, because warnings will be reported
@@ -62,7 +63,7 @@ sealed class KonanTarget(override val name: String, val family: Family, val arch
                 MINGW_X86, MINGW_X64,
                 MACOS_X64, MACOS_ARM64,
                 LINUX_ARM64, LINUX_ARM32_HFP, LINUX_MIPS32, LINUX_MIPSEL32,
-                WASM32
+                WASM32, LINUX_RISCV64
             ).associateBy { it.name }
         }
 

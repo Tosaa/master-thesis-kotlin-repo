@@ -167,6 +167,8 @@ interface KotlinHierarchyBuilder {
     fun withMacosX64()
     fun withMacosArm64()
     fun withLinuxArm64()
+    fun withLinuxRiscV64()
+
 
     @Deprecated(DEPRECATED_TARGET_MESSAGE, level = DeprecationLevel.ERROR)
     fun withWatchosX86()
